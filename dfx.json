@@ -1,9 +1,15 @@
 {
   "canisters": {
-    "ir_manager_backend": {
-      "candid": "src/ir_manager_backend/ir_manager_backend.did",
-      "package": "ir_manager_backend",
-      "type": "rust"
+    "ir_manager": {
+      "build": "sh build.sh",
+      "candid": "ir_manager/candid.did",
+      "wasm": "target/wasm32-unknown-unknown/release/ir_manager.wasm",
+      "type": "custom",
+      "metadata": [
+        {
+          "name": "candid:service"
+        }
+      ]
     }
   },
   "defaults": {

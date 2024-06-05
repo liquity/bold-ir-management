@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "src/ir_manager_backend"
+    "ir_manager"
 ]
 resolver = "2"
