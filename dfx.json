@@ -1,0 +1,17 @@
+{
+  "canisters": {
+    "ir_manager_backend": {
+      "candid": "src/ir_manager_backend/ir_manager_backend.did",
+      "package": "ir_manager_backend",
+      "type": "rust"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
