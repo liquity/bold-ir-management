@@ -1,14 +1,25 @@
 [package]
-name = "ir_manager_backend"
+name = "ir_manager"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[lib]
-crate-type = ["cdylib"]
+[features]
+default = []
+export-api = []
 
 [dependencies]
+ic-exports = { git = "https://github.com/infinity-swap/canister-sdk", package = "ic-exports", tag = "v0.15.x" }
+ic-storage = { git = "https://github.com/infinity-swap/canister-sdk", package = "ic-storage", tag = "v0.15.x" }
+ic-canister = { git = "https://github.com/infinity-swap/canister-sdk", package = "ic-canister", tag = "v0.15.x" }
 candid = "0.10"
-ic-cdk = "0.13"
-ic-cdk-timers = "0.7" # Feel free to remove this dependency if you don't need timers
+serde = "1.0.199"
+serde_bytes = "0.11.12"
+ethers-core = "2.0.14"
+hex = "0.4.3"
+serde_json = "1.0.117"
+num-traits = "0.2"
+# alloy = { git = "https://github.com/alloy-rs/alloy", rev = "5fbf57b", features = [
+#     "rlp",
+# ] }
+# alloy-rlp = {version = "0.3", features = ["derive"]}
+alloy-primitives = { version = "0.7.2", default-features = false }
