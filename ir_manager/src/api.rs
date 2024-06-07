@@ -1,12 +1,12 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
-    rc::Rc,
+    rc::Rc, time::Duration,
 };
 
 use ic_canister::{generate_idl, init, query, Canister, Idl, PreUpdate};
-use ic_exports::candid::Principal;
+use ic_exports::{candid::Principal, ic_cdk_timers::set_timer_interval, ic_kit::ic::spawn};
 
-use crate::state::IrState;
+use crate::{state::IrState, strategy::run_strategy};
 
 #[derive(Canister)]
 pub struct IrManager {
@@ -44,6 +44,9 @@ impl IrManager {
         self.mut_state().wsteth_manager = wsteth_manager;
 
         // Timers need to start here
+        set_timer_interval(Duration::from_secs(60), || spawn(run_strategy()));
+        set_timer_interval(Duration::from_secs(60), || spawn(run_strategy()));
+        set_timer_interval(Duration::from_secs(60), || spawn(run_strategy()));
     }
 
     // QUERY FUNCTIONS

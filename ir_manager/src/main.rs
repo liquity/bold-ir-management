@@ -3,6 +3,7 @@ mod evm_rpc;
 mod state;
 mod types;
 mod utils;
+mod strategy;
 
 use crate::api::IrManager;
 
