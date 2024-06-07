@@ -1,7 +1,10 @@
-mod api;
 mod state;
+mod api;
+mod evm_rpc;
+mod utils;
+mod types;
 
-use crate::state::IrManager;
+use crate::api::IrManager;
 
 fn main() {
     let canister_e_idl = IrManager::idl();

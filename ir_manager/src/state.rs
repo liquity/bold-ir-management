@@ -1,13 +1,13 @@
 use std::{cell::RefCell, rc::Rc};
 
 use ic_canister::Canister;
-use ic_exports::candid::{Principal, CandidType};
+use ic_exports::candid::{CandidType, Principal};
 use ic_storage::{stable::Versioned, IcStorage};
 use serde::Deserialize;
 
 #[derive(Default, CandidType, IcStorage, Deserialize)]
 pub struct IrState {
-    
+    pub evm_rpc: Option<Principal>,
 }
 
 impl Versioned for IrState {
@@ -16,13 +16,4 @@ impl Versioned for IrState {
     fn upgrade((): ()) -> Self {
         Self::default()
     }
-}
-
-#[derive(Canister)]
-pub struct IrManager {
-    #[id]
-    id: Principal,
-
-    #[state]
-    pub state: Rc<RefCell<IrState>>
 }
