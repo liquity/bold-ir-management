@@ -1,8 +1,8 @@
-mod state;
 mod api;
 mod evm_rpc;
-mod utils;
+mod state;
 mod types;
+mod utils;
 
 use crate::api::IrManager;
 

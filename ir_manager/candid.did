@@ -1,0 +1,1 @@
+service : (principal) -> { evm_rpc_canister : () -> (opt principal) query }
