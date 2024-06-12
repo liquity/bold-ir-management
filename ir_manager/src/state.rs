@@ -11,6 +11,8 @@ pub struct IrState {
     pub weth_manager: String,
     pub reth_manager: String,
     pub wsteth_manager: String,
+    pub liquity_base: String,
+    pub rpc_url: String,
 }
 
 impl IrState {
@@ -24,6 +26,10 @@ impl IrState {
 
     pub fn wsteth_manager_address(&self) -> Address {
         Address::from_str(&self.wsteth_manager).unwrap()
+    }
+
+    pub fn liquity_base_address(&self) -> Address {
+        Address::from_str(&self.liquity_base).unwrap()
     }
 }
 
