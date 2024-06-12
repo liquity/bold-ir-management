@@ -1,4 +1,4 @@
-use alloy_primitives::keccak256;
+use alloy::primitives::keccak256;
 use candid::Principal;
 use serde_json::json;
 

@@ -1,3 +1,4 @@
+use alloy::primitives::U256;
 use alloy::sol_types::SolCall;
 use alloy::{primitives::keccak256, sol};
 use ic_canister::{generate_idl, init, query, update, Canister, Idl, PreUpdate};
@@ -43,10 +44,12 @@ impl IrManager {
     pub fn init(
         &mut self,
         rpc_canister: Principal,
+        rpc_url: String,
         weth_manager: String,
         reth_manager: String,
         wsteth_manager: String,
     ) {
+        self.mut_state().rpc_url = rpc_url;
         self.mut_state().rpc_canister = Some(rpc_canister);
         self.mut_state().weth_manager = weth_manager;
         self.mut_state().reth_manager = reth_manager;
@@ -65,20 +68,21 @@ impl IrManager {
         let rpc: RpcService = rpc_provider(&self.state().rpc_url);
 
         // Fetch data
-        self.fetch_entire_system_debt(rpc_canister, rpc_url);
+        let entire_system_debt : U256 = self.fetch_entire_system_debt(rpc_canister, rpc).await?;
+        
 
         Ok(())
     }
 
-    async fn fetch_entire_system_debt(&self, rpc_canister: Service, rpc: RpcService) {
+    async fn fetch_entire_system_debt(&self, rpc_canister: Service, rpc: RpcService) -> Result<U256, ManagerError> {
         sol!(
             function getEntireSystemDebt() public view returns (uint256 entireSystemDebt);
         );
 
-        let liquity_base_address = self.state().liquity_base;
+        let liquity_base_address = self.state().liquity_base.clone();
         let function_signature = "getEntireSystemDebt()";
         let selector = &keccak256(function_signature.as_bytes())[0..4];
-        let mut data: Vec<u8> = Vec::from(selector);
+        let data: Vec<u8> = Vec::from(selector);
 
         let json_data: String = json!({
                 "id": 1,
@@ -92,20 +96,24 @@ impl IrManager {
         })
         .to_string();
 
-        let returned_data = match rpc_canister
+        match rpc_canister
             .request(
-                rpc_provider(&self.state().rpc_url),
+                rpc,
                 json_data,
                 500000,
                 10_000_000_000,
             )
             .await
         {
-            Ok(_) => todo!(),
-            Err(_) => todo!(),
-        };
-
-        let dec = getEntireSystemDebtCall::abi_decode_returns(return_data, false);
+            Ok((response,)) => match response {
+                crate::evm_rpc::RequestResult::Ok(hex_system_debt) => {
+                    let decoded_hex_system_debt = hex::decode(hex_system_debt).unwrap();
+                    Ok(getEntireSystemDebtCall::abi_decode_returns(&decoded_hex_system_debt, false).unwrap().entireSystemDebt)
+                },
+                crate::evm_rpc::RequestResult::Err(e) => Err(ManagerError::RpcResponseError(e)),
+            },
+            Err(e) => Err(ManagerError::Custom(e.1)),
+        }
     }
 
     // QUERY FUNCTIONS
