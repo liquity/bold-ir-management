@@ -1,6 +1,7 @@
 use alloy::sol_types::SolCall;
 use candid::Principal;
 use ic_exports::ic_cdk::{self, api::call::CallResult};
+use serde_json::json;
 
 use crate::{
     evm_rpc::{RequestResult, RpcApi, RpcService, Service},
@@ -28,7 +29,7 @@ pub fn decode_response<T, F: SolCall<Return = T>>(
 ) -> Result<T, ManagerError> {
     match canister_response {
         Ok((rpc_response,)) => handle_rpc_response::<T, F>(rpc_response),
-        Err(e) => Err(ManagerError::Custom(e.1)), // Assuming e is an error type that can be converted to a String
+        Err(e) => Err(ManagerError::Custom(e.1)),
     }
 }
 
@@ -44,4 +45,18 @@ pub fn handle_rpc_response<T, F: SolCall<Return = T>>(
         }
         RequestResult::Err(e) => Err(ManagerError::RpcResponseError(e)),
     }
+}
+
+pub fn eth_call_args(to: String, data: Vec<u8>) -> String {
+    json!({
+        "id": 1,
+        "jsonrpc": "2.0",
+        "params": [ {
+            "to": to,
+            "data": format!("0x{}", hex::encode(data))
+        }
+        ],
+        "method": "eth_call"
+    })
+    .to_string()
 }
