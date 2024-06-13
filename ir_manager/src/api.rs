@@ -56,7 +56,7 @@ impl IrManager {
         self.mut_state().rpc_url = rpc_url;
         self.mut_state().liquity_base = liquity_base;
         self.mut_state().managers = managers.clone();
-    
+
         for manager in managers {
             let state_clone = Rc::clone(&self.state);
             set_timer_interval(Duration::from_secs(3600), move || {
@@ -108,14 +108,19 @@ impl IrManager {
         rpc: RpcService,
         manager: String,
     ) -> Result<getUnbackedPortionPriceAndRedeemabilityReturn, ManagerError> {
-
-        let json_data = eth_call_args(manager, getUnbackedPortionPriceAndRedeemabilityCall::SELECTOR.to_vec());
+        let json_data = eth_call_args(
+            manager,
+            getUnbackedPortionPriceAndRedeemabilityCall::SELECTOR.to_vec(),
+        );
 
         let rpc_canister_response = rpc_canister
             .request(rpc, json_data, 500000, 10_000_000_000)
             .await;
 
-        decode_response::<getUnbackedPortionPriceAndRedeemabilityReturn, getUnbackedPortionPriceAndRedeemabilityCall>(rpc_canister_response)
+        decode_response::<
+            getUnbackedPortionPriceAndRedeemabilityReturn,
+            getUnbackedPortionPriceAndRedeemabilityCall,
+        >(rpc_canister_response)
     }
 
     // QUERY FUNCTIONS
