@@ -1,4 +1,6 @@
-use alloy::primitives::U256;
+use std::str::FromStr;
+
+use alloy::primitives::{I256, U256};
 use alloy::sol;
 use alloy::sol_types::SolCall;
 use ic_exports::candid::Principal;
@@ -12,7 +14,18 @@ use crate::{
 };
 
 sol!(
+    struct CombinedTroveData {
+        uint256 id;
+        uint256 debt;
+        uint256 coll;
+        uint256 stake;
+        uint256 snapshotETH;
+        uint256 snapshotBoldDebt;
+    }
+    function getEntireSystemDebt() public view returns (uint256 entireSystemDebt);
     function getUnbackedPortionPriceAndRedeemability() external returns (uint256, uint256, bool);
+    function getMultipleSortedTroves(int256 _startIdx, uint256 _count) external view returns (CombinedTroveData[] memory _troves);
+
 );
 
 pub async fn execute_strategy(
@@ -27,7 +40,8 @@ pub async fn execute_strategy(
     let entire_system_debt: U256 =
         fetch_entire_system_debt(&rpc_canister_instance, &rpc_url, liquity_base)
             .await
-            .unwrap();
+            .unwrap()
+            .entireSystemDebt;
     let unbacked_portion_price_and_redeemability =
         fetch_unbacked_portion_price_and_redeemablity(&rpc_canister_instance, &rpc_url, manager)
             .await
@@ -38,12 +52,8 @@ async fn fetch_entire_system_debt(
     rpc_canister: &Service,
     rpc_url: &str,
     liquity_base: String,
-) -> Result<U256, ManagerError> {
+) -> Result<getEntireSystemDebtReturn, ManagerError> {
     let rpc: RpcService = rpc_provider(rpc_url);
-
-    sol!(
-        function getEntireSystemDebt() public view returns (uint256 entireSystemDebt);
-    );
 
     let json_data = eth_call_args(liquity_base, getEntireSystemDebtCall::SELECTOR.to_vec());
 
@@ -75,5 +85,32 @@ async fn fetch_unbacked_portion_price_and_redeemablity(
     decode_response::<
         getUnbackedPortionPriceAndRedeemabilityReturn,
         getUnbackedPortionPriceAndRedeemabilityCall,
+    >(rpc_canister_response)
+}
+
+async fn fetch_multiple_sorted_troved(
+    rpc_canister: &Service,
+    rpc_url: &str,
+    multi_trove_getter: String,
+) -> Result<getMultipleSortedTrovesReturn, ManagerError> {
+    let rpc: RpcService = rpc_provider(rpc_url);
+
+    let parameters = getMultipleSortedTrovesCall {
+        _startIdx: I256::from_str("0").unwrap(),
+        _count: U256::from(1000),
+    };
+
+    let json_data = eth_call_args(
+        multi_trove_getter,
+        getMultipleSortedTrovesCall::abi_encode(&parameters),
+    );
+
+    let rpc_canister_response = rpc_canister
+        .request(rpc, json_data, 500000, 10_000_000_000)
+        .await;
+
+    decode_response::<
+        getMultipleSortedTrovesReturn,
+        getMultipleSortedTrovesCall,
     >(rpc_canister_response)
 }
