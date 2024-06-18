@@ -1,9 +1,3 @@
-use alloy::primitives::keccak256;
-use candid::Principal;
-use serde_json::json;
-
-use crate::evm_rpc::Service;
-
 pub async fn run_strategy() {
     // Check if decrease/increase is valid
     // Update the rate if needed

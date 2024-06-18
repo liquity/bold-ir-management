@@ -1,1 +1,3 @@
-service : (principal) -> { evm_rpc_canister : () -> (opt principal) query }
+service : (principal, text, text, vec text) -> {
+  get_rpc_canister : () -> (opt principal) query;
+}

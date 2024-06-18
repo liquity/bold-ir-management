@@ -57,6 +57,7 @@ impl IrManager {
                         rpc_url_per_manager,
                         liquity_base_per_manager,
                         manager_cloned,
+                        "aa".to_string()
                     )
                     .await;
                 });

@@ -17,9 +17,13 @@ serde_bytes = "0.11.12"
 hex = "0.4.3"
 serde_json = "1.0.117"
 num-traits = "0.2"
-alloy = { git = "https://github.com/alloy-rs/alloy", rev = "6c9defc", features = [
-    "rlp",
-    "contract",
-] }
+# alloy = { git = "https://github.com/alloy-rs/alloy", rev = "6c9defc", features = [
+#     "rlp",
+#     "contract",
+# ] }
+# alloy-core = { version = "0.7.6", features = ["sol-macro"]}
+# alloy = { version = "0.1", features = ["rlp", "sol-types"] }
+alloy-sol-types = "0.7.6"
+alloy-primitives = "0.7.6"
 # alloy-rlp = {version = "0.3", features = ["derive"]}
 # alloy-primitives = { version = "0.7.2", default-features = false }

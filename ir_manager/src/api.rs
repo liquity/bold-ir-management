@@ -1,8 +1,7 @@
 use std::str::FromStr;
 
-use alloy::primitives::{I256, U256};
-use alloy::sol;
-use alloy::sol_types::SolCall;
+use alloy_primitives::{I256, U256};
+use alloy_sol_types::{sol, SolCall};
 use ic_exports::candid::Principal;
 
 use crate::utils::{decode_response, eth_call_args};
@@ -33,6 +32,7 @@ pub async fn execute_strategy(
     rpc_url: String,
     liquity_base: String,
     manager: String,
+    multi_trove_getter: String,
 ) {
     let rpc_canister_instance: Service = Service(rpc_principal);
 
@@ -46,6 +46,7 @@ pub async fn execute_strategy(
         fetch_unbacked_portion_price_and_redeemablity(&rpc_canister_instance, &rpc_url, manager)
             .await
             .unwrap();
+    let troves = fetch_multiple_sorted_troves(&rpc_canister_instance, &rpc_url, multi_trove_getter, U256::from_str("1000").unwrap()).await.unwrap();
 }
 
 async fn fetch_entire_system_debt(
@@ -62,7 +63,7 @@ async fn fetch_entire_system_debt(
         .await;
 
     decode_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(rpc_canister_response)
-        .map(|data| Ok(data.entireSystemDebt))
+        .map(|data| Ok(data))
         .unwrap_or_else(|e| Err(e))
 }
 
@@ -88,16 +89,17 @@ async fn fetch_unbacked_portion_price_and_redeemablity(
     >(rpc_canister_response)
 }
 
-async fn fetch_multiple_sorted_troved(
+async fn fetch_multiple_sorted_troves(
     rpc_canister: &Service,
     rpc_url: &str,
     multi_trove_getter: String,
+    count: U256
 ) -> Result<getMultipleSortedTrovesReturn, ManagerError> {
     let rpc: RpcService = rpc_provider(rpc_url);
 
     let parameters = getMultipleSortedTrovesCall {
         _startIdx: I256::from_str("0").unwrap(),
-        _count: U256::from(1000),
+        _count: count,
     };
 
     let json_data = eth_call_args(

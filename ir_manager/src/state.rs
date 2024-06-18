@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use alloy::primitives::Address;
 use ic_exports::candid::{CandidType, Principal};
 use ic_storage::{stable::Versioned, IcStorage};
 use serde::Deserialize;

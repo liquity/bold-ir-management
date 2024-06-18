@@ -1,4 +1,4 @@
-use alloy::sol_types::SolCall;
+use alloy_sol_types::SolCall;
 use candid::Principal;
 use ic_exports::ic_cdk::{self, api::call::CallResult};
 use serde_json::json;
