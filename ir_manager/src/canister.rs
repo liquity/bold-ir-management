@@ -34,30 +34,29 @@ impl IrManager {
         &mut self,
         rpc_principal: Principal,
         rpc_url: String,
-        liquity_base: String,
         managers: Vec<String>,
+        multi_trove_getter: String,
     ) {
         for manager in managers {
             // Clone the variables for each manager inside the loop to avoid them being moved in the first iteration.
             let rpc_principal_cloned = rpc_principal.clone();
             let rpc_url_cloned = rpc_url.clone();
-            let liquity_base_cloned = liquity_base.clone();
             let manager_cloned = manager.clone();
+            let multi_trove_getter_cloned = multi_trove_getter.clone();
 
             set_timer_interval(Duration::from_secs(3600), move || {
                 // Now use the freshly cloned variables, which are unique to this iteration of the loop.
                 let rpc_principal_per_manager = rpc_principal_cloned.clone();
                 let rpc_url_per_manager = rpc_url_cloned.clone();
-                let liquity_base_per_manager = liquity_base_cloned.clone();
                 let manager_cloned = manager_cloned.clone();
+                let multi_trove_getter_per_manager = multi_trove_getter.clone();
 
                 spawn(async move {
                     execute_strategy(
                         rpc_principal_per_manager,
                         rpc_url_per_manager,
-                        liquity_base_per_manager,
                         manager_cloned,
-                        "aa".to_string()
+                        multi_trove_getter_per_manager,
                     )
                     .await;
                 });

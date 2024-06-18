@@ -1,5 +1,5 @@
-mod canister;
 mod api;
+mod canister;
 mod evm_rpc;
 mod state;
 mod strategy;
