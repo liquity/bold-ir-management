@@ -49,7 +49,7 @@ impl IrManager {
                 let rpc_principal_per_manager = rpc_principal_cloned.clone();
                 let rpc_url_per_manager = rpc_url_cloned.clone();
                 let manager_cloned = manager_cloned.clone();
-                let multi_trove_getter_per_manager = multi_trove_getter.clone();
+                let multi_trove_getter_per_manager = multi_trove_getter_cloned.clone();
 
                 spawn(async move {
                     execute_strategy(

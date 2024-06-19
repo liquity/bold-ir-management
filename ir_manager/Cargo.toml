@@ -22,7 +22,7 @@ num-traits = "0.2"
 #     "contract",
 # ] }
 # alloy-core = { version = "0.7.6", features = ["sol-macro"]}
-# alloy = { version = "0.1", features = ["rlp", "sol-types"] }
+alloy = { version = "0.1", features = ["signers", "rpc-types"] }
 alloy-sol-types = "0.7.6"
 alloy-primitives = "0.7.6"
 # alloy-rlp = {version = "0.3", features = ["derive"]}
