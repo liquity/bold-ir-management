@@ -1,4 +1,11 @@
-use alloy::{rpc::types::TransactionRequest, signers::k256::{ecdsa::{RecoveryId, VerifyingKey}, elliptic_curve::sec1::ToEncodedPoint, PublicKey}};
+use alloy::{
+    rpc::types::TransactionRequest,
+    signers::k256::{
+        ecdsa::{RecoveryId, VerifyingKey},
+        elliptic_curve::sec1::ToEncodedPoint,
+        PublicKey,
+    },
+};
 use alloy_primitives::{keccak256, Address, Bytes, Signature, U256};
 use ic_exports::ic_cdk::api::management_canister::ecdsa::{
     ecdsa_public_key, sign_with_ecdsa, EcdsaKeyId, EcdsaPublicKeyArgument, SignWithEcdsaArgument,

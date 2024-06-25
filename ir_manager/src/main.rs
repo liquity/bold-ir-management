@@ -1,11 +1,11 @@
 mod api;
 mod canister;
 mod evm_rpc;
+mod signer;
 mod state;
 mod strategy;
 mod types;
 mod utils;
-mod signer;
 
 use crate::canister::IrManager;
 

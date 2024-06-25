@@ -11,6 +11,16 @@ pub enum ManagerError {
     Custom(String),
 }
 
+pub type DerivationPath = Vec<Vec<u8>>;
+
+pub struct StrategyData {
+    pub manager: String,
+    pub latest_rate: u32,
+    pub derivation_path: DerivationPath,
+    pub target_min: u32,
+    pub upfront_fee_period: u32,
+}
+
 sol!(
     struct CombinedTroveData {
         uint256 id;
@@ -23,5 +33,4 @@ sol!(
     function getEntireSystemDebt() public view returns (uint256 entireSystemDebt);
     function getUnbackedPortionPriceAndRedeemability() external returns (uint256, uint256, bool);
     function getMultipleSortedTroves(int256 _startIdx, uint256 _count) external view returns (CombinedTroveData[] memory _troves);
-
 );

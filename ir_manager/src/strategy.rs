@@ -1,11 +1,17 @@
+use alloy_primitives::U256;
+
+use crate::types::CombinedTroveData;
+
 pub async fn run_strategy() {
     // Check if decrease/increase is valid
     // Update the rate if needed
     todo!()
 }
 
-pub fn calculate_new_ir(min_target: f64, max_target: f64) -> f64 {
-    (min_target + max_target) / 2.0 + 0.0001
+pub fn calculate_new_ir(troves: Vec<CombinedTroveData>, target_amount: U256) -> f64 {
+    for (index, trove) in troves.iter().enumerate() {
+        if trove.debt > target_amount {}
+    }
 }
 
 pub fn increase_check(

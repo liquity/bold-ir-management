@@ -2,7 +2,6 @@ use std::str::FromStr;
 
 use alloy_primitives::{I256, U256};
 use alloy_sol_types::SolCall;
-use ic_exports::candid::Principal;
 
 use crate::state::{MANAGERS, RPC_CANISTER, RPC_URL, STRATEGY_DATA};
 use crate::types::*;
@@ -14,40 +13,19 @@ use crate::{
     utils::rpc_provider,
 };
 
-pub async fn fetch_total_unbacked(
-    rpc_canister: &Service,
-    rpc_url: &str,
-    excluded_managers: Vec<&str>,
-) -> Result<U256, ManagerError> {
-    let managers: Vec<String> = MANAGERS.with(|managers_vector| {
-        let mut filtered_managers = managers_vector.borrow().clone(); // Clone the vector
-        filtered_managers.retain(|x| !excluded_managers.contains(&x.as_str())); // Then retain elements
-        filtered_managers // Return the filtered vector
-    });
-
-    let mut total_unbacked = U256::from(0);
-
-    for manager in managers {
-        total_unbacked +=
-            fetch_unbacked_portion_price_and_redeemablity(rpc_canister, rpc_url, &manager)
-                .await
-                .unwrap()
-                ._0;
-    }
-
-    Ok(total_unbacked)
-}
-
 pub async fn execute_strategy(id: u32) {
     let rpc_canister: Service = RPC_CANISTER.with(|canister| canister.borrow().clone());
     let rpc_url = RPC_URL.with(|rpc| rpc.borrow().clone());
-    let (manager, latest_rate) = STRATEGY_DATA.with(|strategy_data| {
-        let borrowed_data = strategy_data.borrow().get(&id).unwrap();
-        (
-            borrowed_data.manager.clone(),
-            borrowed_data.latest_rate.clone(),
-        )
-    });
+    let (manager, latest_rate, target_min, upfront_fee_period) =
+        STRATEGY_DATA.with(|strategy_data| {
+            let borrowed_data = strategy_data.borrow().get(&id).unwrap();
+            (
+                borrowed_data.manager.clone(),
+                borrowed_data.latest_rate.clone(),
+                borrowed_data.target_min.clone(),
+                borrowed_data.upfront_fee_period.clone(),
+            )
+        });
 
     // Fetch data
     let entire_system_debt: U256 = fetch_entire_system_debt(&rpc_canister, &rpc_url, &manager)
@@ -60,19 +38,24 @@ pub async fn execute_strategy(id: u32) {
             .await
             .unwrap();
 
-    let redemption_split = unbacked_portion_price_and_redeemability._0
-        / fetch_total_unbacked(&rpc_canister, &rpc_url, vec![&manager])
-            .await
-            .unwrap();
-    
     let troves = fetch_multiple_sorted_troves(
-        &rpc_canister_instance,
+        &rpc_canister,
         &rpc_url,
         &multi_trove_getter,
         U256::from_str("1000").unwrap(),
     )
     .await
-    .unwrap();
+    .unwrap()
+    ._troves;
+
+    // Calculate
+    let redemption_fee = todo!(); // TODO
+    let redemption_split = unbacked_portion_price_and_redeemability._0
+        / fetch_total_unbacked(&rpc_canister, &rpc_url, vec![&manager])
+            .await
+            .unwrap();
+    let target_amount =
+        redemption_split * entire_system_debt * ((redemption_fee * target_min) / 0.005);
 }
 
 async fn fetch_entire_system_debt(
@@ -143,4 +126,29 @@ async fn fetch_multiple_sorted_troves(
     decode_response::<getMultipleSortedTrovesReturn, getMultipleSortedTrovesCall>(
         rpc_canister_response,
     )
+}
+
+/// Fetches the total unbacked amount across all collateral markets excluding the ones defined in the parameter.
+pub async fn fetch_total_unbacked(
+    rpc_canister: &Service,
+    rpc_url: &str,
+    excluded_managers: Vec<&str>,
+) -> Result<U256, ManagerError> {
+    let managers: Vec<String> = MANAGERS.with(|managers_vector| {
+        let mut filtered_managers = managers_vector.borrow().clone(); // Clone the vector
+        filtered_managers.retain(|x| !excluded_managers.contains(&x.as_str())); // Then retain elements
+        filtered_managers // Return the filtered vector
+    });
+
+    let mut total_unbacked = U256::from(0);
+
+    for manager in managers {
+        total_unbacked +=
+            fetch_unbacked_portion_price_and_redeemablity(rpc_canister, rpc_url, &manager)
+                .await
+                .unwrap()
+                ._0;
+    }
+
+    Ok(total_unbacked)
 }

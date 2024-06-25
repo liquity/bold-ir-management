@@ -1,16 +1,12 @@
-use crate::{api::execute_strategy, evm_rpc::Service, state::*};
-use alloy_primitives::U256;
-use ic_canister::{generate_idl, init, query, Canister, Idl, PreUpdate};
-use ic_exports::{
-    candid::Principal, ic_cdk::api::management_canister::ecdsa::EcdsaKeyId,
-    ic_cdk_timers::set_timer_interval, ic_kit::ic::spawn,
+use crate::{
+    api::execute_strategy,
+    evm_rpc::Service,
+    state::*,
+    types::{DerivationPath, StrategyData},
 };
-use std::{
-    cell::{Ref, RefCell, RefMut},
-    collections::HashMap,
-    rc::Rc,
-    time::Duration,
-};
+use ic_canister::{generate_idl, init, Canister, Idl, PreUpdate};
+use ic_exports::{candid::Principal, ic_cdk_timers::set_timer_interval, ic_kit::ic::spawn};
+use std::{collections::HashMap, time::Duration};
 
 #[derive(Canister)]
 pub struct IrManager {
@@ -33,16 +29,23 @@ impl IrManager {
         RPC_CANISTER.with(|rpc_canister| *rpc_canister.borrow_mut() = Service(rpc_principal));
         RPC_URL.with(|rpc| *rpc.borrow_mut() = rpc_url);
         MANAGERS.with(|managers_vector| *managers_vector.borrow_mut() = managers);
-        
+
         // generating keys
         let strategies_data = HashMap::<u32, StrategyData>::new();
         let keys: Vec<DerivationPath> = vec![];
         let strategies_count = managers.len() * 3;
         for id in 0..strategies_count {
+            let t_min = match id % 3 {
+                0 => 5,
+                1 => 10,
+                2 => 20,
+            };
             let strategy_data = StrategyData {
                 manager: managers[id / 3],
-                latest_rate: U256::from(0),
+                latest_rate: 0,
                 derivation_path: vec![id.to_be_bytes().to_vec()],
+                target_min: t_min,
+                upfront_fee_period: t_min / 5,
             };
 
             strategies_data.insert(id as u32, strategy_data);
