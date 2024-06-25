@@ -3,7 +3,7 @@ use std::str::FromStr;
 use alloy_primitives::{I256, U256};
 use alloy_sol_types::SolCall;
 
-use crate::state::{MANAGERS, RPC_CANISTER, RPC_URL, STRATEGY_DATA};
+use crate::state::{COLLATERAL_REGISTRY, MANAGERS, RPC_CANISTER, RPC_URL, STRATEGY_DATA};
 use crate::types::*;
 use crate::utils::{decode_response, eth_call_args};
 use crate::{
@@ -16,11 +16,14 @@ use crate::{
 pub async fn execute_strategy(id: u32) {
     let rpc_canister: Service = RPC_CANISTER.with(|canister| canister.borrow().clone());
     let rpc_url = RPC_URL.with(|rpc| rpc.borrow().clone());
-    let (manager, latest_rate, target_min, upfront_fee_period) =
+    let collateral_registry = COLLATERAL_REGISTRY.with(|collateral_registry_address| collateral_registry_address.borrow().clone());
+    let (manager, multi_trove_getter, latest_rate, target_min, upfront_fee_period) =
         STRATEGY_DATA.with(|strategy_data| {
-            let borrowed_data = strategy_data.borrow().get(&id).unwrap();
+            let binding = strategy_data.borrow();
+            let borrowed_data = binding.get(&id).unwrap();
             (
                 borrowed_data.manager.clone(),
+                borrowed_data.multi_trove_getter.clone(),
                 borrowed_data.latest_rate.clone(),
                 borrowed_data.target_min.clone(),
                 borrowed_data.upfront_fee_period.clone(),
@@ -49,13 +52,17 @@ pub async fn execute_strategy(id: u32) {
     ._troves;
 
     // Calculate
-    let redemption_fee = todo!(); // TODO
+    let redemption_fee = fetch_redemption_rate(&rpc_canister, &rpc_url, &collateral_registry)
+        .await
+        .unwrap()
+        ._0;
     let redemption_split = unbacked_portion_price_and_redeemability._0
         / fetch_total_unbacked(&rpc_canister, &rpc_url, vec![&manager])
             .await
             .unwrap();
     let target_amount =
-        redemption_split * entire_system_debt * ((redemption_fee * target_min) / 0.005);
+        redemption_split * entire_system_debt * ((redemption_fee * target_min) / U256::from(5))
+            / U256::from(1000);
 }
 
 async fn fetch_entire_system_debt(
@@ -77,6 +84,29 @@ async fn fetch_entire_system_debt(
     decode_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(rpc_canister_response)
         .map(|data| Ok(data))
         .unwrap_or_else(|e| Err(e))
+}
+
+async fn fetch_redemption_rate(
+    rpc_canister: &Service,
+    rpc_url: &str,
+    collateral_registry: &str,
+) -> Result<getRedemptionRateWithDecayReturn, ManagerError> {
+    let rpc: RpcService = rpc_provider(rpc_url);
+
+    let json_data = eth_call_args(
+        collateral_registry.to_string(),
+        getRedemptionRateWithDecayCall::SELECTOR.to_vec(),
+    );
+
+    let rpc_canister_response = rpc_canister
+        .request(rpc, json_data, 500000, 10_000_000_000)
+        .await;
+
+    decode_response::<getRedemptionRateWithDecayReturn, getRedemptionRateWithDecayCall>(
+        rpc_canister_response,
+    )
+    .map(|data| Ok(data))
+    .unwrap_or_else(|e| Err(e))
 }
 
 async fn fetch_unbacked_portion_price_and_redeemablity(

@@ -1,96 +1,93 @@
-use alloy::{
-    rpc::types::TransactionRequest,
-    signers::k256::{
-        ecdsa::{RecoveryId, VerifyingKey},
-        elliptic_curve::sec1::ToEncodedPoint,
-        PublicKey,
-    },
-};
-use alloy_primitives::{keccak256, Address, Bytes, Signature, U256};
+use alloy::consensus::{SignableTransaction, TxEip1559, TxEnvelope};
+use alloy::eips::eip2718::Encodable2718;
+use alloy::hex;
+use alloy::primitives::{keccak256, Address, Bytes, FixedBytes, Parity, TxKind, U256};
+use alloy::signers::Signature;
+use candid::Principal;
+
 use ic_exports::ic_cdk::api::management_canister::ecdsa::{
     ecdsa_public_key, sign_with_ecdsa, EcdsaKeyId, EcdsaPublicKeyArgument, SignWithEcdsaArgument,
 };
 
-use std::str::FromStr;
+use crate::types::DerivationPath;
 
 pub struct SignRequest {
-    pub chain_id: Option<U64>,
+    pub chain_id: u64,
     pub from: Option<String>,
-    pub to: Option<String>,
-    pub gas: Option<U256>,
-    pub max_fee_per_gas: Option<U256>,
-    pub max_priority_fee_per_gas: Option<U256>,
-    pub value: Option<U256>,
-    pub nonce: Option<U256>,
-    pub data: Option<Vec<u8>>,
+    pub to: TxKind,
+    pub max_fee_per_gas: u128,
+    pub max_priority_fee_per_gas: u128,
+    pub value: U256,
+    pub nonce: u64,
+    pub data: Bytes,
 }
 
-pub async fn get_public_key(ecdsa_key_id: EcdsaKeyId) -> Vec<u8> {
+pub async fn get_canister_public_key(
+    key_id: EcdsaKeyId,
+    canister_id: Option<Principal>,
+    derivation_path: Option<Vec<Vec<u8>>>,
+) -> Vec<u8> {
     let (key,) = ecdsa_public_key(EcdsaPublicKeyArgument {
-        canister_id: None,
-        derivation_path: [].to_vec(),
-        key_id: ecdsa_key_id,
+        canister_id,
+        derivation_path: derivation_path.unwrap_or([].to_vec()),
+        key_id,
     })
     .await
     .expect("failed to get public key");
     key.public_key
 }
 
-pub async fn sign_transaction(req: SignRequest, ecdsa_key_id: EcdsaKeyId, pubkey: &[u8]) -> String {
+pub async fn sign_eip1559_transaction(
+    req: SignRequest,
+    key_id: EcdsaKeyId,
+    ecdsa_pub_key: Vec<u8>,
+    derivation_path: DerivationPath
+) -> String {
     const EIP1559_TX_ID: u8 = 2;
 
-    let data = req.data.as_ref().map(|d| Bytes::from(d.clone()));
-
-    let tx = TransactionRequest::default().to(to);
-
-    let tx = Eip1559TransactionRequest {
-        from: req
-            .from
-            .map(|from| Address::from_str(&from).expect("failed to parse the source address")),
-        to: req.to.map(|from| {
-            Address::from_str(&from)
-                .expect("failed to parse the source address")
-                .into()
-        }),
-        gas: req.gas,
+    let tx = TxEip1559 {
+        to: req.to,
         value: req.value,
-        data,
+        input: req.data,
         nonce: req.nonce,
         access_list: Default::default(),
         max_priority_fee_per_gas: req.max_priority_fee_per_gas,
         max_fee_per_gas: req.max_fee_per_gas,
         chain_id: req.chain_id,
+        ..Default::default()
     };
 
-    let mut unsigned_tx_bytes = tx.rlp().to_vec();
-    unsigned_tx_bytes.insert(0, EIP1559_TX_ID);
+    let tx_hash = tx.signature_hash();
 
-    let txhash = keccak256(&unsigned_tx_bytes);
-
-    let signature = sign_with_ecdsa(SignWithEcdsaArgument {
-        message_hash: txhash.to_vec(),
-        derivation_path: [].to_vec(),
-        key_id: ecdsa_key_id,
+    let r_and_s = sign_with_ecdsa(SignWithEcdsaArgument {
+        message_hash: tx_hash.to_vec(),
+        derivation_path: derivation_path,
+        key_id,
     })
     .await
     .expect("failed to sign the transaction")
     .0
     .signature;
 
-    let signature = Signature::from_rs_and_parity(
-        U256::from_be_slice(&signature[0..32]),
-        U256::from_be_slice(&signature[32..64]),
-        y_parity(&txhash.as_slice(), &signature, &pubkey),
-    );
+    let parity = y_parity(&tx_hash, &r_and_s, &ecdsa_pub_key);
 
-    let mut signed_tx_bytes = tx.rlp_signed(&signature).to_vec();
-    signed_tx_bytes.insert(0, EIP1559_TX_ID);
+    let signature =
+        Signature::from_bytes_and_parity(&r_and_s, parity).expect("should be a valid signature");
+
+    let signed_tx = tx.into_signed(signature);
+
+    let tx_envelope = TxEnvelope::from(signed_tx);
+
+    let signed_tx_bytes = tx_envelope.encoded_2718();
 
     format!("0x{}", hex::encode(&signed_tx_bytes))
 }
 
 /// Converts the public key bytes to an Ethereum address with a checksum.
 pub fn pubkey_bytes_to_address(pubkey_bytes: &[u8]) -> String {
+    use alloy::signers::k256::elliptic_curve::sec1::ToEncodedPoint;
+    use alloy::signers::k256::PublicKey;
+
     let key =
         PublicKey::from_sec1_bytes(pubkey_bytes).expect("failed to parse the public key as SEC1");
     let point = key.to_encoded_point(false);
@@ -100,21 +97,22 @@ pub fn pubkey_bytes_to_address(pubkey_bytes: &[u8]) -> String {
 
     let hash = keccak256(&point_bytes[1..]);
 
-    let address_nonchecksum = &Address::from_slice(&hash[12..32]);
-
-    address_nonchecksum.to_checksum(None)
+    alloy::primitives::Address::to_checksum(&Address::from_slice(&hash[12..32]), None)
 }
 
 /// Computes the parity bit allowing to recover the public key from the signature.
-fn y_parity(prehash: &[u8], sig: &[u8], pubkey: &[u8]) -> u64 {
+fn y_parity(prehash: &FixedBytes<32>, sig: &[u8], pubkey: &[u8]) -> Parity {
+    use alloy::signers::k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
+
     let orig_key = VerifyingKey::from_sec1_bytes(pubkey).expect("failed to parse the pubkey");
     let signature = Signature::try_from(sig).unwrap();
     for parity in [0u8, 1] {
         let recid = RecoveryId::try_from(parity).unwrap();
-        let recovered_key = VerifyingKey::recover_from_prehash(prehash, &signature, recid)
-            .expect("failed to recover key");
+        let recovered_key =
+            VerifyingKey::recover_from_prehash(prehash.as_slice(), &signature, recid)
+                .expect("failed to recover key");
         if recovered_key == orig_key {
-            return parity as u64;
+            return Parity::Eip155(parity as u64);
         }
     }
 

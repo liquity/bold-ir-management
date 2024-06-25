@@ -8,11 +8,11 @@ pub async fn run_strategy() {
     todo!()
 }
 
-pub fn calculate_new_ir(troves: Vec<CombinedTroveData>, target_amount: U256) -> f64 {
-    for (index, trove) in troves.iter().enumerate() {
-        if trove.debt > target_amount {}
-    }
-}
+// pub fn calculate_new_ir(troves: Vec<CombinedTroveData>, target_amount: U256) -> f64 {
+//     for (index, trove) in troves.iter().enumerate() {
+//         if trove.debt > target_amount {}
+//     }
+// }
 
 pub fn increase_check(
     front_debt: u64,

@@ -1,3 +1,1 @@
-service : (principal, text, vec text, text) -> {
-  get_rpc_canister : () -> (opt principal) query;
-}
+service : (principal, text, vec text, text) -> {}
