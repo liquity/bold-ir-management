@@ -1,8 +1,13 @@
-use crate::{api::execute_strategy, state::IrState};
+use crate::{api::execute_strategy, evm_rpc::Service, state::*};
+use alloy_primitives::U256;
 use ic_canister::{generate_idl, init, query, Canister, Idl, PreUpdate};
-use ic_exports::{candid::Principal, ic_cdk_timers::set_timer_interval, ic_kit::ic::spawn};
+use ic_exports::{
+    candid::Principal, ic_cdk::api::management_canister::ecdsa::EcdsaKeyId,
+    ic_cdk_timers::set_timer_interval, ic_kit::ic::spawn,
+};
 use std::{
     cell::{Ref, RefCell, RefMut},
+    collections::HashMap,
     rc::Rc,
     time::Duration,
 };
@@ -11,23 +16,11 @@ use std::{
 pub struct IrManager {
     #[id]
     id: Principal,
-
-    #[state]
-    pub state: Rc<RefCell<IrState>>,
 }
 
 impl PreUpdate for IrManager {}
 
 impl IrManager {
-    // STATE FUNCTIONS
-    fn state(&self) -> Ref<IrState> {
-        RefCell::borrow(&self.state)
-    }
-
-    fn mut_state(&mut self) -> RefMut<IrState> {
-        RefCell::borrow_mut(&self.state)
-    }
-
     // INITIALIZATION
     #[init]
     pub fn init(
@@ -37,37 +30,31 @@ impl IrManager {
         managers: Vec<String>,
         multi_trove_getter: String,
     ) {
-        for manager in managers {
-            // Clone the variables for each manager inside the loop to avoid them being moved in the first iteration.
-            let rpc_principal_cloned = rpc_principal.clone();
-            let rpc_url_cloned = rpc_url.clone();
-            let manager_cloned = manager.clone();
-            let multi_trove_getter_cloned = multi_trove_getter.clone();
+        RPC_CANISTER.with(|rpc_canister| *rpc_canister.borrow_mut() = Service(rpc_principal));
+        RPC_URL.with(|rpc| *rpc.borrow_mut() = rpc_url);
+        MANAGERS.with(|managers_vector| *managers_vector.borrow_mut() = managers);
+        
+        // generating keys
+        let strategies_data = HashMap::<u32, StrategyData>::new();
+        let keys: Vec<DerivationPath> = vec![];
+        let strategies_count = managers.len() * 3;
+        for id in 0..strategies_count {
+            let strategy_data = StrategyData {
+                manager: managers[id / 3],
+                latest_rate: U256::from(0),
+                derivation_path: vec![id.to_be_bytes().to_vec()],
+            };
 
-            set_timer_interval(Duration::from_secs(3600), move || {
-                // Now use the freshly cloned variables, which are unique to this iteration of the loop.
-                let rpc_principal_per_manager = rpc_principal_cloned.clone();
-                let rpc_url_per_manager = rpc_url_cloned.clone();
-                let manager_cloned = manager_cloned.clone();
-                let multi_trove_getter_per_manager = multi_trove_getter_cloned.clone();
+            strategies_data.insert(id as u32, strategy_data);
 
-                spawn(async move {
-                    execute_strategy(
-                        rpc_principal_per_manager,
-                        rpc_url_per_manager,
-                        manager_cloned,
-                        multi_trove_getter_per_manager,
-                    )
-                    .await;
+            set_timer_interval(Duration::from_secs(3600), || {
+                spawn(async {
+                    execute_strategy(id as u32).await;
                 });
             });
         }
-    }
 
-    // QUERY FUNCTIONS
-    #[query]
-    pub fn get_rpc_canister(&self) -> Option<Principal> {
-        self.state().rpc_canister
+        STRATEGY_DATA.with(|data| *data.borrow_mut() = strategies_data);
     }
 
     pub fn idl() -> Idl {

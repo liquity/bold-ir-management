@@ -379,6 +379,7 @@ pub struct UpdateProviderArgs {
     pub providerId: u64,
 }
 
+#[derive(Copy, Clone)]
 pub struct Service(pub Principal);
 impl Service {
     pub async fn authorize(&self, arg0: Principal, arg1: Auth) -> Result<(bool,)> {
