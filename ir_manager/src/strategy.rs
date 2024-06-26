@@ -15,7 +15,7 @@ pub async fn run_strategy(
     target_amount: U256,
     redemption_fee: U256,
     target_min: U256,
-) -> Option<U256> {
+) -> Option<(U256, U256, U256)> {
     // Check if decrease/increase is valid
     if increase_check(debt_in_front, target_amount, redemption_fee, target_min) {
         // calculate new rate and return it.
@@ -37,7 +37,7 @@ pub async fn run_strategy(
     None
 }
 
-fn calculate_new_rate(troves: Vec<CombinedTroveData>, target_amount: U256) -> U256 {
+fn calculate_new_rate(troves: Vec<CombinedTroveData>, target_amount: U256) -> (U256, U256, U256) {
     for (index, trove) in troves.iter().enumerate() {
         if trove.debt > target_amount {}
     }

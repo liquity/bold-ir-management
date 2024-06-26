@@ -15,5 +15,4 @@ thread_local! {
     /// CONSTANTS
     pub static TOLERANCE_MARGIN_UP: Cell<U256> = Cell::new(U256::from(5));
     pub static TOLERANCE_MARGIN_DOWN: Cell<U256> = Cell::new(U256::from(5));
-
 }

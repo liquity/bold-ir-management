@@ -23,6 +23,12 @@ pub struct StrategyData {
     pub upfront_fee_period: U256,
 }
 
+#[derive(CandidType)]
+pub struct StrategyInput {
+    pub upfront_fee_period: String, // Because IC does not accept U256 params.
+    pub target_min: String, // Because IC does not accept U256 params.
+}
+
 sol!(
     struct CombinedTroveData {
         uint256 id;
