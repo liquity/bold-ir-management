@@ -16,9 +16,10 @@ use crate::{
 pub async fn execute_strategy(id: u32) {
     let rpc_canister: Service = RPC_CANISTER.with(|canister| canister.borrow().clone());
     let rpc_url = RPC_URL.with(|rpc| rpc.borrow().clone());
-    let collateral_registry = COLLATERAL_REGISTRY.with(|collateral_registry_address| collateral_registry_address.borrow().clone());
-    let (manager, multi_trove_getter, latest_rate, target_min, upfront_fee_period) =
-        STRATEGY_DATA.with(|strategy_data| {
+    let collateral_registry = COLLATERAL_REGISTRY
+        .with(|collateral_registry_address| collateral_registry_address.borrow().clone());
+    let (manager, multi_trove_getter, latest_rate, target_min, upfront_fee_period) = STRATEGY_DATA
+        .with(|strategy_data| {
             let binding = strategy_data.borrow();
             let borrowed_data = binding.get(&id).unwrap();
             (

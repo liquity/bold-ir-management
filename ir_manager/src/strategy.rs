@@ -1,48 +1,94 @@
 use alloy_primitives::U256;
 
-use crate::types::CombinedTroveData;
+use crate::{
+    state::{TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
+    types::CombinedTroveData,
+};
 
-pub async fn run_strategy() {
+pub async fn run_strategy(
+    troves: Vec<CombinedTroveData>,
+    time_since_last_update: U256,
+    latest_rate: U256,
+    average_rate: U256,
+    upfront_fee_period: U256,
+    debt_in_front: U256,
+    target_amount: U256,
+    redemption_fee: U256,
+    target_min: U256,
+) -> Option<U256> {
     // Check if decrease/increase is valid
-    // Update the rate if needed
-    todo!()
+    if increase_check(debt_in_front, target_amount, redemption_fee, target_min) {
+        // calculate new rate and return it.
+        return Some(calculate_new_rate(troves, target_amount));
+    } else if first_decrease_check(debt_in_front, target_amount, redemption_fee, target_min) {
+        // calculate new rate
+        let new_rate = calculate_new_rate(troves, target_amount);
+        if second_decrease_check(
+            time_since_last_update,
+            upfront_fee_period,
+            latest_rate,
+            new_rate,
+            average_rate,
+        ) {
+            // return the new rate;
+            return Some(new_rate);
+        }
+    }
+    None
 }
 
-// pub fn calculate_new_ir(troves: Vec<CombinedTroveData>, target_amount: U256) -> f64 {
-//     for (index, trove) in troves.iter().enumerate() {
-//         if trove.debt > target_amount {}
-//     }
-// }
-
-pub fn increase_check(
-    front_debt: u64,
-    min_target: u64,
-    current_redemption_fee: u64,
-    threshold: u64,
-    days_since_last_update: u64,
-) -> bool {
-    let days_factor = 7.0 - days_since_last_update as f64;
-    let redemption_factor = current_redemption_fee as f64 / 0.005;
-    let effective_days_factor = if days_factor < 0.01 {
-        0.01
-    } else {
-        days_factor
-    };
-
-    if front_debt < min_target && (days_since_last_update < 7 || current_redemption_fee > threshold)
-    {
-        return true;
+fn calculate_new_rate(troves: Vec<CombinedTroveData>, target_amount: U256) -> U256 {
+    for (index, trove) in troves.iter().enumerate() {
+        if trove.debt > target_amount {}
     }
-    if front_debt < min_target
-        && (7.0 / effective_days_factor * redemption_factor > threshold as f64)
+}
+
+fn increase_check(
+    debt_in_front: U256,
+    target_amount: U256,
+    redemption_fee: U256,
+    target_min: U256,
+) -> bool {
+    let tolerance_margin_down = TOLERANCE_MARGIN_DOWN.get();
+
+    if debt_in_front
+        < (U256::from(1) - tolerance_margin_down)
+            * (((target_amount * redemption_fee * target_min) / U256::from(5)) / U256::from(1000))
     {
         return true;
     }
     false
 }
 
-pub fn decrease_check(front_debt: u64, max_target: u64, days_since_last_update: u64) -> bool {
-    if front_debt > max_target && days_since_last_update > 7 {
+fn first_decrease_check(
+    debt_in_front: U256,
+    target_amount: U256,
+    redemption_fee: U256,
+    target_min: U256,
+) -> bool {
+    let tolerance_margin_up = TOLERANCE_MARGIN_UP.get();
+
+    if debt_in_front
+        > (U256::from(1) + tolerance_margin_up)
+            * (((target_amount * redemption_fee * target_min) / U256::from(5)) / U256::from(1000))
+    {
+        return true;
+    }
+    false
+}
+
+fn second_decrease_check(
+    time_since_last_update: U256,
+    upfront_fee_period: U256,
+    latest_rate: U256,
+    new_rate: U256,
+    average_rate: U256,
+) -> bool {
+    if (U256::from(1) - time_since_last_update / upfront_fee_period) * (latest_rate - new_rate)
+        > average_rate
+    {
+        return true;
+    } else if time_since_last_update > upfront_fee_period {
         return true;
     }
     false

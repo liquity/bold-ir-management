@@ -25,7 +25,7 @@ pub struct SignRequest {
 pub async fn get_canister_public_key(
     key_id: EcdsaKeyId,
     canister_id: Option<Principal>,
-    derivation_path: Option<Vec<Vec<u8>>>,
+    derivation_path: Option<DerivationPath>,
 ) -> Vec<u8> {
     let (key,) = ecdsa_public_key(EcdsaPublicKeyArgument {
         canister_id,
@@ -41,7 +41,7 @@ pub async fn sign_eip1559_transaction(
     req: SignRequest,
     key_id: EcdsaKeyId,
     ecdsa_pub_key: Vec<u8>,
-    derivation_path: DerivationPath
+    derivation_path: DerivationPath,
 ) -> String {
     const EIP1559_TX_ID: u8 = 2;
 

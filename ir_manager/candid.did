@@ -1,1 +1,1 @@
-service : (principal, text, vec text, text) -> {}
+service : (principal, text, vec text, vec text, text) -> {}
