@@ -21,6 +21,7 @@ pub struct StrategyData {
     pub derivation_path: DerivationPath,
     pub target_min: U256,
     pub upfront_fee_period: U256,
+    pub eoa_nonce: U256,
 }
 
 #[derive(CandidType)]
@@ -42,4 +43,7 @@ sol!(
     function getEntireSystemDebt() public view returns (uint256 entireSystemDebt);
     function getUnbackedPortionPriceAndRedeemability() external returns (uint256, uint256, bool);
     function getMultipleSortedTroves(int256 _startIdx, uint256 _count) external view returns (CombinedTroveData[] memory _troves);
+
+    // ckETH Helper
+    function deposit(bytes32 _principal) public payable;
 );

@@ -23,9 +23,6 @@ alloy = { git = "https://github.com/alloy-rs/alloy", rev = "1936907", features =
     "signers",
     "eips"
 ] }
-# alloy-core = { version = "0.7.6", features = ["sol-macro"]}
-# alloy = { version = "0.1", features = ["signers", "rpc-types", "eips", "consensus"] }
 alloy-sol-types = "0.7.6"
 alloy-primitives = "0.7.6"
-# alloy-rlp = {version = "0.3", features = ["derive"]}
-# alloy-primitives = { version = "0.7.2", default-features = false }
+icrc-ledger-types = "0.1.5"

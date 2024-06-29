@@ -6,6 +6,7 @@ mod state;
 mod strategy;
 mod types;
 mod utils;
+mod charger;
 
 use crate::canister::IrManager;
 

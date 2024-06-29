@@ -42,6 +42,7 @@ impl IrManager {
                 derivation_path: vec![id.to_be_bytes().to_vec()],
                 target_min: U256::from_str(&strategy.target_min).unwrap(),
                 upfront_fee_period: U256::from_str(&strategy.upfront_fee_period).unwrap(),
+                eoa_nonce: U256::from(0)
             };
 
             strategies_data.insert(id as u32, strategy_data);

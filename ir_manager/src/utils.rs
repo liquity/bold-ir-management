@@ -74,7 +74,6 @@ pub async fn send_raw_transaction(
     derivation_path: DerivationPath,
     rpc_canister: &Service,
     rpc_url: &str,
-    liquity_base: &str,
     cycles: u128,
 ) -> Result<MultiSendRawTransactionResult, ManagerError> {
     let rpc = RpcServices::Custom {
