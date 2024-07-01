@@ -15,8 +15,11 @@ use icrc_ledger_types::icrc1::account::Account;
 
 use crate::{
     evm_rpc::{RpcService, Service},
-    state::{CKETH_HELPER, CKETH_LEDGER, RPC_CANISTER, RPC_URL},
-    types::{depositCall, depositReturn, DerivationPath, ManagerError},
+    signer::get_canister_public_key,
+    state::{
+        CKETH_HELPER, CKETH_LEDGER, ETHER_RECHARGE_VALUE, RPC_CANISTER, RPC_URL, STRATEGY_DATA,
+    },
+    types::{depositCall, depositReturn, DerivationPath, ManagerError, StrategyData},
     utils::{rpc_provider, send_raw_transaction},
 };
 
@@ -24,14 +27,15 @@ pub async fn recharge() {
     // The canister cycles balance has fallen below threshold
 
     // Deposit ether from one of the EOAs that has enough balance
-    ether_deposit(value, nonce, derivation_path).await;
+    ether_deposit().await;
 
     // Set a one-off timer for the next 20 minutes (the time cketh takes to load balance on the ic side)
-    set_timer(
-        Duration::from_secs(1200),
-        ic::spawn(resume_recharging().await),
-    ); // 20 minutes
-       // Burn cketh for cycles and recharge
+    set_timer(Duration::from_secs(1200), || {
+        ic::spawn(async {
+            let _ = resume_recharging().await;
+        })
+    });
+    // Burn cketh for cycles and recharge
 }
 
 async fn resume_recharging() {
@@ -41,21 +45,30 @@ async fn resume_recharging() {
         subaccount: None,
     };
 
-    let (balance,) : (Nat, ) = call(cketh_ledger, "icrc1_balance_of", (account,)).await.unwrap();
-    
-    // Todo: check if the balance matches the deposit value minus fee
+    let (balance,): (Nat,) = call(cketh_ledger, "icrc1_balance_of", (account,))
+        .await
+        .unwrap();
 
-    
+    // Todo: check if the balance matches the deposit value minus fee
 }
 
-async fn ether_deposit(
-    value: U256,
-    nonce: u64,
-    derivation_path: DerivationPath,
-) -> Result<(), ManagerError> {
+async fn ether_deposit() -> Result<(), ManagerError> {
+    let ether_value = ETHER_RECHARGE_VALUE.with(|ether_value| ether_value.borrow().clone());
     let cketh_helper: String = CKETH_HELPER.with(|cketh_helper| cketh_helper.borrow().clone());
     let rpc_canister: Service = RPC_CANISTER.with(|canister| canister.borrow().clone());
     let rpc_url: String = RPC_URL.with(|rpc| rpc.borrow().clone());
+    let strategies: Vec<StrategyData> = STRATEGY_DATA
+        .with(|strategies_hashmap| strategies_hashmap.borrow().clone().into_values().collect());
+    
+    let mut derivation_path: DerivationPath;
+    let mut nonce : U256;
+    for strategy in strategies {
+        let balance = fetch_balance(strategy.eoa_pk.unwrap());
+        if balance > ether_value {
+            derivation_path = strategy.derivation_path;
+            nonce = strategy.eoa_nonce;
+        }
+    }
 
     let encoded_canister_id: FixedBytes<32> =
         FixedBytes::<32>::from_str(&api::id().to_string()).unwrap();
@@ -70,7 +83,7 @@ async fn ether_deposit(
     let submission_result = send_raw_transaction(
         cketh_helper,
         transaction_data,
-        value,
+        ether_value,
         nonce,
         derivation_path,
         &rpc_canister,

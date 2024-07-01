@@ -14,6 +14,7 @@ pub enum ManagerError {
 
 pub type DerivationPath = Vec<Vec<u8>>;
 
+#[derive(Clone)]
 pub struct StrategyData {
     pub manager: String,
     pub multi_trove_getter: String,
@@ -22,6 +23,7 @@ pub struct StrategyData {
     pub target_min: U256,
     pub upfront_fee_period: U256,
     pub eoa_nonce: U256,
+    pub eoa_pk: Option<String>,
 }
 
 #[derive(CandidType)]

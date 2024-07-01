@@ -1,12 +1,19 @@
 use crate::{
     api::execute_strategy,
     evm_rpc::Service,
+    signer::{get_canister_public_key, pubkey_bytes_to_address},
     state::*,
     types::{DerivationPath, StrategyData, StrategyInput},
+    utils::set_public_keys
 };
 use alloy_primitives::U256;
 use ic_canister::{generate_idl, init, Canister, Idl, PreUpdate};
-use ic_exports::{candid::Principal, ic_cdk_timers::set_timer_interval, ic_kit::ic::spawn};
+use ic_exports::{
+    candid::Principal,
+    ic_cdk::api::management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
+    ic_cdk_timers::{set_timer, set_timer_interval},
+    ic_kit::ic::spawn,
+};
 use std::{collections::HashMap, str::FromStr, time::Duration};
 
 #[derive(Canister)]
@@ -27,22 +34,25 @@ impl IrManager {
         managers: Vec<String>,
         multi_trove_getters: Vec<String>,
         collateral_registry: String,
-        strategies: Vec<StrategyInput>
+        strategies: Vec<StrategyInput>,
     ) {
         // generating keys
         let mut strategies_data = HashMap::<u32, StrategyData>::new();
         let keys: Vec<DerivationPath> = vec![];
         let strategies_count = managers.len() * strategies.len();
         for id in 0..strategies_count {
+            let derivation_path = vec![id.to_be_bytes().to_vec()];
+
             let strategy = strategies[id % strategies.len()];
             let strategy_data = StrategyData {
                 manager: managers[(id + 1) / strategies.len()].clone(),
                 multi_trove_getter: multi_trove_getters[(id + 1) / strategies.len()].clone(),
                 latest_rate: U256::from(0),
-                derivation_path: vec![id.to_be_bytes().to_vec()],
+                derivation_path,
                 target_min: U256::from_str(&strategy.target_min).unwrap(),
                 upfront_fee_period: U256::from_str(&strategy.upfront_fee_period).unwrap(),
-                eoa_nonce: U256::from(0)
+                eoa_nonce: U256::from(0),
+                eoa_pk: None,
             };
 
             strategies_data.insert(id as u32, strategy_data);
@@ -61,6 +71,12 @@ impl IrManager {
         });
         MANAGERS.with(|managers_vector| *managers_vector.borrow_mut() = managers);
         STRATEGY_DATA.with(|data| *data.borrow_mut() = strategies_data);
+
+        set_timer(Duration::from_secs(1), || {
+            spawn(async {
+                let _ = set_public_keys().await;
+            })
+        });
     }
 
     pub fn idl() -> Idl {

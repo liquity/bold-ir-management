@@ -16,8 +16,9 @@ use crate::{
     evm_rpc::{
         MultiSendRawTransactionResult, RequestResult, RpcApi, RpcService, RpcServices, Service,
     },
-    signer::{sign_eip1559_transaction, SignRequest},
-    types::{DerivationPath, ManagerError},
+    signer::{get_canister_public_key, pubkey_bytes_to_address, sign_eip1559_transaction, SignRequest},
+    state::STRATEGY_DATA,
+    types::{DerivationPath, ManagerError, StrategyData},
 };
 
 pub fn rpc_provider(rpc_url: &str) -> RpcService {
@@ -65,6 +66,30 @@ pub fn eth_call_args(to: String, data: Vec<u8>) -> String {
     })
     .to_string()
 }
+
+pub async fn set_public_keys() {
+    let strategies = STRATEGY_DATA.with(|strategies_hashmap| {
+        strategies_hashmap.borrow_mut().clone()
+    });
+
+    for (_id, mut strategy) in strategies {
+        let derivation_path = strategy.derivation_path.clone();
+        let key_id = EcdsaKeyId {
+            curve: EcdsaCurve::Secp256k1,
+            name: String::from("key_1"),
+        };
+
+        // Calculate the public key asynchronously
+        let public_key_bytes = get_canister_public_key(key_id, None, Some(derivation_path)).await;
+        let eoa_pk = pubkey_bytes_to_address(&public_key_bytes);
+
+        // Update the strategy with the public key
+        STRATEGY_DATA.with(|strategies_hashmap| {
+            strategies_hashmap.borrow_mut().get_mut(&_id).unwrap().eoa_pk = Some(eoa_pk);
+        });
+    }
+}
+
 
 pub async fn send_raw_transaction(
     to: String,

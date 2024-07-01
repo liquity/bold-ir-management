@@ -18,5 +18,5 @@ thread_local! {
     pub static CYCLES_THRESHOLD: Cell<u64> = Cell::new(50_000_000_000); // Fifty billion cycles
     pub static CKETH_HELPER: RefCell<String> = RefCell::new("0x7574eB42cA208A4f6960ECCAfDF186D627dCC175".to_string());
     pub static CKETH_LEDGER: RefCell<Principal> = RefCell::new(Principal::from_text("ss2fx-dyaaa-aaaar-qacoq-cai").unwrap());
-
+    pub static ETHER_RECHARGE_VALUE: RefCell<U256> = RefCell::new(U256::from(30000000000000000)); // 0.03 ETH in WEI
 }
