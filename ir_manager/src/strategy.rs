@@ -1,11 +1,17 @@
 use alloy_primitives::U256;
+use alloy_sol_types::SolCall;
 
 use crate::{
+    evm_rpc::{RpcService, Service},
     state::{TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
-    types::CombinedTroveData,
+    types::{getTroveAnnualInterestRateCall, getTroveAnnualInterestRateReturn, CombinedTroveData},
+    utils::{decode_response, eth_call_args, rpc_provider},
 };
 
 pub async fn run_strategy(
+    rpc_canister: &Service,
+    rpc_url: &str,
+    manager: &str,
     troves: Vec<CombinedTroveData>,
     time_since_last_update: U256,
     latest_rate: U256,
@@ -19,7 +25,13 @@ pub async fn run_strategy(
     // Check if decrease/increase is valid
     if increase_check(debt_in_front, target_amount, redemption_fee, target_min) {
         // calculate new rate and return it.
-        return Some(calculate_new_rate(troves, target_amount));
+        return Some(calculate_new_rate(
+            rpc_canister,
+            rpc_url,
+            manager,
+            troves,
+            target_amount,
+        ));
     } else if first_decrease_check(debt_in_front, target_amount, redemption_fee, target_min) {
         // calculate new rate
         let new_rate = calculate_new_rate(troves, target_amount);
@@ -37,10 +49,41 @@ pub async fn run_strategy(
     None
 }
 
-fn calculate_new_rate(troves: Vec<CombinedTroveData>, target_amount: U256) -> (U256, U256, U256) {
+async fn calculate_new_rate(
+    rpc_canister: &Service,
+    rpc_url: &str,
+    manager: &str,
+    troves: Vec<CombinedTroveData>,
+    target_amount: U256,
+) -> Option<U256> {
+    let mut counted_debt = U256::from(0);
+
     for (index, trove) in troves.iter().enumerate() {
-        if trove.debt > target_amount {}
+        if counted_debt > target_amount {
+            // get trove current interest rate
+            let rpc: RpcService = rpc_provider(rpc_url);
+
+            let json_data = eth_call_args(
+                manager.to_string(),
+                getTroveAnnualInterestRateCall { _troveId: trove.id }.abi_encode(),
+            );
+
+            let rpc_canister_response = rpc_canister
+                .request(rpc, json_data, 500000, 10_000_000_000)
+                .await;
+
+            let interest_rate = decode_response::<getTroveAnnualInterestRateReturn, getTroveAnnualInterestRateCall>(
+                rpc_canister_response,
+            )
+            .map(|data| Ok(data))
+            .unwrap_or_else(|e| Err(e)).unwrap()._0;
+
+            let new_rate = interest_rate + U256::from(10000000000000000);
+            return Some(new_rate);       
+        }
+        counted_debt += trove.debt;
     }
+    None
 }
 
 fn increase_check(

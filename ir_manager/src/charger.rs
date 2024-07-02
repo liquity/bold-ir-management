@@ -84,7 +84,7 @@ async fn ether_deposit() -> Result<(), ManagerError> {
         .with(|strategies_hashmap| strategies_hashmap.borrow().clone().into_values().collect());
     
     let mut derivation_path: DerivationPath;
-    let mut nonce : U256;
+    let mut nonce : u64;
     for strategy in strategies {
         let balance = fetch_balance(&rpc_canister, &rpc_url, strategy.eoa_pk.unwrap()).await;
         if balance > ether_value {

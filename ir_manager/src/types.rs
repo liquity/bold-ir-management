@@ -22,7 +22,7 @@ pub struct StrategyData {
     pub derivation_path: DerivationPath,
     pub target_min: U256,
     pub upfront_fee_period: U256,
-    pub eoa_nonce: U256,
+    pub eoa_nonce: u64,
     pub eoa_pk: Option<String>,
 }
 
@@ -33,6 +33,7 @@ pub struct StrategyInput {
 }
 
 sol!(
+    // Liquity
     struct CombinedTroveData {
         uint256 id;
         uint256 debt;
@@ -45,6 +46,7 @@ sol!(
     function getEntireSystemDebt() public view returns (uint256 entireSystemDebt);
     function getUnbackedPortionPriceAndRedeemability() external returns (uint256, uint256, bool);
     function getMultipleSortedTroves(int256 _startIdx, uint256 _count) external view returns (CombinedTroveData[] memory _troves);
+    function getTroveAnnualInterestRate(uint256 _troveId) external view returns (uint256);
 
     // ckETH Helper
     function deposit(bytes32 _principal) public payable;

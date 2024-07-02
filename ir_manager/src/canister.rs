@@ -51,7 +51,7 @@ impl IrManager {
                 derivation_path,
                 target_min: U256::from_str(&strategy.target_min).unwrap(),
                 upfront_fee_period: U256::from_str(&strategy.upfront_fee_period).unwrap(),
-                eoa_nonce: U256::from(0),
+                eoa_nonce: 0,
                 eoa_pk: None,
             };
 
