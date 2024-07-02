@@ -12,6 +12,7 @@ use ic_exports::{
     ic_kit::ic::{self, id},
 };
 use icrc_ledger_types::icrc1::account::Account;
+use serde_json::json;
 
 use crate::{
     evm_rpc::{RpcService, Service},
@@ -20,7 +21,7 @@ use crate::{
         CKETH_HELPER, CKETH_LEDGER, ETHER_RECHARGE_VALUE, RPC_CANISTER, RPC_URL, STRATEGY_DATA,
     },
     types::{depositCall, depositReturn, DerivationPath, ManagerError, StrategyData},
-    utils::{rpc_provider, send_raw_transaction},
+    utils::{decode_request_response, rpc_provider, send_raw_transaction},
 };
 
 pub async fn recharge() {
@@ -52,6 +53,28 @@ async fn resume_recharging() {
     // Todo: check if the balance matches the deposit value minus fee
 }
 
+async fn fetch_balance(rpc_canister: &Service, rpc_url: &str, pk: String) -> U256 {
+    let rpc: RpcService = rpc_provider(rpc_url);
+    let json_args = json!({
+        "id": 1,
+        "jsonrpc": "2.0",
+        "params": [
+            pk,
+            "latest"
+        ],
+        "method": "eth_getBalance"
+    })
+    .to_string()
+    let request_response = rpc_canister.request(rpc, json_args, 50000, 10000000).await;
+    
+    let decoded_hex = decode_request_response(request_response).unwrap();
+    let mut padded = [0u8; 32];
+    let start = 32 - decoded_hex.len();
+    padded[start..].copy_from_slice(&decoded_hex);
+
+    U256::from_be_bytes(padded)
+}
+
 async fn ether_deposit() -> Result<(), ManagerError> {
     let ether_value = ETHER_RECHARGE_VALUE.with(|ether_value| ether_value.borrow().clone());
     let cketh_helper: String = CKETH_HELPER.with(|cketh_helper| cketh_helper.borrow().clone());
@@ -63,7 +86,7 @@ async fn ether_deposit() -> Result<(), ManagerError> {
     let mut derivation_path: DerivationPath;
     let mut nonce : U256;
     for strategy in strategies {
-        let balance = fetch_balance(strategy.eoa_pk.unwrap());
+        let balance = fetch_balance(&rpc_canister, &rpc_url, strategy.eoa_pk.unwrap()).await;
         if balance > ether_value {
             derivation_path = strategy.derivation_path;
             nonce = strategy.eoa_nonce;
