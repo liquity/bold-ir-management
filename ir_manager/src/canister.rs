@@ -4,7 +4,7 @@ use crate::{
     signer::{get_canister_public_key, pubkey_bytes_to_address},
     state::*,
     types::{DerivationPath, StrategyData, StrategyInput},
-    utils::set_public_keys
+    utils::set_public_keys,
 };
 use alloy_primitives::U256;
 use ic_canister::{generate_idl, init, Canister, Idl, PreUpdate};
@@ -55,16 +55,10 @@ impl IrManager {
                 upfront_fee_period: U256::from_str(&strategy.upfront_fee_period).unwrap(),
                 eoa_nonce: 0,
                 eoa_pk: None,
-                last_update: timestamp
+                last_update: timestamp,
             };
 
             strategies_data.insert(id as u32, strategy_data);
-
-            set_timer_interval(Duration::from_secs(3600), move || {
-                spawn(async move {
-                    execute_strategy(id as u32).await;
-                });
-            });
         }
 
         RPC_CANISTER.with(|rpc_canister| *rpc_canister.borrow_mut() = Service(rpc_principal));
@@ -74,12 +68,22 @@ impl IrManager {
         });
         MANAGERS.with(|managers_vector| *managers_vector.borrow_mut() = managers);
         STRATEGY_DATA.with(|data| *data.borrow_mut() = strategies_data);
+    }
 
-        set_timer(Duration::from_secs(1), || {
-            spawn(async {
-                let _ = set_public_keys().await;
-            })
-        });
+    fn start_timers() {
+        // assign public keys to the different strategy EOAs
+        set_timer(Duration::from_secs(1), || spawn(set_public_keys()));
+
+        // assign a separate timer for each strategy
+        let strategies : Vec<(u32, StrategyData)> = STRATEGY_DATA.with(|vector_data| vector_data.borrow().clone()).into_iter().collect();
+
+        for (key, strategy) in strategies {
+            set_timer_interval(Duration::from_secs(3600), move || {
+                spawn(
+                    execute_strategy(key, &strategy)
+                );
+            });
+        }
     }
 
     pub fn idl() -> Idl {

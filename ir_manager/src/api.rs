@@ -14,42 +14,28 @@ use crate::{
     utils::rpc_provider,
 };
 
-pub async fn execute_strategy(id: u32) {
+pub async fn execute_strategy(key: u32, strategy: &StrategyData) {
     let rpc_canister: Service = RPC_CANISTER.with(|canister| canister.borrow().clone());
     let rpc_url = RPC_URL.with(|rpc| rpc.borrow().clone());
     let collateral_registry = COLLATERAL_REGISTRY
         .with(|collateral_registry_address| collateral_registry_address.borrow().clone());
-    let (manager, multi_trove_getter, latest_rate, target_min, upfront_fee_period, last_update) = STRATEGY_DATA
-        .with(|strategy_data| {
-            let binding = strategy_data.borrow();
-            let borrowed_data = binding.get(&id).unwrap();
-            (
-                borrowed_data.manager.clone(),
-                borrowed_data.multi_trove_getter.clone(),
-                borrowed_data.latest_rate.clone(),
-                borrowed_data.target_min.clone(),
-                borrowed_data.upfront_fee_period.clone(),
-                borrowed_data.last_update.clone(),
-            )
-        });
-
-    let time_since_last_update = U256::from(time() - last_update);
+    let time_since_last_update = U256::from(time() - strategy.last_update);
 
     // Fetch data
-    let entire_system_debt: U256 = fetch_entire_system_debt(&rpc_canister, &rpc_url, &manager)
+    let entire_system_debt: U256 = fetch_entire_system_debt(&rpc_canister, &rpc_url, &strategy.manager)
         .await
         .unwrap()
         .entireSystemDebt;
 
     let unbacked_portion_price_and_redeemability =
-        fetch_unbacked_portion_price_and_redeemablity(&rpc_canister, &rpc_url, &manager)
+        fetch_unbacked_portion_price_and_redeemablity(&rpc_canister, &rpc_url, &strategy.manager)
             .await
             .unwrap();
 
     let troves = fetch_multiple_sorted_troves(
         &rpc_canister,
         &rpc_url,
-        &multi_trove_getter,
+        &strategy.multi_trove_getter,
         U256::from_str("1000").unwrap(),
     )
     .await
@@ -62,31 +48,32 @@ pub async fn execute_strategy(id: u32) {
         .unwrap()
         ._0;
     let redemption_split = unbacked_portion_price_and_redeemability._0
-        / fetch_total_unbacked(&rpc_canister, &rpc_url, vec![&manager])
+        / fetch_total_unbacked(&rpc_canister, &rpc_url, vec![&strategy.manager])
             .await
             .unwrap();
     let target_amount =
-        redemption_split * entire_system_debt * ((redemption_fee * target_min) / U256::from(5))
+        redemption_split * entire_system_debt * ((redemption_fee * strategy.target_min) / U256::from(5))
             / U256::from(1000);
 
     let new_rate = run_strategy(
         &rpc_canister,
         &rpc_url,
-        &manager,
+        &strategy.manager,
         troves,
         time_since_last_update,
-        latest_rate,
+        strategy.latest_rate,
         average_rate,
-        upfront_fee_period,
+        strategy.upfront_fee_period,
         debt_in_front,
         target_amount,
         redemption_fee,
-        target_min,
+        strategy.target_min,
     ).await;
 
     if let Some(rate) = new_rate {
         // send a signed transaction to update the rate for the batch
         // get hints
+        // update strategy data
     }
 }
 
