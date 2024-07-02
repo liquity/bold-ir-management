@@ -24,6 +24,7 @@ pub struct StrategyData {
     pub upfront_fee_period: U256,
     pub eoa_nonce: u64,
     pub eoa_pk: Option<String>,
+    pub last_update: u64
 }
 
 #[derive(CandidType)]

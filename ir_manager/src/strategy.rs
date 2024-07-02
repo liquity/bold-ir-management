@@ -21,7 +21,7 @@ pub async fn run_strategy(
     target_amount: U256,
     redemption_fee: U256,
     target_min: U256,
-) -> Option<(U256, U256, U256)> {
+) -> Option<U256> {
     // Check if decrease/increase is valid
     if increase_check(debt_in_front, target_amount, redemption_fee, target_min) {
         // calculate new rate and return it.
@@ -31,10 +31,10 @@ pub async fn run_strategy(
             manager,
             troves,
             target_amount,
-        ));
+        ).await);
     } else if first_decrease_check(debt_in_front, target_amount, redemption_fee, target_min) {
         // calculate new rate
-        let new_rate = calculate_new_rate(troves, target_amount);
+        let new_rate = calculate_new_rate(rpc_canister, rpc_url, manager, troves, target_amount).await;
         if second_decrease_check(
             time_since_last_update,
             upfront_fee_period,
@@ -55,9 +55,9 @@ async fn calculate_new_rate(
     manager: &str,
     troves: Vec<CombinedTroveData>,
     target_amount: U256,
-) -> Option<U256> {
+) -> U256 {
     let mut counted_debt = U256::from(0);
-
+    let mut new_rate = U256::from(0);
     for (index, trove) in troves.iter().enumerate() {
         if counted_debt > target_amount {
             // get trove current interest rate
@@ -78,12 +78,12 @@ async fn calculate_new_rate(
             .map(|data| Ok(data))
             .unwrap_or_else(|e| Err(e)).unwrap()._0;
 
-            let new_rate = interest_rate + U256::from(10000000000000000);
-            return Some(new_rate);       
+            new_rate = interest_rate + U256::from(10000000000000000);
+            break;
         }
         counted_debt += trove.debt;
     }
-    None
+    new_rate
 }
 
 fn increase_check(

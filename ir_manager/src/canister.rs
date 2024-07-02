@@ -12,7 +12,7 @@ use ic_exports::{
     candid::Principal,
     ic_cdk::api::management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     ic_cdk_timers::{set_timer, set_timer_interval},
-    ic_kit::ic::spawn,
+    ic_kit::ic::{spawn, time},
 };
 use std::{collections::HashMap, str::FromStr, time::Duration};
 
@@ -40,6 +40,8 @@ impl IrManager {
         let mut strategies_data = HashMap::<u32, StrategyData>::new();
         let keys: Vec<DerivationPath> = vec![];
         let strategies_count = managers.len() * strategies.len();
+
+        let timestamp = time();
         for id in 0..strategies_count {
             let derivation_path = vec![id.to_be_bytes().to_vec()];
 
@@ -53,6 +55,7 @@ impl IrManager {
                 upfront_fee_period: U256::from_str(&strategy.upfront_fee_period).unwrap(),
                 eoa_nonce: 0,
                 eoa_pk: None,
+                last_update: timestamp
             };
 
             strategies_data.insert(id as u32, strategy_data);

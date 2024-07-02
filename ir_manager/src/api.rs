@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use alloy_primitives::{I256, U256};
 use alloy_sol_types::SolCall;
+use ic_exports::ic_kit::ic::time;
 
 use crate::state::{COLLATERAL_REGISTRY, MANAGERS, RPC_CANISTER, RPC_URL, STRATEGY_DATA};
 use crate::types::*;
@@ -18,7 +19,7 @@ pub async fn execute_strategy(id: u32) {
     let rpc_url = RPC_URL.with(|rpc| rpc.borrow().clone());
     let collateral_registry = COLLATERAL_REGISTRY
         .with(|collateral_registry_address| collateral_registry_address.borrow().clone());
-    let (manager, multi_trove_getter, latest_rate, target_min, upfront_fee_period) = STRATEGY_DATA
+    let (manager, multi_trove_getter, latest_rate, target_min, upfront_fee_period, last_update) = STRATEGY_DATA
         .with(|strategy_data| {
             let binding = strategy_data.borrow();
             let borrowed_data = binding.get(&id).unwrap();
@@ -28,8 +29,11 @@ pub async fn execute_strategy(id: u32) {
                 borrowed_data.latest_rate.clone(),
                 borrowed_data.target_min.clone(),
                 borrowed_data.upfront_fee_period.clone(),
+                borrowed_data.last_update.clone(),
             )
         });
+
+    let time_since_last_update = U256::from(time() - last_update);
 
     // Fetch data
     let entire_system_debt: U256 = fetch_entire_system_debt(&rpc_canister, &rpc_url, &manager)
@@ -64,6 +68,26 @@ pub async fn execute_strategy(id: u32) {
     let target_amount =
         redemption_split * entire_system_debt * ((redemption_fee * target_min) / U256::from(5))
             / U256::from(1000);
+
+    let new_rate = run_strategy(
+        &rpc_canister,
+        &rpc_url,
+        &manager,
+        troves,
+        time_since_last_update,
+        latest_rate,
+        average_rate,
+        upfront_fee_period,
+        debt_in_front,
+        target_amount,
+        redemption_fee,
+        target_min,
+    ).await;
+
+    if let Some(rate) = new_rate {
+        // send a signed transaction to update the rate for the batch
+        // get hints
+    }
 }
 
 async fn fetch_entire_system_debt(
