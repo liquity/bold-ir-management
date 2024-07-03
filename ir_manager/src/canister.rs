@@ -1,20 +1,12 @@
 use crate::{
-    api::execute_strategy,
     evm_rpc::Service,
-    signer::{get_canister_public_key, pubkey_bytes_to_address},
     state::*,
-    types::{DerivationPath, StrategyData, StrategyInput},
-    utils::set_public_keys,
+    types::{DerivationPath, InitArgs, StrategyData},
 };
 use alloy_primitives::U256;
 use ic_canister::{generate_idl, init, Canister, Idl, PreUpdate};
-use ic_exports::{
-    candid::Principal,
-    ic_cdk::api::management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
-    ic_cdk_timers::{set_timer, set_timer_interval},
-    ic_kit::ic::{spawn, time},
-};
-use std::{collections::HashMap, str::FromStr, time::Duration};
+use ic_exports::{candid::Principal, ic_kit::ic::time};
+use std::{collections::HashMap, str::FromStr};
 
 #[derive(Canister)]
 pub struct IrManager {
@@ -27,23 +19,23 @@ impl PreUpdate for IrManager {}
 impl IrManager {
     // INITIALIZATION
     #[init]
-    pub fn init(
-        &mut self,
-        rpc_principal: Principal,
-        rpc_url: String,
-        managers: Vec<String>,
-        multi_trove_getters: Vec<String>,
-        collateral_registry: String,
-        strategies: Vec<StrategyInput>,
-    ) {
-        // generating keys
-        let mut strategies_data = HashMap::<u32, StrategyData>::new();
-        let keys: Vec<DerivationPath> = vec![];
-        let strategies_count = managers.len() * strategies.len();
+    pub fn init(&mut self, init_args: InitArgs) {
+        // Assigning init_args field values to variables
+        let collateral_registry = init_args.collateral_registry;
+        let multi_trove_getters = init_args.multi_trove_getters;
+        let rpc_principal = init_args.rpc_principal;
+        let strategies = init_args.strategies;
+        let managers = init_args.managers;
+        let rpc_url = init_args.rpc_url;
 
-        let timestamp = time();
-        for id in 0..strategies_count {
+        // Creating variables that are needed in the computations
+        let mut strategies_data: HashMap<u32, StrategyData> = HashMap::new();
+        let strategies_count: usize = managers.len() * strategies.len();
+        let keys: Vec<DerivationPath> = vec![];
+
+        (0..strategies_count).map(|id| {
             let derivation_path = vec![id.to_be_bytes().to_vec()];
+            let timestamp = time();
 
             let strategy = strategies[id % strategies.len()];
             let strategy_data = StrategyData {
@@ -59,7 +51,7 @@ impl IrManager {
             };
 
             strategies_data.insert(id as u32, strategy_data);
-        }
+        });
 
         RPC_CANISTER.with(|rpc_canister| *rpc_canister.borrow_mut() = Service(rpc_principal));
         RPC_URL.with(|rpc| *rpc.borrow_mut() = rpc_url);
@@ -68,22 +60,6 @@ impl IrManager {
         });
         MANAGERS.with(|managers_vector| *managers_vector.borrow_mut() = managers);
         STRATEGY_DATA.with(|data| *data.borrow_mut() = strategies_data);
-    }
-
-    fn start_timers() {
-        // assign public keys to the different strategy EOAs
-        set_timer(Duration::from_secs(1), || spawn(set_public_keys()));
-
-        // assign a separate timer for each strategy
-        let strategies : Vec<(u32, StrategyData)> = STRATEGY_DATA.with(|vector_data| vector_data.borrow().clone()).into_iter().collect();
-
-        for (key, strategy) in strategies {
-            set_timer_interval(Duration::from_secs(3600), move || {
-                spawn(
-                    execute_strategy(key, &strategy)
-                );
-            });
-        }
     }
 
     pub fn idl() -> Idl {

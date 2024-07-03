@@ -7,6 +7,8 @@ mod strategy;
 mod types;
 mod utils;
 mod charger;
+mod gas;
+mod timers;
 
 use crate::canister::IrManager;
 
