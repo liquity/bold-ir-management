@@ -1,14 +1,14 @@
 mod api;
 mod canister;
+mod charger;
 mod evm_rpc;
+mod gas;
 mod signer;
 mod state;
 mod strategy;
+mod timers;
 mod types;
 mod utils;
-mod charger;
-mod gas;
-mod timers;
 
 use crate::canister::IrManager;
 

@@ -25,16 +25,13 @@ pub async fn run_strategy(
     // Check if decrease/increase is valid
     if increase_check(debt_in_front, target_amount, redemption_fee, target_min) {
         // calculate new rate and return it.
-        return Some(calculate_new_rate(
-            rpc_canister,
-            rpc_url,
-            manager,
-            troves,
-            target_amount,
-        ).await);
+        return Some(
+            calculate_new_rate(rpc_canister, rpc_url, manager, troves, target_amount).await,
+        );
     } else if first_decrease_check(debt_in_front, target_amount, redemption_fee, target_min) {
         // calculate new rate
-        let new_rate = calculate_new_rate(rpc_canister, rpc_url, manager, troves, target_amount).await;
+        let new_rate =
+            calculate_new_rate(rpc_canister, rpc_url, manager, troves, target_amount).await;
         if second_decrease_check(
             time_since_last_update,
             upfront_fee_period,
@@ -72,11 +69,14 @@ async fn calculate_new_rate(
                 .request(rpc, json_data, 500000, 10_000_000_000)
                 .await;
 
-            let interest_rate = decode_response::<getTroveAnnualInterestRateReturn, getTroveAnnualInterestRateCall>(
-                rpc_canister_response,
-            )
+            let interest_rate = decode_response::<
+                getTroveAnnualInterestRateReturn,
+                getTroveAnnualInterestRateCall,
+            >(rpc_canister_response)
             .map(|data| Ok(data))
-            .unwrap_or_else(|e| Err(e)).unwrap()._0;
+            .unwrap_or_else(|e| Err(e))
+            .unwrap()
+            ._0;
 
             new_rate = interest_rate + U256::from(10000000000000000);
             break;

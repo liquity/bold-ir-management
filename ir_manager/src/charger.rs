@@ -64,9 +64,9 @@ async fn fetch_balance(rpc_canister: &Service, rpc_url: &str, pk: String) -> U25
         ],
         "method": "eth_getBalance"
     })
-    .to_string()
+    .to_string();
     let request_response = rpc_canister.request(rpc, json_args, 50000, 10000000).await;
-    
+
     let decoded_hex = decode_request_response(request_response).unwrap();
     let mut padded = [0u8; 32];
     let start = 32 - decoded_hex.len();
@@ -82,9 +82,9 @@ async fn ether_deposit() -> Result<(), ManagerError> {
     let rpc_url: String = RPC_URL.with(|rpc| rpc.borrow().clone());
     let strategies: Vec<StrategyData> = STRATEGY_DATA
         .with(|strategies_hashmap| strategies_hashmap.borrow().clone().into_values().collect());
-    
+
     let mut derivation_path: DerivationPath;
-    let mut nonce : u64;
+    let mut nonce: u64;
     for strategy in strategies {
         let balance = fetch_balance(&rpc_canister, &rpc_url, strategy.eoa_pk.unwrap()).await;
         if balance > ether_value {

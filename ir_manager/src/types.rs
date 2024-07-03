@@ -1,14 +1,25 @@
+use std::str::FromStr;
+
 use alloy_primitives::U256;
 use alloy_sol_types::sol;
 use candid::{CandidType, Principal};
+use ic_exports::ic_cdk::api::time;
 
-use crate::evm_rpc::RpcError;
+use crate::{
+    api::{
+        fetch_entire_system_debt, fetch_multiple_sorted_troves, fetch_redemption_rate,
+        fetch_total_unbacked, fetch_unbacked_portion_price_and_redeemablity,
+    },
+    evm_rpc::{RpcError, Service},
+    state::STRATEGY_DATA,
+};
 
 #[derive(CandidType, Debug)]
 pub enum ManagerError {
     NonExistentValue,
     RpcResponseError(RpcError),
     DecodingError(String),
+    Locked,
     Custom(String),
 }
 
@@ -25,6 +36,7 @@ pub struct StrategyData {
     pub eoa_nonce: u64,
     pub eoa_pk: Option<String>,
     pub last_update: u64,
+    pub lock: bool,
 }
 
 #[derive(CandidType)]
@@ -49,9 +61,49 @@ impl From<StrategyData> for StrategyQueryData {
             latest_rate: value.latest_rate.to_string(),
             target_min: value.target_min.to_string(),
             eoa_pk: value.eoa_pk,
-            last_update: value.last_update 
+            last_update: value.last_update,
         }
     }
+}
+
+pub struct PreCalculation {
+    troves: Vec<CombinedTroveData>,
+    time_since_last_update: U256,
+    latest_rate: U256,
+    average_rate: U256,
+    upfront_fee_period: U256,
+    debt_in_front: U256,
+    target_amount: U256,
+    redemption_fee: U256,
+    target_min: U256,
+}
+
+impl PreCalculation {
+    pub async fn fill(
+        key: u32,
+        rpc_canister: &Service,
+        rpc_url: &str,
+        liquity_base: &str,
+        strategy: &StrategyData,
+    ) -> Self {
+        Self {
+            troves,
+            time_since_last_update,
+            latest_rate: todo!(),
+            average_rate: todo!(),
+            upfront_fee_period: todo!(),
+            debt_in_front: todo!(),
+            target_amount,
+            redemption_fee,
+            target_min: todo!(),
+        }
+    }
+}
+
+pub enum Processing {
+    PreCalculation(PreCalculationArgs),
+    Calculating(CalculatingArgs),
+    Sending(SendingArgs),
 }
 
 #[derive(CandidType)]
@@ -81,7 +133,7 @@ sol!(
     function getUnbackedPortionPriceAndRedeemability() external returns (uint256, uint256, bool);
     function getMultipleSortedTroves(int256 _startIdx, uint256 _count) external view returns (CombinedTroveData[] memory _troves);
     function getTroveAnnualInterestRate(uint256 _troveId) external view returns (uint256);
-    
+
     // Liquity externals
     function setBatchManagerAnnualInterestRate(
         uint128 _newAnnualInterestRate,
@@ -89,7 +141,7 @@ sol!(
         uint256 _lowerHint,
         uint256 _maxUpfrontFee
     ) external;
-    
+
     // ckETH Helper
     function deposit(bytes32 _principal) public payable;
 );

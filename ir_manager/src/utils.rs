@@ -52,8 +52,8 @@ pub fn lock(key: u32) -> Result<(), ManagerError> {
                 }
                 strategy.lock = true;
                 Ok(())
-            },
-            None => Err(ManagerError::NonExistentValue)
+            }
+            None => Err(ManagerError::NonExistentValue),
         }
     })
 }
@@ -65,8 +65,8 @@ pub fn unlock(key: u32) -> Result<(), ManagerError> {
                 // we shouldn't care if it's unlocked already or not
                 strategy.lock = false;
                 Ok(())
-            },
-            None => Err(ManagerError::NonExistentValue)
+            }
+            None => Err(ManagerError::NonExistentValue),
         }
     })
 }

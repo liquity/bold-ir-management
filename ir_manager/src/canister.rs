@@ -4,7 +4,7 @@ use crate::{
     types::{DerivationPath, InitArgs, StrategyData, StrategyQueryData},
 };
 use alloy_primitives::U256;
-use ic_canister::{generate_idl, init, query, Canister, Idl, PreUpdate};
+use ic_canister::{generate_idl, init, query, update, Canister, Idl, PreUpdate};
 use ic_exports::{candid::Principal, ic_kit::ic::time};
 use std::{collections::HashMap, str::FromStr};
 
@@ -48,7 +48,7 @@ impl IrManager {
                 eoa_nonce: 0,
                 eoa_pk: None,
                 last_update: timestamp,
-                lock: false
+                lock: false,
             };
 
             strategies_data.insert(id as u32, strategy_data);
@@ -72,6 +72,11 @@ impl IrManager {
                 .map(|strategy| StrategyQueryData::from(strategy.clone()))
                 .collect()
         })
+    }
+
+    #[update]
+    pub async fn swap_cketh(&self) {
+        // lock / unlock based on the current cycles balance of the canister
     }
 
     pub fn idl() -> Idl {
