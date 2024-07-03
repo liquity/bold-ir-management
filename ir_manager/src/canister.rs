@@ -1,10 +1,10 @@
 use crate::{
     evm_rpc::Service,
     state::*,
-    types::{DerivationPath, InitArgs, StrategyData},
+    types::{DerivationPath, InitArgs, StrategyData, StrategyQueryData},
 };
 use alloy_primitives::U256;
-use ic_canister::{generate_idl, init, Canister, Idl, PreUpdate};
+use ic_canister::{generate_idl, init, query, Canister, Idl, PreUpdate};
 use ic_exports::{candid::Principal, ic_kit::ic::time};
 use std::{collections::HashMap, str::FromStr};
 
@@ -60,6 +60,17 @@ impl IrManager {
         });
         MANAGERS.with(|managers_vector| *managers_vector.borrow_mut() = managers);
         STRATEGY_DATA.with(|data| *data.borrow_mut() = strategies_data);
+    }
+
+    #[query]
+    pub fn get_strategies(&self) -> Vec<StrategyQueryData> {
+        STRATEGY_DATA.with(|vector_data| {
+            vector_data
+                .borrow()
+                .values()
+                .map(|strategy| StrategyQueryData::from(strategy.clone()))
+                .collect()
+        })
     }
 
     pub fn idl() -> Idl {

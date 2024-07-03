@@ -34,6 +34,27 @@ pub struct StrategyInput {
 }
 
 #[derive(CandidType)]
+pub struct StrategyQueryData {
+    pub manager: String,
+    pub latest_rate: String,
+    pub target_min: String,
+    pub eoa_pk: Option<String>,
+    pub last_update: u64,
+}
+
+impl From<StrategyData> for StrategyQueryData {
+    fn from(value: StrategyData) -> Self {
+        Self {
+            manager: value.manager,
+            latest_rate: value.latest_rate.to_string(),
+            target_min: value.target_min.to_string(),
+            eoa_pk: value.eoa_pk,
+            last_update: value.last_update 
+        }
+    }
+}
+
+#[derive(CandidType)]
 pub struct InitArgs {
     pub rpc_principal: Principal,
     pub rpc_url: String,
