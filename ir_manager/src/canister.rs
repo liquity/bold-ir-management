@@ -48,6 +48,7 @@ impl IrManager {
                 eoa_nonce: 0,
                 eoa_pk: None,
                 last_update: timestamp,
+                lock: false
             };
 
             strategies_data.insert(id as u32, strategy_data);
