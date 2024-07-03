@@ -1,18 +1,23 @@
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 
 use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
-use ic_exports::ic_cdk::{
-    self,
-    api::{
-        call::CallResult,
-        management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
+use ic_exports::{
+    ic_cdk::{
+        self,
+        api::{
+            call::CallResult,
+            management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
+        },
+        print, spawn,
     },
+    ic_cdk_timers::set_timer,
 };
 use serde_json::json;
 
 use crate::{
+    api::execute_strategy,
     evm_rpc::{
         MultiSendRawTransactionResult, RequestResult, RpcApi, RpcService, RpcServices, Service,
     },
@@ -22,6 +27,20 @@ use crate::{
     state::STRATEGY_DATA,
     types::{DerivationPath, ManagerError, StrategyData},
 };
+
+/// Logs the error, and sets off a zero second timer to re-run
+pub async fn retry(
+    key: u32,
+    strategy: &StrategyData,
+    error: ManagerError,
+) -> Result<(), ManagerError> {
+    STRATEGY_DATA.with(|strategies| strategies.borrow_mut().get_mut(&key).unwrap().lock = false);
+    print(format!(
+        "[ERROR] Dropping and Retrying error => {:#?}",
+        error
+    ));
+    execute_strategy(key, strategy).await
+}
 
 pub fn rpc_provider(rpc_url: &str) -> RpcService {
     RpcService::Custom({

@@ -1,8 +1,16 @@
 use std::time::Duration;
 
-use ic_exports::{ic_cdk::spawn, ic_cdk_timers::{set_timer, set_timer_interval}};
+use ic_exports::{
+    ic_cdk::spawn,
+    ic_cdk_timers::{set_timer, set_timer_interval},
+};
 
-use crate::{api::execute_strategy, state::STRATEGY_DATA, types::StrategyData, utils::set_public_keys};
+use crate::{
+    api::execute_strategy,
+    state::{MAX_RETRY_ATTEMPTS, STRATEGY_DATA},
+    types::StrategyData,
+    utils::{retry, set_public_keys},
+};
 
 pub fn start_timers() {
     // assign public keys to the different strategy EOAs
@@ -14,9 +22,22 @@ pub fn start_timers() {
         .into_iter()
         .collect();
 
+    let max_retry_attempts = MAX_RETRY_ATTEMPTS.with(|max_value| max_value.get());
+
     for (key, strategy) in strategies {
         set_timer_interval(Duration::from_secs(3600), move || {
-            spawn(execute_strategy(key, &strategy));
+            spawn(async {
+                for _ in 0..=max_retry_attempts {
+                    let result = match execute_strategy(key, &strategy).await {
+                        Ok(()) => Ok(()),
+                        Err(error) => retry(key, &strategy, error).await,
+                    };
+
+                    if result.is_ok() {
+                        break;
+                    }
+                }
+            });
         });
     }
 }
