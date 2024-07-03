@@ -42,6 +42,35 @@ pub async fn retry(
     execute_strategy(key, strategy).await
 }
 
+pub fn lock(key: u32) -> Result<(), ManagerError> {
+    STRATEGY_DATA.with(|strategies| {
+        match strategies.borrow_mut().get_mut(&key) {
+            Some(strategy) => {
+                if strategy.lock {
+                    // already processing
+                    return Err(ManagerError::Locked);
+                }
+                strategy.lock = true;
+                Ok(())
+            },
+            None => Err(ManagerError::NonExistentValue)
+        }
+    })
+}
+
+pub fn unlock(key: u32) -> Result<(), ManagerError> {
+    STRATEGY_DATA.with(|strategies| {
+        match strategies.borrow_mut().get_mut(&key) {
+            Some(strategy) => {
+                // we shouldn't care if it's unlocked already or not
+                strategy.lock = false;
+                Ok(())
+            },
+            None => Err(ManagerError::NonExistentValue)
+        }
+    })
+}
+
 pub fn rpc_provider(rpc_url: &str) -> RpcService {
     RpcService::Custom({
         RpcApi {

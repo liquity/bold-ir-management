@@ -6,7 +6,7 @@ use ic_exports::ic_kit::ic::time;
 
 use crate::state::{COLLATERAL_REGISTRY, MANAGERS, RPC_CANISTER, RPC_URL, STRATEGY_DATA};
 use crate::types::*;
-use crate::utils::{decode_response, eth_call_args};
+use crate::utils::{decode_response, eth_call_args, lock, unlock};
 use crate::{
     evm_rpc::{RpcService, Service},
     strategy::run_strategy,
@@ -14,23 +14,26 @@ use crate::{
     utils::rpc_provider,
 };
 
-pub async fn execute_strategy(key: u32, strategy: &StrategyData) {
+pub async fn execute_strategy(key: u32, strategy: &StrategyData) -> Result<(), ManagerError> {
+    // Lock the strategy
+    lock(key)?;
+
     let rpc_canister: Service = RPC_CANISTER.with(|canister| canister.borrow().clone());
     let rpc_url = RPC_URL.with(|rpc| rpc.borrow().clone());
     let collateral_registry = COLLATERAL_REGISTRY
         .with(|collateral_registry_address| collateral_registry_address.borrow().clone());
+
     let time_since_last_update = U256::from(time() - strategy.last_update);
 
     // Fetch data
-    let entire_system_debt: U256 = fetch_entire_system_debt(&rpc_canister, &rpc_url, &strategy.manager)
-        .await
-        .unwrap()
-        .entireSystemDebt;
+    let entire_system_debt: U256 =
+        fetch_entire_system_debt(&rpc_canister, &rpc_url, &strategy.manager)
+            .await?
+            .entireSystemDebt;
 
     let unbacked_portion_price_and_redeemability =
         fetch_unbacked_portion_price_and_redeemablity(&rpc_canister, &rpc_url, &strategy.manager)
-            .await
-            .unwrap();
+            .await?;
 
     let troves = fetch_multiple_sorted_troves(
         &rpc_canister,
@@ -38,22 +41,19 @@ pub async fn execute_strategy(key: u32, strategy: &StrategyData) {
         &strategy.multi_trove_getter,
         U256::from_str("1000").unwrap(),
     )
-    .await
-    .unwrap()
+    .await?
     ._troves;
 
     // Calculate
     let redemption_fee = fetch_redemption_rate(&rpc_canister, &rpc_url, &collateral_registry)
-        .await
-        .unwrap()
+        .await?
         ._0;
     let redemption_split = unbacked_portion_price_and_redeemability._0
-        / fetch_total_unbacked(&rpc_canister, &rpc_url, vec![&strategy.manager])
-            .await
-            .unwrap();
-    let target_amount =
-        redemption_split * entire_system_debt * ((redemption_fee * strategy.target_min) / U256::from(5))
-            / U256::from(1000);
+        / fetch_total_unbacked(&rpc_canister, &rpc_url, vec![&strategy.manager]).await?;
+    let target_amount = redemption_split
+        * entire_system_debt
+        * ((redemption_fee * strategy.target_min) / U256::from(5))
+        / U256::from(1000);
 
     let new_rate = run_strategy(
         &rpc_canister,
@@ -68,16 +68,21 @@ pub async fn execute_strategy(key: u32, strategy: &StrategyData) {
         target_amount,
         redemption_fee,
         strategy.target_min,
-    ).await;
+    )
+    .await;
 
     if let Some(rate) = new_rate {
         // send a signed transaction to update the rate for the batch
         // get hints
+
         // update strategy data
     }
+
+    unlock(key)?;
+    Ok(())
 }
 
-async fn fetch_entire_system_debt(
+pub async fn fetch_entire_system_debt(
     rpc_canister: &Service,
     rpc_url: &str,
     liquity_base: &str,
@@ -98,7 +103,7 @@ async fn fetch_entire_system_debt(
         .unwrap_or_else(|e| Err(e))
 }
 
-async fn fetch_redemption_rate(
+pub async fn fetch_redemption_rate(
     rpc_canister: &Service,
     rpc_url: &str,
     collateral_registry: &str,
@@ -121,7 +126,7 @@ async fn fetch_redemption_rate(
     .unwrap_or_else(|e| Err(e))
 }
 
-async fn fetch_unbacked_portion_price_and_redeemablity(
+pub async fn fetch_unbacked_portion_price_and_redeemablity(
     rpc_canister: &Service,
     rpc_url: &str,
     manager: &str,
@@ -143,7 +148,7 @@ async fn fetch_unbacked_portion_price_and_redeemablity(
     >(rpc_canister_response)
 }
 
-async fn fetch_multiple_sorted_troves(
+pub async fn fetch_multiple_sorted_troves(
     rpc_canister: &Service,
     rpc_url: &str,
     multi_trove_getter: &str,
