@@ -60,7 +60,7 @@ pub async fn sign_eip1559_transaction(
 
     let r_and_s = sign_with_ecdsa(SignWithEcdsaArgument {
         message_hash: tx_hash.to_vec(),
-        derivation_path: derivation_path,
+        derivation_path: derivation_path.clone(),
         key_id: key_id.clone(),
     })
     .await

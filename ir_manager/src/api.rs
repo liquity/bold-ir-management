@@ -3,6 +3,7 @@ use std::str::FromStr;
 use alloy_primitives::U256;
 use ic_exports::ic_kit::ic::time;
 
+use crate::gas::estimate_transaction_fees;
 use crate::process::LiquityProcess;
 use crate::types::*;
 use crate::utils::{lock, unlock};
@@ -36,8 +37,8 @@ pub async fn execute_strategy(key: u32, strategy: &StrategyData) -> Result<(), M
         / U256::from(1000);
 
     let new_rate = run_strategy(
-        &rpc_canister,
-        &rpc_url,
+        &exec.rpc_canister,
+        &exec.rpc_url,
         &strategy.manager,
         troves,
         time_since_last_update,

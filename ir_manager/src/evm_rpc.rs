@@ -299,7 +299,7 @@ pub enum MultiGetTransactionReceiptResult {
 pub enum SendRawTransactionStatus {
     Ok(Option<String>),
     NonceTooLow,
-    NonceTooHigh,
+    TooHigh,
     InsufficientFunds,
 }
 

@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use alloy_primitives::{I256, U256};
 use alloy_sol_types::SolCall;
 
@@ -77,14 +79,14 @@ impl LiquityProcess {
 
     pub async fn fetch_unbacked_portion_price_and_redeemablity(
         &mut self,
-        manager: Option<String>
+        manager: Option<String>,
     ) -> Result<getUnbackedPortionPriceAndRedeemabilityReturn, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
         let call_manager = match manager {
             Some(value) => value,
-            None => self.manager.clone()
-        }
+            None => self.manager.clone(),
+        };
 
         let json_data = eth_call_args(
             call_manager,

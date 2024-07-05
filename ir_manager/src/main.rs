@@ -3,6 +3,7 @@ mod canister;
 mod charger;
 mod evm_rpc;
 mod gas;
+mod process;
 mod signer;
 mod state;
 mod strategy;

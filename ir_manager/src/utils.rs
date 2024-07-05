@@ -1,18 +1,13 @@
-use std::{str::FromStr, time::Duration};
+use std::str::FromStr;
 
 use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
-use candid::Principal;
-use ic_exports::{
-    ic_cdk::{
-        self,
-        api::{
-            call::CallResult,
-            management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
-        },
-        print, spawn,
+use ic_exports::ic_cdk::{
+    api::{
+        call::CallResult,
+        management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     },
-    ic_cdk_timers::set_timer,
+    print,
 };
 use serde_json::json;
 
@@ -21,6 +16,7 @@ use crate::{
     evm_rpc::{
         MultiSendRawTransactionResult, RequestResult, RpcApi, RpcService, RpcServices, Service,
     },
+    gas::{estimate_transaction_fees, FeeEstimates},
     signer::{
         get_canister_public_key, pubkey_bytes_to_address, sign_eip1559_transaction, SignRequest,
     },
@@ -178,6 +174,11 @@ pub async fn send_raw_transaction(
         }],
     };
 
+    let FeeEstimates {
+        max_fee_per_gas,
+        max_priority_fee_per_gas,
+    } = estimate_transaction_fees(9, rpc.clone(), rpc_canister).await?;
+
     let key_id = EcdsaKeyId {
         curve: EcdsaCurve::Secp256k1,
         name: String::from("key_1"),
@@ -187,8 +188,8 @@ pub async fn send_raw_transaction(
         chain_id: 1,
         from: None,
         to: TxKind::Call(Address::from_str(&to).unwrap()),
-        max_fee_per_gas: todo!(),
-        max_priority_fee_per_gas: todo!(),
+        max_fee_per_gas: max_fee_per_gas.to::<u128>(),
+        max_priority_fee_per_gas: max_priority_fee_per_gas.to::<u128>(),
         value,
         nonce,
         data: input,

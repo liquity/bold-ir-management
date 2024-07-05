@@ -1,18 +1,8 @@
-use std::str::FromStr;
-
 use alloy_primitives::U256;
 use alloy_sol_types::sol;
 use candid::{CandidType, Principal};
-use ic_exports::ic_cdk::api::time;
 
-use crate::{
-    api::{
-        fetch_entire_system_debt, fetch_multiple_sorted_troves, fetch_redemption_rate,
-        fetch_total_unbacked, fetch_unbacked_portion_price_and_redeemablity,
-    },
-    evm_rpc::{RpcError, Service},
-    state::STRATEGY_DATA,
-};
+use crate::evm_rpc::RpcError;
 
 #[derive(CandidType, Debug)]
 pub enum ManagerError {
@@ -64,46 +54,6 @@ impl From<StrategyData> for StrategyQueryData {
             last_update: value.last_update,
         }
     }
-}
-
-pub struct PreCalculation {
-    troves: Vec<CombinedTroveData>,
-    time_since_last_update: U256,
-    latest_rate: U256,
-    average_rate: U256,
-    upfront_fee_period: U256,
-    debt_in_front: U256,
-    target_amount: U256,
-    redemption_fee: U256,
-    target_min: U256,
-}
-
-impl PreCalculation {
-    pub async fn fill(
-        key: u32,
-        rpc_canister: &Service,
-        rpc_url: &str,
-        liquity_base: &str,
-        strategy: &StrategyData,
-    ) -> Self {
-        Self {
-            troves,
-            time_since_last_update,
-            latest_rate: todo!(),
-            average_rate: todo!(),
-            upfront_fee_period: todo!(),
-            debt_in_front: todo!(),
-            target_amount,
-            redemption_fee,
-            target_min: todo!(),
-        }
-    }
-}
-
-pub enum Processing {
-    PreCalculation(PreCalculationArgs),
-    Calculating(CalculatingArgs),
-    Sending(SendingArgs),
 }
 
 #[derive(CandidType)]
