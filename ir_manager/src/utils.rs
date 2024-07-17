@@ -2,12 +2,14 @@ use std::str::FromStr;
 
 use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
+use candid::Nat;
 use ic_exports::ic_cdk::{
+    self,
     api::{
         call::CallResult,
         management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     },
-    print,
+    call, id, print,
 };
 use serde_json::json;
 
@@ -20,9 +22,63 @@ use crate::{
     signer::{
         get_canister_public_key, pubkey_bytes_to_address, sign_eip1559_transaction, SignRequest,
     },
-    state::STRATEGY_DATA,
-    types::{DerivationPath, ManagerError, StrategyData},
+    state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, STRATEGY_DATA},
+    types::{
+        Account, Asset, AssetClass, DerivationPath, GetExchangeRateRequest, GetExchangeRateResult,
+        ManagerError, StrategyData,
+    },
 };
+
+pub async fn fetch_cketh_balance() -> Result<Nat, ManagerError> {
+    let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.borrow().clone());
+    let args = Account {
+        owner: id(),
+        subaccount: None,
+    };
+
+    let call_response: CallResult<(Nat,)> =
+        call(ledger_principal, "icrc1_balance_of", (args,)).await;
+
+    match call_response {
+        Ok(response) => Ok(response.0),
+        Err(err) => Err(ManagerError::Custom(err.1)),
+    }
+}
+
+pub async fn fetch_ether_cycles_rate() -> Result<u64, ManagerError> {
+    let exchange_rate_canister =
+        EXCHANGE_RATE_CANISTER.with(|principal_id| principal_id.borrow().clone());
+    let fetch_args = GetExchangeRateRequest {
+        base_asset: Asset {
+            symbol: "ETH".to_string(),
+            class: AssetClass::Cryptocurrency,
+        },
+        quote_asset: Asset {
+            symbol: "CXDR".to_string(),
+            class: AssetClass::FiatCurrency,
+        },
+        timestamp: None,
+    };
+
+    let fetch_result: CallResult<(GetExchangeRateResult,)> =
+        ic_cdk::api::call::call_with_payment128(
+            exchange_rate_canister,
+            "get_exchange_rate",
+            (fetch_args,),
+            1_000_000_000,
+        )
+        .await;
+    match fetch_result {
+        Ok(result) => match result {
+            (Ok(response),) => Ok(response.rate),
+            (Err(err),) => Err(ManagerError::Custom(format!(
+                "Error from the exchange rate canister: {:#?}",
+                err
+            ))),
+        },
+        Err(err) => Err(ManagerError::Custom(err.1)),
+    }
+}
 
 /// Logs the error, and sets off a zero second timer to re-run
 pub async fn retry(

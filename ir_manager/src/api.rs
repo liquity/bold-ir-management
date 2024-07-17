@@ -3,7 +3,6 @@ use std::str::FromStr;
 use alloy_primitives::U256;
 use ic_exports::ic_kit::ic::time;
 
-use crate::gas::estimate_transaction_fees;
 use crate::process::LiquityProcess;
 use crate::types::*;
 use crate::utils::{lock, unlock};

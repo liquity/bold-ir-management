@@ -6,10 +6,7 @@ use ic_exports::{
 };
 
 use crate::{
-    api::execute_strategy,
-    state::{MAX_RETRY_ATTEMPTS, STRATEGY_DATA},
-    types::StrategyData,
-    utils::{retry, set_public_keys},
+    api::execute_strategy, charger::recharge_cketh, state::{MAX_RETRY_ATTEMPTS, STRATEGY_DATA}, types::StrategyData, utils::{retry, set_public_keys}
 };
 
 pub fn start_timers() {
@@ -24,6 +21,7 @@ pub fn start_timers() {
 
     let max_retry_attempts = MAX_RETRY_ATTEMPTS.with(|max_value| max_value.get());
 
+    // STRATEGY TIMER | EVERY 1 HOUR
     for (key, strategy) in strategies {
         set_timer_interval(Duration::from_secs(3600), move || {
             spawn(async {
@@ -40,4 +38,20 @@ pub fn start_timers() {
             });
         });
     }
+
+    // CKETH RECHARGER | EVERY 24 HOURS
+    set_timer_interval(Duration::from_secs(86_400), move || {
+        spawn(async {
+            for _ in 0..=max_retry_attempts {
+                let result = match recharge_cketh().await {
+                    Ok(()) => Ok(()),
+                    Err(error) => recharge_cketh().await,
+                };
+
+                if result.is_ok() {
+                    break;
+                }
+            }
+        });
+    });
 }
