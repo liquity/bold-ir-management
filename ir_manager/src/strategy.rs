@@ -55,7 +55,7 @@ async fn calculate_new_rate(
 ) -> U256 {
     let mut counted_debt = U256::from(0);
     let mut new_rate = U256::from(0);
-    for (index, trove) in troves.iter().enumerate() {
+    for (_, trove) in troves.iter().enumerate() {
         if counted_debt > target_amount {
             // get trove current interest rate
             let rpc: RpcService = rpc_provider(rpc_url);
@@ -92,7 +92,7 @@ fn increase_check(
     redemption_fee: U256,
     target_min: U256,
 ) -> bool {
-    let tolerance_margin_down = TOLERANCE_MARGIN_DOWN.get();
+    let tolerance_margin_down = TOLERANCE_MARGIN_DOWN.with(|tolerance_margin_down| tolerance_margin_down.clone());
 
     if debt_in_front
         < (U256::from(1) - tolerance_margin_down)
@@ -109,7 +109,7 @@ fn first_decrease_check(
     redemption_fee: U256,
     target_min: U256,
 ) -> bool {
-    let tolerance_margin_up = TOLERANCE_MARGIN_UP.get();
+    let tolerance_margin_up = TOLERANCE_MARGIN_UP.with(|tolerance_margin_up| tolerance_margin_up.clone());
 
     if debt_in_front
         > (U256::from(1) + tolerance_margin_up)

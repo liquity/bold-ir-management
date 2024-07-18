@@ -30,7 +30,7 @@ use crate::{
 };
 
 pub async fn fetch_cketh_balance() -> Result<Nat, ManagerError> {
-    let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.borrow().clone());
+    let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.clone());
     let args = Account {
         owner: id(),
         subaccount: None,
@@ -189,7 +189,7 @@ pub async fn set_public_keys() {
     let strategies =
         STRATEGY_DATA.with(|strategies_hashmap| strategies_hashmap.borrow_mut().clone());
 
-    for (_id, mut strategy) in strategies {
+    for (_id, strategy) in strategies {
         let derivation_path = strategy.derivation_path.clone();
         let key_id = EcdsaKeyId {
             curve: EcdsaCurve::Secp256k1,

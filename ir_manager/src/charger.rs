@@ -1,6 +1,6 @@
-use std::{str::FromStr, time::Duration};
+use std::str::FromStr;
 
-use alloy_primitives::{Bytes, FixedBytes, U256};
+use alloy_primitives::{FixedBytes, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
 use ic_exports::{
@@ -8,39 +8,32 @@ use ic_exports::{
     ic_cdk::{
         api::{
             self,
-            call::{self, msg_cycles_accept, msg_cycles_available},
-            canister_balance, canister_balance128,
+            call::{msg_cycles_accept, msg_cycles_available},
+            canister_balance,
         },
         call,
     },
-    ic_cdk_timers::set_timer,
-    ic_kit::{
-        ic::{self, id},
-        CallResult,
-    },
+    ic_kit::CallResult,
 };
-use icrc_ledger_types::icrc1::{
-    account::Account,
-    transfer::{TransferArg, TransferError},
-};
+use icrc_ledger_types::icrc1::transfer::{TransferArg, TransferError};
+use num_traits::cast::ToPrimitive;
 use serde_json::json;
 
 use crate::{
     evm_rpc::{RpcService, Service},
-    signer::get_canister_public_key,
     state::{
-        CKETH_HELPER, CKETH_LEDGER, CKETH_THRESHOLD, CYCLES_THRESHOLD, ETHER_RECHARGE_VALUE,
-        RPC_CANISTER, RPC_URL, STRATEGY_DATA,
+        CKETH_FEE, CKETH_HELPER, CKETH_LEDGER, CKETH_THRESHOLD, CYCLES_THRESHOLD,
+        ETHER_RECHARGE_VALUE, RPC_CANISTER, RPC_URL, STRATEGY_DATA,
     },
-    types::{depositCall, depositReturn, DerivationPath, ManagerError, StrategyData, SwapResponse},
+    types::{depositCall, ManagerError, StrategyData, SwapResponse},
     utils::{
-        decode_request_response, decode_response, fetch_cketh_balance, fetch_ether_cycles_rate,
-        rpc_provider, send_raw_transaction,
+        decode_request_response, fetch_cketh_balance, fetch_ether_cycles_rate, rpc_provider,
+        send_raw_transaction,
     },
 };
 
 pub async fn check_threshold() -> Result<(), ManagerError> {
-    let threshold = CYCLES_THRESHOLD.get();
+    let threshold = CYCLES_THRESHOLD.with(|threshold| threshold.clone());
     if canister_balance() <= threshold {
         return Ok(());
     }
@@ -59,45 +52,44 @@ pub async fn recharge_cketh() -> Result<(), ManagerError> {
 
 async fn ether_deposit() -> Result<(), ManagerError> {
     let ether_value = ETHER_RECHARGE_VALUE.with(|ether_value| ether_value.borrow().clone());
-    let cketh_helper: String = CKETH_HELPER.with(|cketh_helper| cketh_helper.borrow().clone());
+    let cketh_helper: String = CKETH_HELPER.with(|cketh_helper| cketh_helper.clone());
     let rpc_canister: Service = RPC_CANISTER.with(|canister| canister.borrow().clone());
     let rpc_url: String = RPC_URL.with(|rpc| rpc.borrow().clone());
     let strategies: Vec<StrategyData> = STRATEGY_DATA
         .with(|strategies_hashmap| strategies_hashmap.borrow().clone().into_values().collect());
 
-    let mut derivation_path: DerivationPath;
-    let mut nonce: u64;
     for strategy in strategies {
         let balance = fetch_balance(&rpc_canister, &rpc_url, strategy.eoa_pk.unwrap()).await;
         if balance > ether_value {
-            derivation_path = strategy.derivation_path;
-            nonce = strategy.eoa_nonce;
+            let encoded_canister_id: FixedBytes<32> =
+                FixedBytes::<32>::from_str(&api::id().to_string()).unwrap();
+
+            let deposit_call = depositCall {
+                _principal: encoded_canister_id,
+            };
+
+            let transaction_data = deposit_call.abi_encode();
+
+            // todo: fetch the cycles with estimation
+            return send_raw_transaction(
+                cketh_helper,
+                transaction_data,
+                ether_value,
+                strategy.eoa_nonce,
+                strategy.derivation_path,
+                &rpc_canister,
+                &rpc_url,
+                100000000,
+            )
+            .await
+            .map(|_| Ok(()))
+            .unwrap_or_else(|e| Err(e));
         }
     }
 
-    let encoded_canister_id: FixedBytes<32> =
-        FixedBytes::<32>::from_str(&api::id().to_string()).unwrap();
-
-    let deposit_call = depositCall {
-        _principal: encoded_canister_id,
-    };
-
-    let transaction_data = deposit_call.abi_encode();
-
-    // todo: fetch the cycles with estimation
-    send_raw_transaction(
-        cketh_helper,
-        transaction_data,
-        ether_value,
-        nonce,
-        derivation_path,
-        &rpc_canister,
-        &rpc_url,
-        100000000,
-    )
-    .await
-    .map(|_| Ok(()))
-    .unwrap_or_else(|e| Err(e))
+    Err(ManagerError::Custom(
+        "No EOA had enough balance.".to_string(),
+    ))
 }
 
 async fn fetch_balance(rpc_canister: &Service, rpc_url: &str, pk: String) -> U256 {
@@ -126,7 +118,7 @@ pub async fn transfer_cketh(receiver: Principal) -> Result<SwapResponse, Manager
     // todo: account for the fee
     let rate = fetch_ether_cycles_rate().await?;
     let attached_cycles = msg_cycles_available();
-    let maximum_returned_ether_amount = attached_cycles * rate;
+    let maximum_returned_ether_amount = Nat::from(attached_cycles * rate);
 
     // first check if the balance permits the max transfer amount
     let balance = fetch_cketh_balance().await?;
@@ -134,28 +126,28 @@ pub async fn transfer_cketh(receiver: Principal) -> Result<SwapResponse, Manager
     let (transfer_amount, cycles_to_accept) = if balance > maximum_returned_ether_amount {
         (maximum_returned_ether_amount, attached_cycles)
     } else {
-        (balance, balance / rate)
+        (balance.clone(), (balance / rate).0.to_u64().unwrap())
     };
     msg_cycles_accept(cycles_to_accept);
     // third send the cketh to the user
-    let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.borrow().clone());
+    let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.clone());
 
     let args = TransferArg {
         from_subaccount: None,
         to: receiver.into(),
-        fee: todo!(),
+        fee: Some(CKETH_FEE.with(|fee| fee.clone())),
         created_at_time: None,
         memo: None,
-        amount: transfer_amount,
+        amount: transfer_amount.clone(),
     };
 
     let call_response: CallResult<(Result<Nat, TransferError>,)> =
         call(ledger_principal, "icrc1_transfer", (args,)).await;
 
     match call_response {
-        Ok(response) => Ok(SwapResponse {
+        Ok(_) => Ok(SwapResponse {
             accepted_cycles: cycles_to_accept,
-            returning_ether: transfer_amount,
+            returning_ether: transfer_amount.0.to_u64().unwrap(),
         }),
         Err(err) => Err(ManagerError::Custom(err.1)),
     }

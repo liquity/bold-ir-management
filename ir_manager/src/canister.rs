@@ -1,9 +1,14 @@
 use crate::{
-    charger::check_threshold, evm_rpc::Service, state::*, types::{DerivationPath, InitArgs, ManagerError, StrategyData, StrategyQueryData, SwapResponse}, utils::{fetch_cketh_balance, fetch_ether_cycles_rate}
+    charger::{check_threshold, transfer_cketh},
+    evm_rpc::Service,
+    state::*,
+    types::{
+        DerivationPath, InitArgs, ManagerError, StrategyData, StrategyQueryData, SwapResponse,
+    },
 };
 use alloy_primitives::U256;
 use ic_canister::{generate_idl, init, query, update, Canister, Idl, PreUpdate};
-use ic_exports::{candid::Principal, ic_cdk::{api::call::msg_cycles_available, caller}, ic_kit::ic::time};
+use ic_exports::{candid::Principal, ic_cdk::caller, ic_kit::ic::time};
 use std::{collections::HashMap, str::FromStr};
 
 #[derive(Canister)]
@@ -76,7 +81,7 @@ impl IrManager {
     pub async fn swap_cketh(&self) -> Result<SwapResponse, ManagerError> {
         // lock / unlock based on the current cycles balance of the canister
         check_threshold().await?;
-        transfer_cketh(caller()).await?
+        transfer_cketh(caller()).await
     }
 
     pub fn idl() -> Idl {
