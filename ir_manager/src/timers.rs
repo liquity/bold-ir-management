@@ -19,7 +19,7 @@ pub fn start_timers() {
         .into_iter()
         .collect();
 
-    let max_retry_attempts = MAX_RETRY_ATTEMPTS.with(|max_value| max_value.get());
+    let max_retry_attempts = MAX_RETRY_ATTEMPTS.with(|attempts| attempts.get());
 
     // STRATEGY TIMER | EVERY 1 HOUR
     for (key, strategy) in strategies {

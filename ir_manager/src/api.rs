@@ -23,8 +23,8 @@ pub async fn execute_strategy(key: u32, strategy: &StrategyData) -> Result<(), M
         .await?;
 
     let troves = exec
-        .fetch_multiple_sorted_troves(U256::from_str("1000").unwrap())
-        .await?;
+        .fetch_multiple_sorted_troves(U256::from(1000))
+        .await?; // TODO change fixed number 1000
 
     // Calculate
     let redemption_fee = exec.fetch_redemption_rate().await?;
@@ -49,7 +49,7 @@ pub async fn execute_strategy(key: u32, strategy: &StrategyData) -> Result<(), M
         redemption_fee,
         strategy.target_min,
     )
-    .await;
+    .await?;
 
     if let Some(rate) = new_rate {
         // send a signed transaction to update the rate for the batch

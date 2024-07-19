@@ -30,7 +30,7 @@ use crate::{
 };
 
 pub async fn fetch_cketh_balance() -> Result<Nat, ManagerError> {
-    let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.clone());
+    let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.get());
     let args = Account {
         owner: id(),
         subaccount: None,
@@ -46,8 +46,7 @@ pub async fn fetch_cketh_balance() -> Result<Nat, ManagerError> {
 }
 
 pub async fn fetch_ether_cycles_rate() -> Result<u64, ManagerError> {
-    let exchange_rate_canister =
-        EXCHANGE_RATE_CANISTER.with(|principal_id| principal_id.borrow().clone());
+    let exchange_rate_canister = EXCHANGE_RATE_CANISTER.with(|principal_id| principal_id.get());
     let fetch_args = GetExchangeRateRequest {
         base_asset: Asset {
             symbol: "ETH".to_string(),
@@ -86,11 +85,26 @@ pub async fn retry(
     strategy: &StrategyData,
     error: ManagerError,
 ) -> Result<(), ManagerError> {
-    STRATEGY_DATA.with(|strategies| strategies.borrow_mut().get_mut(&key).unwrap().lock = false);
+    // Attempt to retrieve and modify the strategy data, handling errors gracefully
+    let result = STRATEGY_DATA.with(|strategies| {
+        strategies
+            .borrow_mut()
+            .get_mut(&key)
+            .map(|s| s.lock = false)
+    });
+
+    // Check if the above operation was successful
+    if result.is_none() {
+        // Log the error and return a ManagerError if the operation failed
+        println!("[ERROR] Key not found for strategy data update: {}", key);
+        return Err(ManagerError::NonExistentValue);
+    }
+
     print(format!(
         "[ERROR] Dropping and Retrying error => {:#?}",
         error
     ));
+
     execute_strategy(key, strategy).await
 }
 
@@ -243,7 +257,10 @@ pub async fn send_raw_transaction(
     let request = SignRequest {
         chain_id: 1,
         from: None,
-        to: TxKind::Call(Address::from_str(&to).unwrap()),
+        to: TxKind::Call(
+            Address::from_str(&to)
+                .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?,
+        ),
         max_fee_per_gas: max_fee_per_gas.to::<u128>(),
         max_priority_fee_per_gas: max_priority_fee_per_gas.to::<u128>(),
         value,

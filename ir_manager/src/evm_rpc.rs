@@ -381,6 +381,13 @@ pub struct UpdateProviderArgs {
 
 #[derive(Copy, Clone)]
 pub struct Service(pub Principal);
+
+impl Default for Service {
+    fn default() -> Self {
+        Self(Principal::anonymous())
+    }
+}
+
 impl Service {
     pub async fn authorize(&self, arg0: Principal, arg1: Auth) -> Result<(bool,)> {
         ic_cdk::call(self.0, "authorize", (arg0, arg1)).await

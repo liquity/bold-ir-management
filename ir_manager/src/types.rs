@@ -1,6 +1,6 @@
 use alloy_primitives::U256;
 use alloy_sol_types::sol;
-use candid::{CandidType, Principal};
+use candid::{CandidType, Nat, Principal};
 use serde::{Deserialize, Serialize};
 
 use crate::evm_rpc::RpcError;
@@ -33,8 +33,8 @@ pub struct StrategyData {
 
 #[derive(CandidType)]
 pub struct StrategyInput {
-    pub upfront_fee_period: String, // Because IC does not accept U256 params.
-    pub target_min: String,         // Because IC does not accept U256 params.
+    pub upfront_fee_period: u64,
+    pub target_min: u64,
 }
 
 #[derive(CandidType)]
@@ -182,8 +182,8 @@ pub struct OtherError {
 
 #[derive(CandidType, Debug, Serialize, Deserialize)]
 pub struct SwapResponse {
-    pub accepted_cycles: u64,
-    pub returning_ether: u64
+    pub accepted_cycles: Nat,
+    pub returning_ether: Nat
 }
 
 /// Short-hand for returning the result of a `get_exchange_rate` request.

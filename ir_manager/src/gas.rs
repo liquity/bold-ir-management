@@ -40,7 +40,7 @@ pub async fn fee_history(
     {
         Ok((res,)) => match res {
             MultiFeeHistoryResult::Consistent(fee_history) => match fee_history {
-                FeeHistoryResult::Ok(fee_history) => Ok(fee_history.unwrap()),
+                FeeHistoryResult::Ok(fee_history) => fee_history.ok_or_else(|| ManagerError::NonExistentValue),
                 FeeHistoryResult::Err(e) => Err(ManagerError::RpcResponseError(e)),
             },
             MultiFeeHistoryResult::Inconsistent(_) => Err(ManagerError::Custom(
@@ -75,7 +75,7 @@ pub async fn estimate_transaction_fees(
     let median_index = median_index(block_count.into());
 
     // baseFeePerGas
-    let base_fee_per_gas = fee_history.baseFeePerGas.last().unwrap().clone();
+    let base_fee_per_gas = fee_history.baseFeePerGas.last().ok_or_else(|| ManagerError::NonExistentValue)?.clone();
 
     // obtain the 95th percentile of the tips for the past 9 blocks
     let mut percentile_95: Vec<Nat> = fee_history
@@ -98,12 +98,12 @@ pub async fn estimate_transaction_fees(
         .max(Nat::from(MIN_SUGGEST_MAX_PRIORITY_FEE_PER_GAS));
 
     Ok(FeeEstimates {
-        max_fee_per_gas: nat_to_u256(&max_priority_fee_per_gas),
-        max_priority_fee_per_gas: nat_to_u256(&median_reward),
+        max_fee_per_gas: nat_to_u256(&max_priority_fee_per_gas)?,
+        max_priority_fee_per_gas: nat_to_u256(&median_reward)?,
     })
 }
 
-pub fn nat_to_u256(n: &Nat) -> U256 {
+pub fn nat_to_u256(n: &Nat) -> Result<U256, ManagerError> {
     let string_value = n.to_string();
-    U256::from_str(&string_value).unwrap()
+    U256::from_str(&string_value).map_err(|err| ManagerError::Custom(format!("{:#?}", err)))
 }

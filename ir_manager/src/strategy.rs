@@ -4,7 +4,7 @@ use alloy_sol_types::SolCall;
 use crate::{
     evm_rpc::{RpcService, Service},
     state::{TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
-    types::{getTroveAnnualInterestRateCall, getTroveAnnualInterestRateReturn, CombinedTroveData},
+    types::{getTroveAnnualInterestRateCall, getTroveAnnualInterestRateReturn, CombinedTroveData, ManagerError},
     utils::{decode_response, eth_call_args, rpc_provider},
 };
 
@@ -21,17 +21,17 @@ pub async fn run_strategy(
     target_amount: U256,
     redemption_fee: U256,
     target_min: U256,
-) -> Option<U256> {
+) -> Result<Option<U256>, ManagerError> {
     // Check if decrease/increase is valid
     if increase_check(debt_in_front, target_amount, redemption_fee, target_min) {
         // calculate new rate and return it.
-        return Some(
-            calculate_new_rate(rpc_canister, rpc_url, manager, troves, target_amount).await,
-        );
+        return Ok(Some(
+            calculate_new_rate(rpc_canister, rpc_url, manager, troves, target_amount).await?,
+        ));
     } else if first_decrease_check(debt_in_front, target_amount, redemption_fee, target_min) {
         // calculate new rate
         let new_rate =
-            calculate_new_rate(rpc_canister, rpc_url, manager, troves, target_amount).await;
+            calculate_new_rate(rpc_canister, rpc_url, manager, troves, target_amount).await?;
         if second_decrease_check(
             time_since_last_update,
             upfront_fee_period,
@@ -40,10 +40,10 @@ pub async fn run_strategy(
             average_rate,
         ) {
             // return the new rate;
-            return Some(new_rate);
+            return Ok(Some(new_rate));
         }
     }
-    None
+    Ok(None)
 }
 
 async fn calculate_new_rate(
@@ -52,7 +52,7 @@ async fn calculate_new_rate(
     manager: &str,
     troves: Vec<CombinedTroveData>,
     target_amount: U256,
-) -> U256 {
+) -> Result<U256, ManagerError> {
     let mut counted_debt = U256::from(0);
     let mut new_rate = U256::from(0);
     for (_, trove) in troves.iter().enumerate() {
@@ -72,10 +72,7 @@ async fn calculate_new_rate(
             let interest_rate = decode_response::<
                 getTroveAnnualInterestRateReturn,
                 getTroveAnnualInterestRateCall,
-            >(rpc_canister_response)
-            .map(|data| Ok(data))
-            .unwrap_or_else(|e| Err(e))
-            .unwrap()
+            >(rpc_canister_response)?
             ._0;
 
             new_rate = interest_rate + U256::from(10000000000000000);
@@ -83,7 +80,7 @@ async fn calculate_new_rate(
         }
         counted_debt += trove.debt;
     }
-    new_rate
+    Ok(new_rate)
 }
 
 fn increase_check(
@@ -92,7 +89,7 @@ fn increase_check(
     redemption_fee: U256,
     target_min: U256,
 ) -> bool {
-    let tolerance_margin_down = TOLERANCE_MARGIN_DOWN.with(|tolerance_margin_down| tolerance_margin_down.clone());
+    let tolerance_margin_down = TOLERANCE_MARGIN_DOWN.with(|tolerance_margin_down| tolerance_margin_down.get());
 
     if debt_in_front
         < (U256::from(1) - tolerance_margin_down)
@@ -109,7 +106,7 @@ fn first_decrease_check(
     redemption_fee: U256,
     target_min: U256,
 ) -> bool {
-    let tolerance_margin_up = TOLERANCE_MARGIN_UP.with(|tolerance_margin_up| tolerance_margin_up.clone());
+    let tolerance_margin_up = TOLERANCE_MARGIN_UP.with(|tolerance_margin_up| tolerance_margin_up.get());
 
     if debt_in_front
         > (U256::from(1) + tolerance_margin_up)

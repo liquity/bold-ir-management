@@ -110,8 +110,10 @@ impl LiquityProcess {
     ) -> Result<Vec<CombinedTroveData>, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
+        let start_index = I256::from_str("0").map_err(|err| ManagerError::Custom(format!("{:#?}", err)))?;
+
         let parameters = getMultipleSortedTrovesCall {
-            _startIdx: I256::from_str("0").unwrap(),
+            _startIdx: start_index,
             _count: count,
         };
 
@@ -148,8 +150,7 @@ impl LiquityProcess {
         for manager in managers {
             total_unbacked += self
                 .fetch_unbacked_portion_price_and_redeemablity(Some(manager))
-                .await
-                .unwrap()
+                .await?
                 ._0;
         }
 
