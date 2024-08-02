@@ -7,7 +7,7 @@ use alloy_primitives::U256;
 use candid::Nat;
 use ic_exports::candid::Principal;
 
-use crate::{evm_rpc::Service, types::StrategyData};
+use crate::{evm_rpc::Service, strategy::StrategyData};
 
 thread_local! {
     // DYNAMIC STRATEGY DATA

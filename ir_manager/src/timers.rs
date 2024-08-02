@@ -6,27 +6,27 @@ use ic_exports::{
 };
 
 use crate::{
-    api::execute_strategy, charger::recharge_cketh, state::{MAX_RETRY_ATTEMPTS, STRATEGY_DATA}, types::StrategyData, utils::{retry, set_public_keys}
+    charger::recharge_cketh,
+    state::{MAX_RETRY_ATTEMPTS, STRATEGY_DATA},
+    utils::{retry, set_public_keys},
 };
 
+/// Starts timers for all strategies, and a recurring timer for cycle balance checks.
 pub fn start_timers() {
     // assign public keys to the different strategy EOAs
     set_timer(Duration::ZERO, || spawn(set_public_keys()));
 
     // assign a separate timer for each strategy
-    let strategies: Vec<(u32, StrategyData)> = STRATEGY_DATA
-        .with(|vector_data| vector_data.borrow().clone())
-        .into_iter()
-        .collect();
+    let strategies = STRATEGY_DATA.with(|vector_data| vector_data.borrow().clone());
 
     let max_retry_attempts = MAX_RETRY_ATTEMPTS.with(|attempts| attempts.get());
 
     // STRATEGY TIMER | EVERY 1 HOUR
-    for (key, strategy) in strategies {
+    strategies.into_iter().for_each(|(key, strategy)| {
         set_timer_interval(Duration::from_secs(3600), move || {
             spawn(async {
                 for _ in 0..=max_retry_attempts {
-                    let result = match execute_strategy(key, &strategy).await {
+                    let result = match strategy.execute().await {
                         Ok(()) => Ok(()),
                         Err(error) => retry(key, &strategy, error).await,
                     };
@@ -37,7 +37,7 @@ pub fn start_timers() {
                 }
             });
         });
-    }
+    });
 
     // CKETH RECHARGER | EVERY 24 HOURS
     set_timer_interval(Duration::from_secs(86_400), move || {

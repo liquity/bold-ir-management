@@ -2,8 +2,9 @@ use crate::{
     charger::{check_threshold, transfer_cketh},
     evm_rpc::Service,
     state::*,
+    strategy::StrategyData,
     types::{
-        DerivationPath, InitArgs, ManagerError, StrategyData, StrategyQueryData, SwapResponse,
+        DerivationPath, InitArgs, ManagerError, StrategyQueryData, SwapResponse,
     },
 };
 use alloy_primitives::U256;
@@ -21,8 +22,8 @@ impl PreUpdate for IrManager {}
 
 impl IrManager {
     // INITIALIZATION
-    #[init]
-    pub fn init(&mut self, init_args: InitArgs) {
+    #[update]
+    pub fn start(&mut self, init_args: InitArgs) {
         // Assigning init_args field values to variables
         let collateral_registry = init_args.collateral_registry;
         let multi_trove_getters = init_args.multi_trove_getters;
@@ -52,16 +53,14 @@ impl IrManager {
                 eoa_pk: None,
                 last_update: timestamp,
                 lock: false,
+                rpc_canister: Service(rpc_principal.clone()),
+                rpc_url: rpc_url.clone(),
+                collateral_registry: collateral_registry.clone()
             };
 
             strategies_data.insert(id as u32, strategy_data);
         });
-
-        RPC_CANISTER.with(|rpc_canister| *rpc_canister.borrow_mut() = Service(rpc_principal));
-        RPC_URL.with(|rpc| *rpc.borrow_mut() = rpc_url);
-        COLLATERAL_REGISTRY.with(|collateral_registry_address| {
-            *collateral_registry_address.borrow_mut() = collateral_registry
-        });
+        
         MANAGERS.with(|managers_vector| *managers_vector.borrow_mut() = managers);
         STRATEGY_DATA.with(|data| *data.borrow_mut() = strategies_data);
     }

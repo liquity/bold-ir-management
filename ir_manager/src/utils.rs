@@ -108,22 +108,6 @@ pub async fn retry(
     execute_strategy(key, strategy).await
 }
 
-pub fn lock(key: u32) -> Result<(), ManagerError> {
-    STRATEGY_DATA.with(|strategies| {
-        match strategies.borrow_mut().get_mut(&key) {
-            Some(strategy) => {
-                if strategy.lock {
-                    // already processing
-                    return Err(ManagerError::Locked);
-                }
-                strategy.lock = true;
-                Ok(())
-            }
-            None => Err(ManagerError::NonExistentValue),
-        }
-    })
-}
-
 pub fn unlock(key: u32) -> Result<(), ManagerError> {
     STRATEGY_DATA.with(|strategies| {
         match strategies.borrow_mut().get_mut(&key) {
