@@ -20,13 +20,17 @@ use num_traits::cast::ToPrimitive;
 use serde_json::json;
 
 use crate::{
-    evm_rpc::{RpcService, Service}, state::{
+    evm_rpc::{RpcService, Service},
+    state::{
         CKETH_FEE, CKETH_HELPER, CKETH_LEDGER, CKETH_THRESHOLD, CYCLES_THRESHOLD,
         ETHER_RECHARGE_VALUE, RPC_CANISTER, RPC_URL, STRATEGY_DATA,
-    }, strategy::StrategyData, types::{depositCall, ManagerError, SwapResponse}, utils::{
+    },
+    strategy::StrategyData,
+    types::{depositCall, ManagerError, SwapResponse},
+    utils::{
         decode_request_response, fetch_cketh_balance, fetch_ether_cycles_rate, rpc_provider,
         send_raw_transaction,
-    }
+    },
 };
 
 pub async fn check_threshold() -> Result<(), ManagerError> {
@@ -93,7 +97,11 @@ async fn ether_deposit() -> Result<(), ManagerError> {
     ))
 }
 
-async fn fetch_balance(rpc_canister: &Service, rpc_url: &str, pk: String) -> Result<U256, ManagerError> {
+async fn fetch_balance(
+    rpc_canister: &Service,
+    rpc_url: &str,
+    pk: String,
+) -> Result<U256, ManagerError> {
     let rpc: RpcService = rpc_provider(rpc_url);
     let json_args = json!({
         "id": 1,
@@ -127,7 +135,11 @@ pub async fn transfer_cketh(receiver: Principal) -> Result<SwapResponse, Manager
     let (transfer_amount, cycles_to_accept) = if balance > maximum_returned_ether_amount {
         (maximum_returned_ether_amount, attached_cycles)
     } else {
-        let cycles_to_accept = (balance.clone() / rate).0.to_u64().ok_or_else(|| ManagerError::DecodingError("Error while decoding the amount of cycles to accept to u64".to_string()))?;
+        let cycles_to_accept = (balance.clone() / rate).0.to_u64().ok_or_else(|| {
+            ManagerError::DecodingError(
+                "Error while decoding the amount of cycles to accept to u64".to_string(),
+            )
+        })?;
         (balance, cycles_to_accept)
     };
     msg_cycles_accept(cycles_to_accept);

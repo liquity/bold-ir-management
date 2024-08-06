@@ -40,7 +40,9 @@ pub async fn fee_history(
     {
         Ok((res,)) => match res {
             MultiFeeHistoryResult::Consistent(fee_history) => match fee_history {
-                FeeHistoryResult::Ok(fee_history) => fee_history.ok_or_else(|| ManagerError::NonExistentValue),
+                FeeHistoryResult::Ok(fee_history) => {
+                    fee_history.ok_or_else(|| ManagerError::NonExistentValue)
+                }
                 FeeHistoryResult::Err(e) => Err(ManagerError::RpcResponseError(e)),
             },
             MultiFeeHistoryResult::Inconsistent(_) => Err(ManagerError::Custom(
@@ -75,7 +77,11 @@ pub async fn estimate_transaction_fees(
     let median_index = median_index(block_count.into());
 
     // baseFeePerGas
-    let base_fee_per_gas = fee_history.baseFeePerGas.last().ok_or_else(|| ManagerError::NonExistentValue)?.clone();
+    let base_fee_per_gas = fee_history
+        .baseFeePerGas
+        .last()
+        .ok_or_else(|| ManagerError::NonExistentValue)?
+        .clone();
 
     // obtain the 95th percentile of the tips for the past 9 blocks
     let mut percentile_95: Vec<Nat> = fee_history

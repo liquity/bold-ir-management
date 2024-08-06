@@ -1,6 +1,7 @@
 mod canister;
 mod charger;
 mod evm_rpc;
+mod exchange;
 mod gas;
 mod signer;
 mod state;
@@ -8,7 +9,6 @@ mod strategy;
 mod timers;
 mod types;
 mod utils;
-mod exchange;
 
 use crate::canister::IrManager;
 

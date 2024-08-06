@@ -16,9 +16,15 @@ use serde_json::json;
 use crate::{
     evm_rpc::{
         MultiSendRawTransactionResult, RequestResult, RpcApi, RpcService, RpcServices, Service,
-    }, exchange::*, gas::{estimate_transaction_fees, FeeEstimates}, signer::{
+    },
+    exchange::*,
+    gas::{estimate_transaction_fees, FeeEstimates},
+    signer::{
         get_canister_public_key, pubkey_bytes_to_address, sign_eip1559_transaction, SignRequest,
-    }, state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, STRATEGY_DATA}, strategy::StrategyData, types::{Account, DerivationPath, ManagerError, MarketInput, StrategyInput}
+    },
+    state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, STRATEGY_DATA},
+    strategy::StrategyData,
+    types::{Account, DerivationPath, ManagerError, MarketInput, StrategyInput},
 };
 
 /// Generates strategies for each market. Returns a HashMap<u32, StrategyData>.
@@ -32,26 +38,24 @@ pub fn generate_strategies(
     let mut strategies_data: HashMap<u32, StrategyData> = HashMap::new();
     let mut strategy_id = 0;
 
-    markets
-        .into_iter()
-        .for_each(|market| {
-            strategies.iter().enumerate().for_each(|(index, strategy)| {
-                let strategy_data = StrategyData::new(
-                    strategy_id,
-                    market.manager.clone(),
-                    collateral_registry.clone(),
-                    market.multi_trove_getter.clone(),
-                    nat_to_u256(&strategy.target_min),
-                    Service(rpc_principal.clone()),
-                    rpc_url.clone(),
-                    nat_to_u256(&strategy.upfront_fee_period),
-                    nat_to_u256(&market.collateral_index),
-                    market.batch_managers[index],
-                );
-                strategies_data.insert(strategy_id, strategy_data);
-                strategy_id += 1;
-            });
+    markets.into_iter().for_each(|market| {
+        strategies.iter().enumerate().for_each(|(index, strategy)| {
+            let strategy_data = StrategyData::new(
+                strategy_id,
+                market.manager.clone(),
+                collateral_registry.clone(),
+                market.multi_trove_getter.clone(),
+                nat_to_u256(&strategy.target_min),
+                Service(rpc_principal.clone()),
+                rpc_url.clone(),
+                nat_to_u256(&strategy.upfront_fee_period),
+                nat_to_u256(&market.collateral_index),
+                market.batch_managers[index],
+            );
+            strategies_data.insert(strategy_id, strategy_data);
+            strategy_id += 1;
         });
+    });
 
     strategies_data
 }
@@ -63,7 +67,7 @@ pub fn nat_to_u256(n: &Nat) -> U256 {
     let mut padded_bytes = [0u8; 32];
     let start_pos = 32 - be_bytes.len();
     padded_bytes[start_pos..].copy_from_slice(&be_bytes);
-    
+
     U256::from_be_bytes(padded_bytes)
 }
 

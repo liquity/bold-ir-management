@@ -1,4 +1,6 @@
-use alloy_primitives::{I256, U256};
+use std::str::FromStr;
+
+use alloy_primitives::{Address, I256, U256};
 use alloy_sol_types::SolCall;
 use ic_exports::ic_cdk::api::time;
 
@@ -14,7 +16,9 @@ pub struct StrategyData {
     /// Key in the Hashmap<u32, StrategyData> that is `STRATEGY_DATA`
     pub key: u32,
     /// Batch manager contract address for this strategy
-    pub batch_manager: String,
+    pub batch_manager: Address,
+    /// Hint helper contract address.
+    pub hint_helper: String,
     /// Manager contract address for this strategy
     pub manager: String,
     /// Collateral registry contract address
@@ -58,11 +62,13 @@ impl StrategyData {
         rpc_url: String,
         upfront_fee_period: U256,
         collateral_index: U256,
-        batch_manager: String
+        hint_helper: String,
+        batch_manager: Address,
     ) -> Self {
         Self {
             key,
             batch_manager,
+            hint_helper,
             manager,
             collateral_registry,
             multi_trove_getter,
@@ -127,8 +133,6 @@ impl StrategyData {
 
         let troves = self.fetch_multiple_sorted_troves(U256::from(1000)).await?; // TODO change fixed number 1000
 
-        let upfront_fee = self.predict_upfront_fee().await?;
-
         let redemption_fee = self.fetch_redemption_rate().await?;
         let redemption_split = unbacked_portion_price_and_redeemability._0
             / self.fetch_total_unbacked(vec![&self.manager]).await?;
@@ -141,7 +145,6 @@ impl StrategyData {
             .run_strategy(
                 troves,
                 time_since_last_update,
-                upfront_fee,
                 self.upfront_fee_period,
                 target_amount,
                 redemption_fee,
@@ -159,16 +162,31 @@ impl StrategyData {
         Ok(())
     }
 
-    async fn predict_upfront_fee(&self) -> Result<U256, ManagerError> {
-        let arguments = predictAdjustTroveUpfrontFeeCall {
-            _collIndex: todo!(),
-            _troveId: todo!(),
-            _debtIncrease: todo!(),
+    async fn predict_upfront_fee(&self, new_rate: U256) -> Result<U256, ManagerError> {
+        let rpc: RpcService = rpc_provider(&self.rpc_url);
+
+        let arguments = predictAdjustBatchInterestRateUpfrontFeeCall {
+            _collIndex: self.collateral_index,
+            _batchAddress: self.batch_manager.clone(),
+            _newInterestRate: new_rate,
         };
+
         let json_data = eth_call_args(
-            self.hint_helper,
-            predictAdjustTroveUpfrontFee::abi_encode(&arguments),
+            self.hint_helper.clone(),
+            predictAdjustBatchInterestRateUpfrontFeeCall::abi_encode(&arguments),
         );
+
+        let rpc_canister_response = self
+            .rpc_canister
+            .request(rpc, json_data, 500000, 10_000_000_000)
+            .await;
+
+        decode_response::<
+            predictAdjustBatchInterestRateUpfrontFeeReturn,
+            predictAdjustBatchInterestRateUpfrontFeeCall,
+        >(rpc_canister_response)
+        .map(|data| Ok(data._0))
+        .unwrap_or_else(|e| Err(e))
     }
 
     /// Returns the debt of the entire system across all markets if successful.
@@ -290,28 +308,45 @@ impl StrategyData {
         Ok(total_unbacked)
     }
 
+    fn get_current_debt_in_front(&self, troves: Vec<CombinedTroveData>) -> Option<U256> {
+        let mut counted_debt = U256::from(0);
+
+        for (_, trove) in troves.iter().enumerate() {
+            if trove.interestBatchManager == self.batch_manager {
+                return Some(trove.debt);
+            }
+            counted_debt += trove.debt;
+        }
+        None
+    }
+
     async fn run_strategy(
         &self,
         troves: Vec<CombinedTroveData>,
         time_since_last_update: U256,
-        average_rate: U256,
         upfront_fee_period: U256,
         target_amount: U256,
         redemption_fee: U256,
     ) -> Result<Option<U256>, ManagerError> {
-        let (new_rate, debt_in_front) = self.calculate_new_rate(troves, target_amount).await?;
-
-        // Check if decrease/increase is valid
-        if self.increase_check(debt_in_front, target_amount, redemption_fee) {
-            return Ok(Some(new_rate));
-        } else if self.first_decrease_check(debt_in_front, target_amount, redemption_fee) {
-            if self.second_decrease_check(
-                time_since_last_update,
-                upfront_fee_period,
-                new_rate,
-                average_rate,
-            ) {
+        if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
+            // Check if decrease/increase is valid
+            let new_rate = self.calculate_new_rate(troves, target_amount).await?;
+            if self.increase_check(current_debt_in_front, target_amount, redemption_fee) {
                 return Ok(Some(new_rate));
+            } else if self.first_decrease_check(
+                current_debt_in_front,
+                target_amount,
+                redemption_fee,
+            ) {
+                let upfront_fee = self.predict_upfront_fee(new_rate).await?;
+                if self.second_decrease_check(
+                    time_since_last_update,
+                    upfront_fee_period,
+                    new_rate,
+                    upfront_fee,
+                ) {
+                    return Ok(Some(new_rate));
+                }
             }
         }
 
@@ -322,7 +357,7 @@ impl StrategyData {
         &self,
         troves: Vec<CombinedTroveData>,
         target_amount: U256,
-    ) -> Result<(U256, U256), ManagerError> {
+    ) -> Result<U256, ManagerError> {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);
         for (_, trove) in troves.iter().enumerate() {
@@ -351,7 +386,7 @@ impl StrategyData {
             }
             counted_debt += trove.debt;
         }
-        Ok((new_rate, counted_debt))
+        Ok(new_rate)
     }
 
     fn increase_check(

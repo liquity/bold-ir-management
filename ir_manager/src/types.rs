@@ -1,7 +1,7 @@
+use crate::strategy::StrategyData;
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
 use serde::{Deserialize, Serialize};
-use crate::strategy::StrategyData;
 
 use crate::evm_rpc::RpcError;
 
@@ -20,7 +20,7 @@ pub type DerivationPath = Vec<Vec<u8>>;
 #[derive(CandidType)]
 pub struct StrategyInput {
     pub upfront_fee_period: Nat,
-    pub target_min: Nat
+    pub target_min: Nat,
 }
 
 #[derive(CandidType)]
@@ -49,7 +49,7 @@ pub struct MarketInput {
     pub manager: String,
     pub multi_trove_getter: String,
     pub collateral_index: Nat,
-    pub batch_managers: Vec<String>
+    pub batch_managers: Vec<String>,
 }
 
 #[derive(CandidType)]
@@ -83,6 +83,12 @@ sol!(
         uint256 debt;
         uint256 coll;
         uint256 stake;
+        uint256 annualInterestRate;
+        uint256 lastDebtUpdateTime;
+        uint256 lastInterestRateAdjTime;
+        address interestBatchManager;
+        uint256 batchDebtShares;
+        uint256 batchCollShares;
         uint256 snapshotETH;
         uint256 snapshotBoldDebt;
     }
@@ -93,8 +99,12 @@ sol!(
     function getUnbackedPortionPriceAndRedeemability() external returns (uint256, uint256, bool);
     function getMultipleSortedTroves(int256 _startIdx, uint256 _count) external view returns (CombinedTroveData[] memory _troves);
     function getTroveAnnualInterestRate(uint256 _troveId) external view returns (uint256);
-    function predictAdjustTroveUpfrontFee(uint256 _collIndex, uint256 _troveId, uint256 _debtIncrease) external view returns (uint256);
-    
+    function predictAdjustBatchInterestRateUpfrontFee(
+        uint256 _collIndex,
+        address _batchAddress,
+        uint256 _newInterestRate
+    ) external view returns (uint256);
+
     // Liquity externals
     function setBatchManagerAnnualInterestRate(
         uint128 _newAnnualInterestRate,
