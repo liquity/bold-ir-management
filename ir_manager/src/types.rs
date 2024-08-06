@@ -19,8 +19,8 @@ pub type DerivationPath = Vec<Vec<u8>>;
 
 #[derive(CandidType)]
 pub struct StrategyInput {
-    pub upfront_fee_period: u64,
-    pub target_min: u64,
+    pub upfront_fee_period: Nat,
+    pub target_min: Nat
 }
 
 #[derive(CandidType)]
@@ -45,11 +45,17 @@ impl From<StrategyData> for StrategyQueryData {
 }
 
 #[derive(CandidType)]
+pub struct MarketInput {
+    pub manager: String,
+    pub multi_trove_getter: String,
+    pub collateral_index: Nat,
+}
+
+#[derive(CandidType)]
 pub struct InitArgs {
     pub rpc_principal: Principal,
     pub rpc_url: String,
-    pub managers: Vec<String>,
-    pub multi_trove_getters: Vec<String>,
+    pub markets: Vec<MarketInput>,
     pub collateral_registry: String,
     pub strategies: Vec<StrategyInput>,
 }
