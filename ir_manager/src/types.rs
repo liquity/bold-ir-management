@@ -49,6 +49,7 @@ pub struct MarketInput {
     pub manager: String,
     pub multi_trove_getter: String,
     pub collateral_index: Nat,
+    pub batch_managers: Vec<String>
 }
 
 #[derive(CandidType)]

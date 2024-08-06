@@ -1,61 +1,120 @@
-use alloy_primitives::U256;
+use alloy_primitives::{I256, U256};
 use alloy_sol_types::SolCall;
 use ic_exports::ic_cdk::api::time;
 
 use crate::{
     evm_rpc::{RpcService, Service},
-    state::{TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
+    state::{STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
     types::*,
     utils::{decode_response, eth_call_args, rpc_provider},
 };
 
 #[derive(Clone)]
 pub struct StrategyData {
+    /// Key in the Hashmap<u32, StrategyData> that is `STRATEGY_DATA`
+    pub key: u32,
+    /// Batch manager contract address for this strategy
+    pub batch_manager: String,
     /// Manager contract address for this strategy
     pub manager: String,
+    /// Collateral registry contract address
+    pub collateral_registry: String,
     /// Multi trove getter contract address for this strategy
     pub multi_trove_getter: String,
+    /// Collateral index
+    pub collateral_index: U256,
     /// Latest rate determined by the canister in the previous cycle
     pub latest_rate: U256,
     /// Derivation path of the ECDSA signature
     pub derivation_path: DerivationPath,
     /// Minimum target for this strategy
     pub target_min: U256,
-    /// Collateral registry contract address
-    pub collateral_registry: String,
+    /// Upfront fee period constant
+    pub upfront_fee_period: U256,
+    /// Timestamp of the last time the strategy had updated the batch's interest rate.
+    /// Denominated in seconds.
+    pub last_update: u64,
+    /// Lock for the strategy. Determins if the strategy is currently being executed.
+    pub lock: bool,
+    /// The EOA's nonce
+    pub eoa_nonce: u64,
+    /// The EOA's public key
+    pub eoa_pk: Option<String>,
     /// RPC canister service
     pub rpc_canister: Service,
-    pub upfront_fee_period: U256,
-    pub eoa_nonce: u64,
-    pub eoa_pk: Option<String>,
-    pub last_update: u64,
-    pub lock: bool,
+    /// RPC URL for the strategy.
     pub rpc_url: String,
 }
 
 impl StrategyData {
+    /// Generates a new strategy
+    pub fn new(
+        key: u32,
+        manager: String,
+        collateral_registry: String,
+        multi_trove_getter: String,
+        target_min: U256,
+        rpc_canister: Service,
+        rpc_url: String,
+        upfront_fee_period: U256,
+        collateral_index: U256,
+        batch_manager: String
+    ) -> Self {
+        Self {
+            key,
+            batch_manager,
+            manager,
+            collateral_registry,
+            multi_trove_getter,
+            collateral_index,
+            latest_rate: U256::from(0),
+            derivation_path: vec![key.to_be_bytes().to_vec()],
+            target_min,
+            upfront_fee_period,
+            last_update: 0,
+            lock: false,
+            eoa_nonce: 0,
+            eoa_pk: None,
+            rpc_canister,
+            rpc_url,
+        }
+    }
+
+    /// Replaces the strategy data in the HashMap
+    /// Mutably accesses the strategy data in the HashMap.
+    fn apply_change(&self) {
+        STRATEGY_DATA.with(|strategies| {
+            strategies.borrow_mut().insert(self.key, self.clone());
+        });
+    }
+
     /// Locks the strategy.
-    fn lock(&mut self) -> Result<(), ManagerError> {
+    /// Mutably accesses the strategy data in the HashMap.
+    fn lock(&self) -> Result<(), ManagerError> {
         if self.lock {
             // already processing
             return Err(ManagerError::Locked);
         }
         self.lock = true;
+        self.apply_change();
         Ok(())
     }
 
     /// Unlocks the strategy.
-    fn unlock(&mut self) -> Result<(), ManagerError> {
+    /// Mutably accesses the strategy data in the HashMap.
+    fn unlock(&self) -> Result<(), ManagerError> {
         if !self.lock {
             // already unlocked
             return Err(ManagerError::Locked);
         }
         self.lock = false;
+        self.apply_change();
         Ok(())
     }
 
     /// The only public function for this struct implementation. It runs the strategy and returns `Err` in case of failure.
-    pub async fn execute(&mut self) -> Result<(), ManagerError> {
+    /// Mutably accesses the strategy data in the HashMap.
+    pub async fn execute(&self) -> Result<(), ManagerError> {
         // Lock the strategy
         self.lock()?;
 
@@ -68,7 +127,7 @@ impl StrategyData {
 
         let troves = self.fetch_multiple_sorted_troves(U256::from(1000)).await?; // TODO change fixed number 1000
 
-        // let upfront_fee =
+        let upfront_fee = self.predict_upfront_fee().await?;
 
         let redemption_fee = self.fetch_redemption_rate().await?;
         let redemption_split = unbacked_portion_price_and_redeemability._0
@@ -82,12 +141,10 @@ impl StrategyData {
             .run_strategy(
                 troves,
                 time_since_last_update,
-                average_rate,
-                strategy.upfront_fee_period,
-                debt_in_front,
+                upfront_fee,
+                self.upfront_fee_period,
                 target_amount,
                 redemption_fee,
-                strategy.target_min,
             )
             .await?;
 
@@ -102,7 +159,7 @@ impl StrategyData {
         Ok(())
     }
 
-    async fn predict_upfront_fee(&mut self) -> Result<U256, ManagerError> {
+    async fn predict_upfront_fee(&self) -> Result<U256, ManagerError> {
         let arguments = predictAdjustTroveUpfrontFeeCall {
             _collIndex: todo!(),
             _troveId: todo!(),
@@ -115,7 +172,7 @@ impl StrategyData {
     }
 
     /// Returns the debt of the entire system across all markets if successful.
-    async fn fetch_entire_system_debt(&mut self) -> Result<U256, ManagerError> {
+    async fn fetch_entire_system_debt(&self) -> Result<U256, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
         let json_data = eth_call_args(
@@ -133,7 +190,7 @@ impl StrategyData {
             .unwrap_or_else(|e| Err(e))
     }
 
-    async fn fetch_redemption_rate(&mut self) -> Result<U256, ManagerError> {
+    async fn fetch_redemption_rate(&self) -> Result<U256, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
         let json_data = eth_call_args(
@@ -154,7 +211,7 @@ impl StrategyData {
     }
 
     async fn fetch_unbacked_portion_price_and_redeemablity(
-        &mut self,
+        &self,
         manager: Option<String>,
     ) -> Result<getUnbackedPortionPriceAndRedeemabilityReturn, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
@@ -181,13 +238,12 @@ impl StrategyData {
     }
 
     async fn fetch_multiple_sorted_troves(
-        &mut self,
+        &self,
         count: U256,
     ) -> Result<Vec<CombinedTroveData>, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
-        let start_index =
-            I256::from_str("0").map_err(|err| ManagerError::Custom(format!("{:#?}", err)))?;
+        let start_index = I256::from(0 as i64);
 
         let parameters = getMultipleSortedTrovesCall {
             _startIdx: start_index,
@@ -213,7 +269,7 @@ impl StrategyData {
 
     /// Fetches the total unbacked amount across all collateral markets excluding the ones defined in the parameter.
     async fn fetch_total_unbacked(
-        &mut self,
+        &self,
         excluded_managers: Vec<&str>,
     ) -> Result<U256, ManagerError> {
         let managers: Vec<String> = MANAGERS.with(|managers_vector| {
@@ -235,63 +291,52 @@ impl StrategyData {
     }
 
     async fn run_strategy(
-        &mut self,
+        &self,
         troves: Vec<CombinedTroveData>,
         time_since_last_update: U256,
         average_rate: U256,
         upfront_fee_period: U256,
-        debt_in_front: U256,
         target_amount: U256,
         redemption_fee: U256,
     ) -> Result<Option<U256>, ManagerError> {
+        let (new_rate, debt_in_front) = self.calculate_new_rate(troves, target_amount).await?;
+
         // Check if decrease/increase is valid
-        if Self::increase_check(debt_in_front, target_amount, redemption_fee, target_min) {
-            // calculate new rate and return it.
-            return Ok(Some(
-                self.calculate_new_rate(troves, target_amount)
-                    .await?,
-            ));
-        } else if Self::first_decrease_check(
-            debt_in_front,
-            target_amount,
-            redemption_fee,
-            target_min,
-        ) {
-            // calculate new rate
-            let new_rate =
-                self.calculate_new_rate(troves, target_amount).await?;
-            if second_decrease_check(
+        if self.increase_check(debt_in_front, target_amount, redemption_fee) {
+            return Ok(Some(new_rate));
+        } else if self.first_decrease_check(debt_in_front, target_amount, redemption_fee) {
+            if self.second_decrease_check(
                 time_since_last_update,
                 upfront_fee_period,
-                latest_rate,
                 new_rate,
                 average_rate,
             ) {
-                // return the new rate;
                 return Ok(Some(new_rate));
             }
         }
+
         Ok(None)
     }
 
     async fn calculate_new_rate(
-        &mut self,
+        &self,
         troves: Vec<CombinedTroveData>,
         target_amount: U256,
-    ) -> Result<U256, ManagerError> {
+    ) -> Result<(U256, U256), ManagerError> {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);
         for (_, trove) in troves.iter().enumerate() {
             if counted_debt > target_amount {
                 // get trove current interest rate
-                let rpc: RpcService = rpc_provider(self.rpc_url);
+                let rpc: RpcService = rpc_provider(&self.rpc_url);
 
                 let json_data = eth_call_args(
-                    manager.to_string(),
+                    self.manager.to_string(),
                     getTroveAnnualInterestRateCall { _troveId: trove.id }.abi_encode(),
                 );
 
-                let rpc_canister_response = self.rpc_canister
+                let rpc_canister_response = self
+                    .rpc_canister
                     .request(rpc, json_data, 500000, 10_000_000_000)
                     .await;
 
@@ -306,11 +351,11 @@ impl StrategyData {
             }
             counted_debt += trove.debt;
         }
-        Ok(new_rate)
+        Ok((new_rate, counted_debt))
     }
 
     fn increase_check(
-        &mut self,
+        &self,
         debt_in_front: U256,
         target_amount: U256,
         redemption_fee: U256,
@@ -320,7 +365,7 @@ impl StrategyData {
 
         if debt_in_front
             < (U256::from(1) - tolerance_margin_down)
-                * (((target_amount * redemption_fee * target_min) / U256::from(5))
+                * (((target_amount * redemption_fee * self.target_min) / U256::from(5))
                     / U256::from(1000))
         {
             return true;
@@ -329,17 +374,17 @@ impl StrategyData {
     }
 
     fn first_decrease_check(
+        &self,
         debt_in_front: U256,
         target_amount: U256,
         redemption_fee: U256,
-        target_min: U256,
     ) -> bool {
         let tolerance_margin_up =
             TOLERANCE_MARGIN_UP.with(|tolerance_margin_up| tolerance_margin_up.get());
 
         if debt_in_front
             > (U256::from(1) + tolerance_margin_up)
-                * (((target_amount * redemption_fee * target_min) / U256::from(5))
+                * (((target_amount * redemption_fee * self.target_min) / U256::from(5))
                     / U256::from(1000))
         {
             return true;
@@ -348,13 +393,14 @@ impl StrategyData {
     }
 
     fn second_decrease_check(
+        &self,
         time_since_last_update: U256,
         upfront_fee_period: U256,
-        latest_rate: U256,
         new_rate: U256,
         average_rate: U256,
     ) -> bool {
-        if (U256::from(1) - time_since_last_update / upfront_fee_period) * (latest_rate - new_rate)
+        if (U256::from(1) - time_since_last_update / upfront_fee_period)
+            * (self.latest_rate - new_rate)
             > average_rate
         {
             return true;

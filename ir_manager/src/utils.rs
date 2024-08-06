@@ -35,7 +35,7 @@ pub fn generate_strategies(
     markets
         .into_iter()
         .for_each(|market| {
-            strategies.iter().for_each(|strategy| {
+            strategies.iter().enumerate().for_each(|(index, strategy)| {
                 let strategy_data = StrategyData::new(
                     strategy_id,
                     market.manager.clone(),
@@ -46,6 +46,7 @@ pub fn generate_strategies(
                     rpc_url.clone(),
                     nat_to_u256(&strategy.upfront_fee_period),
                     nat_to_u256(&market.collateral_index),
+                    market.batch_managers[index],
                 );
                 strategies_data.insert(strategy_id, strategy_data);
                 strategy_id += 1;

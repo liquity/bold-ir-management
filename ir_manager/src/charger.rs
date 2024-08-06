@@ -20,16 +20,13 @@ use num_traits::cast::ToPrimitive;
 use serde_json::json;
 
 use crate::{
-    evm_rpc::{RpcService, Service},
-    state::{
+    evm_rpc::{RpcService, Service}, state::{
         CKETH_FEE, CKETH_HELPER, CKETH_LEDGER, CKETH_THRESHOLD, CYCLES_THRESHOLD,
         ETHER_RECHARGE_VALUE, RPC_CANISTER, RPC_URL, STRATEGY_DATA,
-    },
-    types::{depositCall, ManagerError, StrategyData, SwapResponse},
-    utils::{
+    }, strategy::StrategyData, types::{depositCall, ManagerError, SwapResponse}, utils::{
         decode_request_response, fetch_cketh_balance, fetch_ether_cycles_rate, rpc_provider,
         send_raw_transaction,
-    },
+    }
 };
 
 pub async fn check_threshold() -> Result<(), ManagerError> {
