@@ -1,9 +1,12 @@
+use std::str::FromStr;
+
 use crate::{
     charger::{check_threshold, transfer_cketh},
     state::*,
-    types::{InitArgs, ManagerError, StrategyQueryData, SwapResponse},
+    types::{InitArgs, ManagerError, Market, StrategyQueryData, SwapResponse},
     utils::generate_strategies,
 };
+use alloy_primitives::Address;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
 use ic_exports::{candid::Principal, ic_cdk::caller};
 
@@ -20,16 +23,26 @@ impl IrManager {
     #[update]
     pub fn start(&mut self, init_args: InitArgs) -> Result<(), ManagerError> {
         // Assigning init_args field values to variables
-        let collateral_registry = init_args.collateral_registry;
+        let collateral_registry = Address::from_str(&init_args.collateral_registry)
+            .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
+        let hint_helper = Address::from_str(&init_args.hint_helper)
+            .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
+
         let rpc_principal = init_args.rpc_principal;
         let strategies = init_args.strategies;
         let rpc_url = init_args.rpc_url;
         let markets = init_args.markets;
 
+        let parsed_markets: Vec<Market> = markets
+            .into_iter()
+            .map(|market| Market::try_from(market))
+            .collect::<Result<Vec<Market>, ManagerError>>()?;
+
         STRATEGY_DATA.with(|data| {
             let generated_strategies = generate_strategies(
-                markets,
+                parsed_markets,
                 collateral_registry,
+                hint_helper,
                 strategies,
                 rpc_principal,
                 rpc_url,

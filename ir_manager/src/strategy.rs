@@ -18,13 +18,13 @@ pub struct StrategyData {
     /// Batch manager contract address for this strategy
     pub batch_manager: Address,
     /// Hint helper contract address.
-    pub hint_helper: String,
+    pub hint_helper: Address,
     /// Manager contract address for this strategy
-    pub manager: String,
+    pub manager: Address,
     /// Collateral registry contract address
-    pub collateral_registry: String,
+    pub collateral_registry: Address,
     /// Multi trove getter contract address for this strategy
-    pub multi_trove_getter: String,
+    pub multi_trove_getter: Address,
     /// Collateral index
     pub collateral_index: U256,
     /// Latest rate determined by the canister in the previous cycle
@@ -43,7 +43,7 @@ pub struct StrategyData {
     /// The EOA's nonce
     pub eoa_nonce: u64,
     /// The EOA's public key
-    pub eoa_pk: Option<String>,
+    pub eoa_pk: Option<Address>,
     /// RPC canister service
     pub rpc_canister: Service,
     /// RPC URL for the strategy.
@@ -54,15 +54,15 @@ impl StrategyData {
     /// Generates a new strategy
     pub fn new(
         key: u32,
-        manager: String,
-        collateral_registry: String,
-        multi_trove_getter: String,
+        manager: Address,
+        collateral_registry: Address,
+        multi_trove_getter: Address,
         target_min: U256,
         rpc_canister: Service,
         rpc_url: String,
         upfront_fee_period: U256,
         collateral_index: U256,
-        hint_helper: String,
+        hint_helper: Address,
         batch_manager: Address,
     ) -> Self {
         Self {
@@ -172,7 +172,7 @@ impl StrategyData {
         };
 
         let json_data = eth_call_args(
-            self.hint_helper.clone(),
+            self.hint_helper.to_string(),
             predictAdjustBatchInterestRateUpfrontFeeCall::abi_encode(&arguments),
         );
 
@@ -236,7 +236,7 @@ impl StrategyData {
 
         let call_manager = match manager {
             Some(value) => value,
-            None => self.manager.clone(),
+            None => self.manager.to_string(),
         };
 
         let json_data = eth_call_args(

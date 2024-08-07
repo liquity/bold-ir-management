@@ -24,13 +24,14 @@ use crate::{
     },
     state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, STRATEGY_DATA},
     strategy::StrategyData,
-    types::{Account, DerivationPath, ManagerError, MarketInput, StrategyInput},
+    types::{Account, DerivationPath, ManagerError, Market, StrategyInput},
 };
 
 /// Generates strategies for each market. Returns a HashMap<u32, StrategyData>.
 pub fn generate_strategies(
-    markets: Vec<MarketInput>,
-    collateral_registry: String,
+    markets: Vec<Market>,
+    collateral_registry: Address,
+    hint_helper: Address,
     strategies: Vec<StrategyInput>,
     rpc_principal: Principal,
     rpc_url: String,
@@ -50,6 +51,7 @@ pub fn generate_strategies(
                 rpc_url.clone(),
                 nat_to_u256(&strategy.upfront_fee_period),
                 nat_to_u256(&market.collateral_index),
+                hint_helper.clone(),
                 market.batch_managers[index],
             );
             strategies_data.insert(strategy_id, strategy_data);
@@ -238,7 +240,7 @@ pub async fn set_public_keys() {
 
         // Calculate the public key asynchronously
         let public_key_bytes = get_canister_public_key(key_id, None, Some(derivation_path)).await;
-        let eoa_pk = pubkey_bytes_to_address(&public_key_bytes);
+        let eoa_pk = Address::from_str(&pubkey_bytes_to_address(&public_key_bytes)).unwrap();
 
         // Update the strategy with the public key
         STRATEGY_DATA.with(|strategies_hashmap| {

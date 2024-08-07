@@ -1,4 +1,7 @@
+use std::str::FromStr;
+
 use crate::strategy::StrategyData;
+use alloy_primitives::Address;
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
 use serde::{Deserialize, Serialize};
@@ -35,10 +38,10 @@ pub struct StrategyQueryData {
 impl From<StrategyData> for StrategyQueryData {
     fn from(value: StrategyData) -> Self {
         Self {
-            manager: value.manager,
+            manager: value.manager.to_string(),
             latest_rate: value.latest_rate.to_string(),
             target_min: value.target_min.to_string(),
-            eoa_pk: value.eoa_pk,
+            eoa_pk: value.eoa_pk.map(|pk| pk.to_string()),
             last_update: value.last_update,
         }
     }
@@ -52,12 +55,46 @@ pub struct MarketInput {
     pub batch_managers: Vec<String>,
 }
 
+impl TryFrom<MarketInput> for Market {
+    type Error = ManagerError;
+
+    fn try_from(value: MarketInput) -> Result<Self, Self::Error> {
+        let manager = Address::from_str(&value.manager)
+            .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
+        let multi_trove_getter = Address::from_str(&value.multi_trove_getter)
+            .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
+        let batch_managers: Vec<Address> = value
+            .batch_managers
+            .into_iter()
+            .map(|batch_manager| {
+                Address::from_str(&batch_manager)
+                    .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self {
+            manager,
+            multi_trove_getter,
+            collateral_index: value.collateral_index,
+            batch_managers,
+        })
+    }
+}
+
+pub struct Market {
+    pub manager: Address,
+    pub multi_trove_getter: Address,
+    pub collateral_index: Nat,
+    pub batch_managers: Vec<Address>,
+}
+
 #[derive(CandidType)]
 pub struct InitArgs {
     pub rpc_principal: Principal,
     pub rpc_url: String,
     pub markets: Vec<MarketInput>,
     pub collateral_registry: String,
+    pub hint_helper: String,
     pub strategies: Vec<StrategyInput>,
 }
 
