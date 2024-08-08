@@ -21,16 +21,10 @@ use serde_json::json;
 
 use crate::{
     evm_rpc::{RpcService, Service},
-    state::{
-        CKETH_EOA_TURN_COUNTER, CKETH_FEE, CKETH_HELPER, CKETH_LEDGER, CKETH_THRESHOLD,
-        CYCLES_THRESHOLD, ETHER_RECHARGE_VALUE, RPC_CANISTER, RPC_URL, STRATEGY_DATA,
-    },
+    state::*,
     strategy::StrategyData,
     types::{depositCall, ManagerError, SwapResponse},
-    utils::{
-        decode_request_response, fetch_cketh_balance, fetch_ether_cycles_rate, rpc_provider,
-        send_raw_transaction,
-    },
+    utils::*,
 };
 
 pub async fn check_threshold() -> Result<(), ManagerError> {
