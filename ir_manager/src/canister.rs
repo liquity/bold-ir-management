@@ -32,7 +32,8 @@ impl IrManager {
         let strategies = init_args.strategies;
         let rpc_url = init_args.rpc_url;
         let markets = init_args.markets;
-
+        let upfront_fee_period = init_args.upfront_fee_period;
+        
         let mut managers = vec![];
 
         let parsed_markets: Vec<Market> = markets
@@ -53,6 +54,7 @@ impl IrManager {
                 strategies,
                 rpc_principal,
                 rpc_url,
+                upfront_fee_period
             );
             *data.borrow_mut() = generated_strategies
         });

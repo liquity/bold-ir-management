@@ -33,7 +33,7 @@ pub struct StrategyData {
     pub derivation_path: DerivationPath,
     /// Minimum target for this strategy
     pub target_min: U256,
-    /// Upfront fee period constant
+    /// Upfront fee period constant denominated in seconds
     pub upfront_fee_period: U256,
     /// Timestamp of the last time the strategy had updated the batch's interest rate.
     /// Denominated in seconds.

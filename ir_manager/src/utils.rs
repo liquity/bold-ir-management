@@ -35,6 +35,7 @@ pub fn generate_strategies(
     strategies: Vec<StrategyInput>,
     rpc_principal: Principal,
     rpc_url: String,
+    upfront_fee_period: Nat
 ) -> HashMap<u32, StrategyData> {
     let mut strategies_data: HashMap<u32, StrategyData> = HashMap::new();
     let mut strategy_id = 0;
@@ -49,7 +50,7 @@ pub fn generate_strategies(
                 nat_to_u256(&strategy.target_min),
                 Service(rpc_principal.clone()),
                 rpc_url.clone(),
-                nat_to_u256(&strategy.upfront_fee_period),
+                nat_to_u256(&upfront_fee_period),
                 nat_to_u256(&market.collateral_index),
                 hint_helper.clone(),
                 market.batch_managers[index],
