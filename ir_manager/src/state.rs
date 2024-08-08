@@ -29,6 +29,7 @@ thread_local! {
     pub static CYCLES_THRESHOLD: Cell<u64> = Cell::new(50_000_000_000);
 
     // CKETH SETTINGS
+    pub static CKETH_EOA_TURN_COUNTER: Cell<u8> = Cell::new(0);
     pub static CKETH_HELPER: RefCell<String> = RefCell::new("0x7574eB42cA208A4f6960ECCAfDF186D627dCC175".to_string());
     pub static CKETH_LEDGER: Cell<Principal> = Cell::new(Principal::from_slice("ss2fx-dyaaa-aaaar-qacoq-cai".as_bytes()));
     pub static CKETH_FEE: RefCell<Nat> = RefCell::new(Nat::from(2_000_000_000_000 as u64));

@@ -22,8 +22,8 @@ use serde_json::json;
 use crate::{
     evm_rpc::{RpcService, Service},
     state::{
-        CKETH_FEE, CKETH_HELPER, CKETH_LEDGER, CKETH_THRESHOLD, CYCLES_THRESHOLD,
-        ETHER_RECHARGE_VALUE, RPC_CANISTER, RPC_URL, STRATEGY_DATA,
+        CKETH_EOA_TURN_COUNTER, CKETH_FEE, CKETH_HELPER, CKETH_LEDGER, CKETH_THRESHOLD,
+        CYCLES_THRESHOLD, ETHER_RECHARGE_VALUE, RPC_CANISTER, RPC_URL, STRATEGY_DATA,
     },
     strategy::StrategyData,
     types::{depositCall, ManagerError, SwapResponse},
@@ -56,18 +56,30 @@ async fn ether_deposit() -> Result<(), ManagerError> {
     let cketh_helper: String = CKETH_HELPER.with(|cketh_helper| cketh_helper.borrow().clone());
     let rpc_canister: Service = RPC_CANISTER.with(|canister| canister.borrow().clone());
     let rpc_url: String = RPC_URL.with(|rpc| rpc.borrow().clone());
-    let strategies: Vec<StrategyData> = STRATEGY_DATA
+    let mut strategies: Vec<StrategyData> = STRATEGY_DATA
         .with(|strategies_hashmap| strategies_hashmap.borrow().clone().into_values().collect());
 
-    for strategy in strategies {
-        let eoa = strategy
-            .eoa_pk
-            .ok_or_else(|| ManagerError::NonExistentValue)?;
-        let balance = fetch_balance(&rpc_canister, &rpc_url, eoa.to_string()).await?;
+    let turn = CKETH_EOA_TURN_COUNTER.with(|counter| counter.get());
+
+    strategies.rotate_left(turn as usize);
+
+    for (index, strategy) in strategies.iter().enumerate() {
+        let eoa = match strategy.eoa_pk {
+            Some(pk) => pk,
+            None => continue, // Skip if eoa_pk is None
+        };
+
+        let balance = match fetch_balance(&rpc_canister, &rpc_url, eoa.to_string()).await {
+            Ok(balance) => balance,
+            Err(_) => continue, // Skip on error
+        };
+
         if balance > ether_value {
             let encoded_canister_id: FixedBytes<32> =
-                FixedBytes::<32>::from_str(&api::id().to_string())
-                    .map_err(|err| ManagerError::Custom(format!("{:#?}", err)))?;
+                match FixedBytes::<32>::from_str(&api::id().to_string()) {
+                    Ok(id) => id,
+                    Err(err) => return Err(ManagerError::Custom(format!("{:#?}", err))),
+                };
 
             let deposit_call = depositCall {
                 _principal: encoded_canister_id,
@@ -75,20 +87,23 @@ async fn ether_deposit() -> Result<(), ManagerError> {
 
             let transaction_data = deposit_call.abi_encode();
 
-            // todo: fetch the cycles with estimation
+            // Update turn counter
+            let new_counter = (index as u8 + turn + 1) % strategies.len() as u8;
+            CKETH_EOA_TURN_COUNTER.with(|counter| counter.set(new_counter));
+
+            // Fetch the cycles with estimation and send transaction
             return send_raw_transaction(
                 cketh_helper,
                 transaction_data,
                 ether_value,
                 strategy.eoa_nonce,
-                strategy.derivation_path,
+                strategy.derivation_path.clone(),
                 &rpc_canister,
                 &rpc_url,
                 100000000,
             )
             .await
-            .map(|_| Ok(()))
-            .unwrap_or_else(|e| Err(e));
+            .map(|_| Ok(()))?;
         }
     }
 
