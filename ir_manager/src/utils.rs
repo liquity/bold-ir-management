@@ -23,7 +23,7 @@ use crate::{
     signer::{
         get_canister_public_key, pubkey_bytes_to_address, sign_eip1559_transaction, SignRequest,
     },
-    state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, MANAGERS, STRATEGY_DATA},
+    state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, STRATEGY_DATA},
     strategy::StrategyData,
     types::{Account, DerivationPath, ManagerError, Market, StrategyInput},
 };

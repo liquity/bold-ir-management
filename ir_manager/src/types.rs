@@ -95,7 +95,7 @@ pub struct InitArgs {
     pub collateral_registry: String,
     pub hint_helper: String,
     pub strategies: Vec<StrategyInput>,
-    pub upfront_fee_period: Nat
+    pub upfront_fee_period: Nat,
 }
 
 #[derive(CandidType, Debug, Serialize, Deserialize)]

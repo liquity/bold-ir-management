@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use alloy_primitives::{Address, I256, U256};
 use alloy_sol_types::SolCall;
 use ic_exports::ic_cdk::api::time;
@@ -168,7 +166,7 @@ impl StrategyData {
             )
             .await?;
 
-        if let Some(rate) = new_rate {
+        if let Some(_rate) = new_rate {
             // send a signed transaction to update the rate for the batch
             // get hints
 

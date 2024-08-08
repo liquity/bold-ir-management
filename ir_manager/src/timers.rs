@@ -1,7 +1,4 @@
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use ic_exports::{
     ic_cdk::spawn,
@@ -52,7 +49,7 @@ pub fn start_timers() {
             for _ in 0..=*max_retry_attempts {
                 let result = match recharge_cketh().await {
                     Ok(()) => Ok(()),
-                    Err(error) => recharge_cketh().await,
+                    Err(_error) => recharge_cketh().await,
                 };
 
                 if result.is_ok() {
