@@ -15,7 +15,8 @@ use serde_json::json;
 
 use crate::{
     evm_rpc::{
-        MultiSendRawTransactionResult, RequestResult, RpcApi, RpcService, RpcServices, Service,
+        EthCallResponse, MultiSendRawTransactionResult, RequestResult, RpcApi, RpcService,
+        RpcServices, Service,
     },
     exchange::*,
     gas::{estimate_transaction_fees, FeeEstimates},
@@ -35,11 +36,11 @@ pub fn generate_strategies(
     strategies: Vec<StrategyInput>,
     rpc_principal: Principal,
     rpc_url: String,
-    upfront_fee_period: Nat
+    upfront_fee_period: Nat,
 ) -> HashMap<u32, StrategyData> {
     let mut strategies_data: HashMap<u32, StrategyData> = HashMap::new();
     let mut strategy_id = 0;
-    
+
     markets.into_iter().for_each(|market| {
         strategies.iter().enumerate().for_each(|(index, strategy)| {
             let strategy_data = StrategyData::new(
@@ -214,18 +215,54 @@ pub fn decode_request_response(
     }
 }
 
-pub fn eth_call_args(to: String, data: Vec<u8>) -> String {
+pub fn decode_request_response_encoded(
+    canister_response: CallResult<(RequestResult,)>,
+) -> Result<String, ManagerError> {
+    match canister_response {
+        Ok((rpc_response,)) => match rpc_response {
+            RequestResult::Ok(hex_data) => Ok(hex_data),
+            RequestResult::Err(e) => Err(ManagerError::RpcResponseError(e)),
+        },
+        Err(e) => Err(ManagerError::Custom(e.1)),
+    }
+}
+
+pub fn eth_call_args(to: String, data: Vec<u8>, hex_block_number: &str) -> String {
     json!({
         "id": 1,
         "jsonrpc": "2.0",
         "params": [ {
             "to": to,
             "data": format!("0x{}", hex::encode(data))
-        }
+        },
+        hex_block_number
         ],
         "method": "eth_call"
     })
     .to_string()
+}
+
+pub async fn get_block_number(
+    rpc_canister: &Service,
+    rpc_url: &str,
+) -> Result<String, ManagerError> {
+    let rpc: RpcService = rpc_provider(rpc_url);
+
+    let args = json!({
+      "id": 1,
+      "jsonrpc": "2.0",
+      "method": "eth_blockNumber"
+    })
+    .to_string();
+
+    let rpc_canister_response = rpc_canister
+        .request(rpc, args, 500000, 10_000_000_000)
+        .await;
+
+    let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
+    let decoded_response: EthCallResponse = serde_json::from_str(&encoded_response)
+        .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
+    Ok(decoded_response.result)
 }
 
 pub async fn set_public_keys() {

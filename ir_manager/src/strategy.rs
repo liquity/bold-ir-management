@@ -8,7 +8,7 @@ use crate::{
     evm_rpc::{RpcService, Service},
     state::{MANAGERS, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
     types::*,
-    utils::{decode_response, eth_call_args, rpc_provider},
+    utils::{decode_response, eth_call_args, get_block_number, rpc_provider},
 };
 
 #[derive(Clone)]
@@ -124,18 +124,20 @@ impl StrategyData {
         // Lock the strategy
         self.lock()?;
 
-        let time_since_last_update = U256::from(time() - self.last_update); // what unit should this be in? millis? secs?
+        let block_number = get_block_number(&self.rpc_canister, &self.rpc_url).await?;
 
-        let entire_system_debt: U256 = self.fetch_entire_system_debt().await?;
+        let time_since_last_update = U256::from(time() - self.last_update);
+
+        let entire_system_debt: U256 = self.fetch_entire_system_debt(&block_number).await?;
         let unbacked_portion_price_and_redeemability = self
-            .fetch_unbacked_portion_price_and_redeemablity(None)
+            .fetch_unbacked_portion_price_and_redeemablity(None, &block_number)
             .await?;
 
         let mut troves: Vec<CombinedTroveData> = vec![];
         let mut troves_index = U256::from(0);
         loop {
             let fetched_troves = self
-                .fetch_multiple_sorted_troves(troves_index, U256::from(1500))
+                .fetch_multiple_sorted_troves(troves_index, U256::from(1500), &block_number)
                 .await?;
             let fetched_troves_count = fetched_troves.len();
             troves.extend(fetched_troves);
@@ -145,10 +147,10 @@ impl StrategyData {
             troves_index += U256::from(1500);
         }
 
-        let redemption_fee = self.fetch_redemption_rate().await?;
+        let redemption_fee = self.fetch_redemption_rate(&block_number).await?;
         let redemption_split = unbacked_portion_price_and_redeemability._0
             / self
-                .fetch_total_unbacked(unbacked_portion_price_and_redeemability._0)
+                .fetch_total_unbacked(unbacked_portion_price_and_redeemability._0, &block_number)
                 .await?;
         let target_amount = redemption_split
             * entire_system_debt
@@ -162,6 +164,7 @@ impl StrategyData {
                 self.upfront_fee_period,
                 target_amount,
                 redemption_fee,
+                &block_number,
             )
             .await?;
 
@@ -176,7 +179,11 @@ impl StrategyData {
         Ok(())
     }
 
-    async fn predict_upfront_fee(&self, new_rate: U256) -> Result<U256, ManagerError> {
+    async fn predict_upfront_fee(
+        &self,
+        new_rate: U256,
+        block_number: &str,
+    ) -> Result<U256, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
         let arguments = predictAdjustBatchInterestRateUpfrontFeeCall {
@@ -188,6 +195,7 @@ impl StrategyData {
         let json_data = eth_call_args(
             self.hint_helper.to_string(),
             predictAdjustBatchInterestRateUpfrontFeeCall::abi_encode(&arguments),
+            block_number,
         );
 
         let rpc_canister_response = self
@@ -204,12 +212,13 @@ impl StrategyData {
     }
 
     /// Returns the debt of the entire system across all markets if successful.
-    async fn fetch_entire_system_debt(&self) -> Result<U256, ManagerError> {
+    async fn fetch_entire_system_debt(&self, block_number: &str) -> Result<U256, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
         let json_data = eth_call_args(
             self.manager.to_string(),
             getEntireSystemDebtCall::SELECTOR.to_vec(),
+            block_number,
         );
 
         let rpc_canister_response = self
@@ -222,12 +231,13 @@ impl StrategyData {
             .unwrap_or_else(|e| Err(e))
     }
 
-    async fn fetch_redemption_rate(&self) -> Result<U256, ManagerError> {
+    async fn fetch_redemption_rate(&self, block_number: &str) -> Result<U256, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
         let json_data = eth_call_args(
             self.collateral_registry.to_string(),
             getRedemptionRateWithDecayCall::SELECTOR.to_vec(),
+            block_number,
         );
 
         let rpc_canister_response = self
@@ -245,6 +255,7 @@ impl StrategyData {
     async fn fetch_unbacked_portion_price_and_redeemablity(
         &self,
         manager: Option<String>,
+        block_number: &str,
     ) -> Result<getUnbackedPortionPriceAndRedeemabilityReturn, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
@@ -256,6 +267,7 @@ impl StrategyData {
         let json_data = eth_call_args(
             call_manager,
             getUnbackedPortionPriceAndRedeemabilityCall::SELECTOR.to_vec(),
+            block_number,
         );
 
         let rpc_canister_response = self
@@ -273,6 +285,7 @@ impl StrategyData {
         &self,
         index: U256,
         count: U256,
+        block_number: &str,
     ) -> Result<Vec<CombinedTroveData>, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
@@ -284,6 +297,7 @@ impl StrategyData {
         let json_data = eth_call_args(
             self.multi_trove_getter.to_string(),
             getMultipleSortedTrovesCall::abi_encode(&parameters),
+            block_number,
         );
 
         let rpc_canister_response = self
@@ -299,7 +313,11 @@ impl StrategyData {
     }
 
     /// Fetches the total unbacked amount across all collateral markets excluding the ones defined in the parameter.
-    async fn fetch_total_unbacked(&self, initial_value: U256) -> Result<U256, ManagerError> {
+    async fn fetch_total_unbacked(
+        &self,
+        initial_value: U256,
+        block_number: &str,
+    ) -> Result<U256, ManagerError> {
         let managers: Vec<String> =
             MANAGERS.with(|managers_vector| managers_vector.borrow().clone());
 
@@ -307,7 +325,7 @@ impl StrategyData {
 
         for manager in managers {
             total_unbacked += self
-                .fetch_unbacked_portion_price_and_redeemablity(Some(manager))
+                .fetch_unbacked_portion_price_and_redeemablity(Some(manager), block_number)
                 .await?
                 ._0;
         }
@@ -334,10 +352,13 @@ impl StrategyData {
         upfront_fee_period: U256,
         target_amount: U256,
         redemption_fee: U256,
+        block_number: &str,
     ) -> Result<Option<U256>, ManagerError> {
         if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
             // Check if decrease/increase is valid
-            let new_rate = self.calculate_new_rate(troves, target_amount).await?;
+            let new_rate = self
+                .calculate_new_rate(troves, target_amount, block_number)
+                .await?;
             if self.increase_check(current_debt_in_front, target_amount, redemption_fee) {
                 return Ok(Some(new_rate));
             } else if self.first_decrease_check(
@@ -345,7 +366,7 @@ impl StrategyData {
                 target_amount,
                 redemption_fee,
             ) {
-                let upfront_fee = self.predict_upfront_fee(new_rate).await?;
+                let upfront_fee = self.predict_upfront_fee(new_rate, block_number).await?;
                 if self.second_decrease_check(
                     time_since_last_update,
                     upfront_fee_period,
@@ -364,6 +385,7 @@ impl StrategyData {
         &self,
         troves: Vec<CombinedTroveData>,
         target_amount: U256,
+        block_number: &str,
     ) -> Result<U256, ManagerError> {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);
@@ -375,6 +397,7 @@ impl StrategyData {
                 let json_data = eth_call_args(
                     self.manager.to_string(),
                     getTroveAnnualInterestRateCall { _troveId: trove.id }.abi_encode(),
+                    block_number,
                 );
 
                 let rpc_canister_response = self
