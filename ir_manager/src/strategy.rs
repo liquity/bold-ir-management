@@ -6,7 +6,7 @@ use ic_exports::ic_cdk::api::time;
 
 use crate::{
     evm_rpc::{RpcService, Service},
-    state::{STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
+    state::{MANAGERS, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
     types::*,
     utils::{decode_response, eth_call_args, rpc_provider},
 };
@@ -96,7 +96,7 @@ impl StrategyData {
 
     /// Locks the strategy.
     /// Mutably accesses the strategy data in the HashMap.
-    fn lock(&self) -> Result<(), ManagerError> {
+    fn lock(&mut self) -> Result<(), ManagerError> {
         if self.lock {
             // already processing
             return Err(ManagerError::Locked);
@@ -108,7 +108,7 @@ impl StrategyData {
 
     /// Unlocks the strategy.
     /// Mutably accesses the strategy data in the HashMap.
-    fn unlock(&self) -> Result<(), ManagerError> {
+    fn unlock(&mut self) -> Result<(), ManagerError> {
         if !self.lock {
             // already unlocked
             return Err(ManagerError::Locked);
@@ -120,7 +120,7 @@ impl StrategyData {
 
     /// The only public function for this struct implementation. It runs the strategy and returns `Err` in case of failure.
     /// Mutably accesses the strategy data in the HashMap.
-    pub async fn execute(&self) -> Result<(), ManagerError> {
+    pub async fn execute(&mut self) -> Result<(), ManagerError> {
         // Lock the strategy
         self.lock()?;
 
@@ -131,11 +131,25 @@ impl StrategyData {
             .fetch_unbacked_portion_price_and_redeemablity(None)
             .await?;
 
-        let troves = self.fetch_multiple_sorted_troves(U256::from(1000)).await?; // TODO change fixed number 1000
+        let mut troves: Vec<CombinedTroveData> = vec![];
+        let mut troves_index = U256::from(0);
+        loop {
+            let fetched_troves = self
+                .fetch_multiple_sorted_troves(troves_index, U256::from(1500))
+                .await?;
+            let fetched_troves_count = fetched_troves.len();
+            troves.extend(fetched_troves);
+            if fetched_troves_count != 1500 {
+                break;
+            }
+            troves_index += U256::from(1500);
+        }
 
         let redemption_fee = self.fetch_redemption_rate().await?;
         let redemption_split = unbacked_portion_price_and_redeemability._0
-            / self.fetch_total_unbacked(vec![&self.manager]).await?;
+            / self
+                .fetch_total_unbacked(unbacked_portion_price_and_redeemability._0)
+                .await?;
         let target_amount = redemption_split
             * entire_system_debt
             * ((redemption_fee * self.target_min) / U256::from(5))
@@ -257,14 +271,13 @@ impl StrategyData {
 
     async fn fetch_multiple_sorted_troves(
         &self,
+        index: U256,
         count: U256,
     ) -> Result<Vec<CombinedTroveData>, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
-        let start_index = I256::from(0 as i64);
-
         let parameters = getMultipleSortedTrovesCall {
-            _startIdx: start_index,
+            _startIdx: I256::from_raw(index),
             _count: count,
         };
 
@@ -286,17 +299,11 @@ impl StrategyData {
     }
 
     /// Fetches the total unbacked amount across all collateral markets excluding the ones defined in the parameter.
-    async fn fetch_total_unbacked(
-        &self,
-        excluded_managers: Vec<&str>,
-    ) -> Result<U256, ManagerError> {
-        let managers: Vec<String> = MANAGERS.with(|managers_vector| {
-            let mut filtered_managers = managers_vector.borrow().clone(); // Clone the vector
-            filtered_managers.retain(|x| !excluded_managers.contains(&x.as_str())); // Then retain elements
-            filtered_managers // Return the filtered vector
-        });
+    async fn fetch_total_unbacked(&self, initial_value: U256) -> Result<U256, ManagerError> {
+        let managers: Vec<String> =
+            MANAGERS.with(|managers_vector| managers_vector.borrow().clone());
 
-        let mut total_unbacked = U256::from(0);
+        let mut total_unbacked = initial_value;
 
         for manager in managers {
             total_unbacked += self
@@ -381,7 +388,7 @@ impl StrategyData {
                 >(rpc_canister_response)?
                 ._0;
 
-                new_rate = interest_rate + U256::from(10000000000000000);
+                new_rate = interest_rate + U256::from(10000000000000000 as u64);
                 break;
             }
             counted_debt += trove.debt;

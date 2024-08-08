@@ -22,7 +22,7 @@ use crate::{
     signer::{
         get_canister_public_key, pubkey_bytes_to_address, sign_eip1559_transaction, SignRequest,
     },
-    state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, STRATEGY_DATA},
+    state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, MANAGERS, STRATEGY_DATA},
     strategy::StrategyData,
     types::{Account, DerivationPath, ManagerError, Market, StrategyInput},
 };
@@ -38,7 +38,7 @@ pub fn generate_strategies(
 ) -> HashMap<u32, StrategyData> {
     let mut strategies_data: HashMap<u32, StrategyData> = HashMap::new();
     let mut strategy_id = 0;
-
+    
     markets.into_iter().for_each(|market| {
         strategies.iter().enumerate().for_each(|(index, strategy)| {
             let strategy_data = StrategyData::new(
@@ -126,7 +126,7 @@ pub async fn fetch_ether_cycles_rate() -> Result<u64, ManagerError> {
 /// Logs the error, and sets off a zero second timer to re-run
 pub async fn retry(
     key: u32,
-    strategy: &StrategyData,
+    strategy: &mut StrategyData,
     error: ManagerError,
 ) -> Result<(), ManagerError> {
     // Attempt to retrieve and modify the strategy data, handling errors gracefully

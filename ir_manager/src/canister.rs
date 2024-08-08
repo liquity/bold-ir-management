@@ -33,10 +33,17 @@ impl IrManager {
         let rpc_url = init_args.rpc_url;
         let markets = init_args.markets;
 
+        let mut managers = vec![];
+
         let parsed_markets: Vec<Market> = markets
             .into_iter()
-            .map(|market| Market::try_from(market))
+            .map(|market| {
+                managers.push(market.manager.clone());
+                Market::try_from(market)
+            })
             .collect::<Result<Vec<Market>, ManagerError>>()?;
+
+        MANAGERS.with(|managers_vector| *managers_vector.borrow_mut() = managers);
 
         STRATEGY_DATA.with(|data| {
             let generated_strategies = generate_strategies(

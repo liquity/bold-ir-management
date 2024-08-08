@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use ic_exports::{
     ic_cdk::spawn,
@@ -19,16 +22,19 @@ pub fn start_timers() {
     // assign a separate timer for each strategy
     let strategies = STRATEGY_DATA.with(|vector_data| vector_data.borrow().clone());
 
-    let max_retry_attempts = MAX_RETRY_ATTEMPTS.with(|attempts| attempts.get());
+    let max_retry_attempts = Arc::new(MAX_RETRY_ATTEMPTS.with(|attempts| attempts.get()));
 
     // STRATEGY TIMER | EVERY 1 HOUR
     strategies.into_iter().for_each(|(key, strategy)| {
+        let max_retry_attempts = Arc::clone(&max_retry_attempts);
         set_timer_interval(Duration::from_secs(3600), move || {
-            spawn(async {
-                for _ in 0..=max_retry_attempts {
+            let mut strategy = strategy.clone();
+            let max_retry_attempts = Arc::clone(&max_retry_attempts);
+            spawn(async move {
+                for _ in 0..=*max_retry_attempts {
                     let result = match strategy.execute().await {
                         Ok(()) => Ok(()),
-                        Err(error) => retry(key, &strategy, error).await,
+                        Err(error) => retry(key, &mut strategy.clone(), error).await,
                     };
 
                     if result.is_ok() {
@@ -41,8 +47,9 @@ pub fn start_timers() {
 
     // CKETH RECHARGER | EVERY 24 HOURS
     set_timer_interval(Duration::from_secs(86_400), move || {
-        spawn(async {
-            for _ in 0..=max_retry_attempts {
+        let max_retry_attempts = Arc::clone(&max_retry_attempts);
+        spawn(async move {
+            for _ in 0..=*max_retry_attempts {
                 let result = match recharge_cketh().await {
                     Ok(()) => Ok(()),
                     Err(error) => recharge_cketh().await,

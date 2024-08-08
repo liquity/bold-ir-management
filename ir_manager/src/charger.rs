@@ -63,7 +63,7 @@ async fn ether_deposit() -> Result<(), ManagerError> {
         let eoa = strategy
             .eoa_pk
             .ok_or_else(|| ManagerError::NonExistentValue)?;
-        let balance = fetch_balance(&rpc_canister, &rpc_url, eoa).await?;
+        let balance = fetch_balance(&rpc_canister, &rpc_url, eoa.to_string()).await?;
         if balance > ether_value {
             let encoded_canister_id: FixedBytes<32> =
                 FixedBytes::<32>::from_str(&api::id().to_string())

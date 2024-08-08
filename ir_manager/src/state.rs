@@ -32,6 +32,6 @@ thread_local! {
     pub static CKETH_HELPER: RefCell<String> = RefCell::new("0x7574eB42cA208A4f6960ECCAfDF186D627dCC175".to_string());
     pub static CKETH_LEDGER: Cell<Principal> = Cell::new(Principal::from_slice("ss2fx-dyaaa-aaaar-qacoq-cai".as_bytes()));
     pub static CKETH_FEE: RefCell<Nat> = RefCell::new(Nat::from(2_000_000_000_000 as u64));
-    pub static ETHER_RECHARGE_VALUE: Cell<U256> = Cell::new(U256::from(30_000_000_000_000_000)); // 0.03 ETH in WEI
+    pub static ETHER_RECHARGE_VALUE: Cell<U256> = Cell::new(U256::from(30_000_000_000_000_000 as u64)); // 0.03 ETH in WEI
     pub static CKETH_THRESHOLD: RefCell<Nat> = RefCell::new(Nat::from(30_000_000_000_000_000 as u64)); // 0.03 ETH in WEI
 }
