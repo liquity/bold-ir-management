@@ -20,7 +20,7 @@ pub enum ManagerError {
 
 pub type DerivationPath = Vec<Vec<u8>>;
 
-#[derive(CandidType)]
+#[derive(CandidType, Deserialize)]
 pub struct StrategyInput {
     pub target_min: Nat,
 }
@@ -46,7 +46,7 @@ impl From<StrategyData> for StrategyQueryData {
     }
 }
 
-#[derive(CandidType)]
+#[derive(CandidType, Deserialize)]
 pub struct MarketInput {
     pub manager: String,
     pub multi_trove_getter: String,
@@ -87,7 +87,7 @@ pub struct Market {
     pub batch_managers: Vec<Address>,
 }
 
-#[derive(CandidType)]
+#[derive(CandidType, Deserialize)]
 pub struct InitArgs {
     pub rpc_principal: Principal,
     pub rpc_url: String,

@@ -1,1 +1,77 @@
-service : (principal, text, vec text, vec text, text) -> {}
+type HttpOutcallError = variant {
+  IcError : record { code : RejectionCode; message : text };
+  InvalidHttpJsonRpcResponse : record {
+    status : nat16;
+    body : text;
+    parsingError : opt text;
+  };
+};
+type InitArgs = record {
+  rpc_principal : principal;
+  hint_helper : text;
+  markets : vec MarketInput;
+  upfront_fee_period : nat;
+  rpc_url : text;
+  collateral_registry : text;
+  strategies : vec StrategyInput;
+};
+type JsonRpcError = record { code : int64; message : text };
+type ManagerError = variant {
+  Custom : text;
+  Locked;
+  DecodingError : text;
+  RpcResponseError : RpcError;
+  CyclesBalanceAboveRechargingThreshold;
+  NonExistentValue;
+};
+type MarketInput = record {
+  manager : text;
+  batch_managers : vec text;
+  collateral_index : nat;
+  multi_trove_getter : text;
+};
+type ProviderError = variant {
+  TooFewCycles : record { expected : nat; received : nat };
+  MissingRequiredProvider;
+  ProviderNotFound;
+  NoPermission;
+};
+type RejectionCode = variant {
+  NoError;
+  CanisterError;
+  SysTransient;
+  DestinationInvalid;
+  Unknown;
+  SysFatal;
+  CanisterReject;
+};
+type Result = variant { Ok; Err : ManagerError };
+type Result_1 = variant { Ok : SwapResponse; Err : ManagerError };
+type RpcError = variant {
+  JsonRpcError : JsonRpcError;
+  ProviderError : ProviderError;
+  ValidationError : ValidationError;
+  HttpOutcallError : HttpOutcallError;
+};
+type StrategyInput = record { target_min : nat };
+type StrategyQueryData = record {
+  manager : text;
+  latest_rate : text;
+  eoa_pk : opt text;
+  target_min : text;
+  last_update : nat64;
+};
+type SwapResponse = record { returning_ether : nat; accepted_cycles : nat };
+type ValidationError = variant {
+  CredentialPathNotAllowed;
+  HostNotAllowed : text;
+  CredentialHeaderNotAllowed;
+  UrlParseError : text;
+  Custom : text;
+  InvalidHex : text;
+};
+service : {
+  get_strategies : () -> (vec StrategyQueryData) query;
+  start : (InitArgs) -> (Result);
+  swap_cketh : () -> (Result_1);
+}
