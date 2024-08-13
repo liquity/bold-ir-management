@@ -12,6 +12,14 @@ use crate::{
 };
 
 /// Starts timers for all strategies, and a recurring timer for cycle balance checks.
+///
+/// Workflow:
+/// 1. Start the canister:
+///    - Instantly set public keys for each strategy's EOA.
+/// 2. Start strategy execution timers:
+///    - Each strategy has its own timer, triggering every 1 hour.
+/// 3. Start a 24-hour recurring timer:
+///    - Checks the ckETH balance and recharges if needed.
 pub fn start_timers() {
     // assign public keys to the different strategy EOAs
     set_timer(Duration::ZERO, || spawn(set_public_keys()));
