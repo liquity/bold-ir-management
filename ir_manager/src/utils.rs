@@ -10,7 +10,7 @@ use ic_exports::ic_cdk::{
         is_controller,
         management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     },
-    call, id, print,
+    call, id,
 };
 use serde_json::json;
 
@@ -135,35 +135,6 @@ pub async fn fetch_ether_cycles_rate() -> Result<u64, ManagerError> {
         },
         Err(err) => Err(ManagerError::Custom(err.1)),
     }
-}
-
-/// Logs the error, and sets off a zero second timer to re-run
-pub async fn retry(
-    key: u32,
-    strategy: &mut StrategyData,
-    error: ManagerError,
-) -> Result<(), ManagerError> {
-    // Attempt to retrieve and modify the strategy data, handling errors gracefully
-    let result = STRATEGY_DATA.with(|strategies| {
-        strategies
-            .borrow_mut()
-            .get_mut(&key)
-            .map(|s| s.lock = false)
-    });
-
-    // Check if the above operation was successful
-    if result.is_none() {
-        // Log the error and return a ManagerError if the operation failed
-        println!("[ERROR] Key not found for strategy data update: {}", key);
-        return Err(ManagerError::NonExistentValue);
-    }
-
-    print(format!(
-        "[ERROR] Dropping and Retrying error => {:#?}",
-        error
-    ));
-
-    strategy.execute().await
 }
 
 pub fn unlock(key: u32) -> Result<(), ManagerError> {
