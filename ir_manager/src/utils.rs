@@ -18,8 +18,8 @@ use serde_json::json;
 
 use crate::{
     evm_rpc::{
-        EthCallResponse, MultiSendRawTransactionResult, RequestResult, RpcApi, RpcService,
-        RpcServices, Service,
+        EthCallResponse, MultiSendRawTransactionResult, RequestCostResult, RequestResult, RpcApi,
+        RpcService, RpcServices, Service,
     },
     exchange::*,
     gas::{estimate_transaction_fees, FeeEstimates},
@@ -28,6 +28,34 @@ use crate::{
     strategy::StrategyData,
     types::{Account, DerivationPath, ManagerError, Market, StrategyInput},
 };
+use num_traits::ToPrimitive;
+
+/// Returns the estimated cycles cost of performing the RPC call if successful
+pub async fn estimate_cycles(
+    rpc_canister: &Service,
+    rpc: RpcService,
+    json_data: String,
+    max_response_bytes: u64,
+) -> Result<u128, ManagerError> {
+    let canister_response = rpc_canister
+        .request_cost(rpc, json_data, max_response_bytes)
+        .await;
+    match canister_response {
+        Ok((request_cost_result,)) => match request_cost_result {
+            RequestCostResult::Ok(amount) => {
+                let cycles = amount.0.to_u128();
+                if let Some(cycles_u128) = cycles {
+                    return Ok(cycles_u128);
+                }
+                Err(ManagerError::DecodingError(String::from(
+                    "Could not convert Nat response of request_cost to u128.",
+                )))
+            }
+            RequestCostResult::Err(rpc_err) => Err(ManagerError::RpcResponseError(rpc_err)),
+        },
+        Err((_, err)) => Err(ManagerError::Custom(err)),
+    }
+}
 
 /// Returns Err if the `caller` is not a controller of the canister
 pub fn only_controller(caller: Principal) -> Result<(), ManagerError> {

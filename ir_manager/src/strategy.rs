@@ -7,7 +7,7 @@ use crate::{
     evm_rpc::{RpcService, Service},
     state::{MANAGERS, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
     types::*,
-    utils::{decode_response, eth_call_args, get_block_number, rpc_provider},
+    utils::{decode_response, estimate_cycles, eth_call_args, get_block_number, rpc_provider},
 };
 
 /// Struct containing all information necessary to execute a strategy
@@ -209,7 +209,7 @@ impl StrategyData {
         block_number: &str,
     ) -> Result<U256, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
-
+        let max_response_bytes = 100; // two uint256 + one address = 84 bytes
         let arguments = predictAdjustBatchInterestRateUpfrontFeeCall {
             _collIndex: self.collateral_index,
             _batchAddress: self.batch_manager.clone(),
@@ -222,9 +222,17 @@ impl StrategyData {
             block_number,
         );
 
+        let cycles = estimate_cycles(
+            &self.rpc_canister,
+            rpc_provider(&self.rpc_url),
+            json_data.clone(),
+            max_response_bytes,
+        )
+        .await?;
+
         let rpc_canister_response = self
             .rpc_canister
-            .request(rpc, json_data, 500000, 10_000_000_000)
+            .request(rpc, json_data, max_response_bytes, cycles)
             .await;
 
         decode_response::<
@@ -238,16 +246,24 @@ impl StrategyData {
     /// Returns the debt of the entire system across all markets if successful.
     async fn fetch_entire_system_debt(&self, block_number: &str) -> Result<U256, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
-
         let json_data = eth_call_args(
             self.manager.to_string(),
             getEntireSystemDebtCall::SELECTOR.to_vec(),
             block_number,
         );
 
+        let max_response_bytes = 50; // one uint256 = 32 bytes
+        let cycles = estimate_cycles(
+            &self.rpc_canister,
+            rpc_provider(&self.rpc_url),
+            json_data.clone(),
+            max_response_bytes,
+        )
+        .await?;
+
         let rpc_canister_response = self
             .rpc_canister
-            .request(rpc, json_data, 500000, 10_000_000_000)
+            .request(rpc, json_data, max_response_bytes, cycles)
             .await;
 
         decode_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(rpc_canister_response)
@@ -264,9 +280,18 @@ impl StrategyData {
             block_number,
         );
 
+        let max_response_bytes = 50; // one uint256 = 32 bytes
+        let cycles = estimate_cycles(
+            &self.rpc_canister,
+            rpc_provider(&self.rpc_url),
+            json_data.clone(),
+            max_response_bytes,
+        )
+        .await?;
+
         let rpc_canister_response = self
             .rpc_canister
-            .request(rpc, json_data, 500000, 10_000_000_000)
+            .request(rpc, json_data, max_response_bytes, cycles)
             .await;
 
         decode_response::<getRedemptionRateWithDecayReturn, getRedemptionRateWithDecayCall>(
@@ -294,9 +319,18 @@ impl StrategyData {
             block_number,
         );
 
+        let max_response_bytes = 50; // two uint256, one bool = 65 bytes
+        let cycles = estimate_cycles(
+            &self.rpc_canister,
+            rpc_provider(&self.rpc_url),
+            json_data.clone(),
+            max_response_bytes,
+        )
+        .await?;
+
         let rpc_canister_response = self
             .rpc_canister
-            .request(rpc, json_data, 500000, 10_000_000_000)
+            .request(rpc, json_data, max_response_bytes, cycles)
             .await;
 
         decode_response::<
@@ -324,9 +358,19 @@ impl StrategyData {
             block_number,
         );
 
+        let trove_size_bytes = 380; // eleven uint256, one address = 372 bytes
+        let max_response_bytes = trove_size_bytes * count.to::<u64>();
+        let cycles = estimate_cycles(
+            &self.rpc_canister,
+            rpc_provider(&self.rpc_url),
+            json_data.clone(),
+            max_response_bytes,
+        )
+        .await?;
+
         let rpc_canister_response = self
             .rpc_canister
-            .request(rpc, json_data, 500000, 10_000_000_000)
+            .request(rpc, json_data, max_response_bytes, cycles)
             .await;
 
         decode_response::<getMultipleSortedTrovesReturn, getMultipleSortedTrovesCall>(
@@ -424,9 +468,18 @@ impl StrategyData {
                     block_number,
                 );
 
+                let max_response_bytes = 50; // one uint256 = 32 bytes
+                let cycles = estimate_cycles(
+                    &self.rpc_canister,
+                    rpc_provider(&self.rpc_url),
+                    json_data.clone(),
+                    max_response_bytes,
+                )
+                .await?;
+
                 let rpc_canister_response = self
                     .rpc_canister
-                    .request(rpc, json_data, 500000, 10_000_000_000)
+                    .request(rpc, json_data, max_response_bytes, cycles)
                     .await;
 
                 let interest_rate = decode_response::<
