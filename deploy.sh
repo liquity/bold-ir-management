@@ -1,5 +1,35 @@
 #!/bin/bash
+
+# Load environment variables from .env file
+export $(grep -v '^#' .env | xargs)
+
+# Deploy the canister
 dfx deploy --ic
+
+# Call the start method
 dfx canister call --ic ir_manager start '(1)'
+
+# Call the assign_keys method
 dfx canister call --ic ir_manager assign_keys
-dfx canister call --ic ir_manager start_timers '(record {rpc_principal=principal "7hfb6-caaaa-aaaar-qadga-cai"; hint_helper="0xE84251b93D9524E0d2e621Ba7dc7cb3579F997C0"; markets=vec {record {manager="0xE84251b93D9524E0d2e621Ba7dc7cb3579F997C0"; batch_managers=vec {"0xE84251b93D9524E0d2e621Ba7dc7cb3579F997C0"}; collateral_index=0; multi_trove_getter="0xE84251b93D9524E0d2e621Ba7dc7cb3579F997C0"}}; upfront_fee_period=7; rpc_url="https://www.liquity.org/"; collateral_registry="0xE84251b93D9524E0d2e621Ba7dc7cb3579F997C0"; strategies=vec {record {target_min=20}}})'
+
+# Call the start_timers method with parameters from the .env file
+dfx canister call --ic ir_manager start_timers "(
+  record {
+    rpc_principal = principal \"$RPC_PRINCIPAL\";
+    hint_helper = \"$HINT_HELPER\";
+    markets = vec {
+      record {
+        manager = \"$MANAGER\";
+        batch_managers = vec { \"$BATCH_MANAGER\" };
+        collateral_index = 0;
+        multi_trove_getter = \"$MULTI_TROVE_GETTER\";
+      }
+    };
+    upfront_fee_period = $UPFRONT_FEE_PERIOD;
+    rpc_url = \"$RPC_URL\";
+    collateral_registry = \"$COLLATERAL_REGISTRY\";
+    strategies = vec {
+      record { target_min = $TARGET_MIN }
+    };
+  }
+)"
