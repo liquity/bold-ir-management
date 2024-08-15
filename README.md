@@ -6,6 +6,32 @@ The BOLD Interest Rate (IR) Manager is a Rust-based canister designed to work in
 
 The BOLD IR Manager can manage multiple strategies, each linked to different Batch Manager contracts and EOAs. It periodically checks the state of sorted troves every hour and will initiate an update transaction if any of the rate adjustment conditions—whether to increase or decrease the rates—are met.
 
+## Calculations
+
+Whenever a strategy is being executed, the following calculations are performed:
+
+- Increase check:
+
+    ![](./assets/update_condition.png)
+
+- First decrease check:
+
+    ![](./assets/first_decrease_condition.png)
+
+- Second decrease check:
+
+    ![](./assets/second_decrease_condition.png)
+
+- New rate calculation:
+
+    ![](./assets/new_rate.png)
+
+- Definitions:
+
+    ![](./assets/definitions.png)
+
+    ![](./assets/maximumRedemptionCollateral.png)
+
 ## Recharge Flow
 
 The diagram below illustrates how the canister recharges itself automatically by providing financial incentives to external participants. These participants can supply the protocol with ETH and Cycles in exchange for BOLD and ckETH, respectively.
@@ -34,11 +60,13 @@ The diagram below illustrates how the canister recharges itself automatically by
 
 ## Canister Methods
 
-The BOLD IR Manager canister exposes only three primary methods:
+The BOLD IR Manager canister exposes several key methods for interaction:
 
-- **start**: Initializes the canister's state, starts the timers required for automatic rate adjustments, and blackholes the canister (removes all controllers).
-- **get_strategies**: Retrieves all active strategies along with their corresponding EOAs.
-- **swap_cketh**: Allows any caller to send cycles for recharging purposes and receive ckETH in return.
+- **`start`**: Initializes the canister's strategy data state with placeholder values that allow for tECDSA key generation.
+- **`assign_keys`**: Initializes public keys for the strategies' EOAs to interact securely with Ethereum.
+- **`start_timers`**: Accepts `InitArgs` as input to start all relevant timers for interest rate adjustments, ckETH balance checks, and more. This method allows for customizable configuration on initialization, including the specification of markets, RPC settings, collateral registry, and strategies. It also blackholes the canister (removes all controllers)
+- **`swap_cketh`**: Allows any caller to send cycles for recharging purposes and receive ckETH in return. This method returns a `SwapResponse` that contains details about the transaction, such as the amount of ether returned and cycles accepted.
+- **`get_strategies`**: Retrieves all active strategies along with their corresponding EOAs and related data, such as the latest rate and the last update time.
 
 ## Technical Details: tECDSA Signatures
 
