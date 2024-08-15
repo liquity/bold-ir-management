@@ -87,8 +87,8 @@ impl StrategyData {
         collateral_index: U256,
         hint_helper: Address,
         batch_manager: Address,
-        _eoa_pk: Address,
-        _derivation_path: DerivationPath,
+        eoa_pk: Option<Address>,
+        derivation_path: DerivationPath,
     ) -> Self {
         Self {
             key,
@@ -99,13 +99,13 @@ impl StrategyData {
             multi_trove_getter,
             collateral_index,
             latest_rate: U256::from(0),
-            derivation_path: vec![key.to_be_bytes().to_vec()],
+            derivation_path,
             target_min,
             upfront_fee_period,
             last_update: 0,
             lock: false,
             eoa_nonce: 0,
-            eoa_pk: None,
+            eoa_pk,
             rpc_canister,
             rpc_url,
         }

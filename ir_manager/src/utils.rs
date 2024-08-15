@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{collections::HashMap, str::FromStr};
 
 use alloy_primitives::{Address, Bytes, TxKind, U256};
@@ -27,12 +29,18 @@ use crate::{
     types::{Account, DerivationPath, ManagerError, Market, StrategyInput},
 };
 
+/// Returns Err if the `caller` is not a controller of the canister
 pub fn only_controller(caller: Principal) -> Result<(), ManagerError> {
     if !is_controller(&caller) {
         // only the controller should be able to call this function
         return Err(ManagerError::Unauthorized);
     }
     Ok(())
+}
+
+/// Converts String to Address and returns ManagerError on failure
+pub fn string_to_address(input: String) -> Result<Address, ManagerError> {
+    Address::from_str(&input).map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))
 }
 
 /// Generates strategies for each market. Returns a HashMap<u32, StrategyData>.
@@ -65,7 +73,7 @@ pub fn generate_strategies(
                 nat_to_u256(&market.collateral_index),
                 hint_helper.clone(),
                 market.batch_managers[index],
-                state_strategy_data.eoa_pk.unwrap(),
+                state_strategy_data.eoa_pk,
                 state_strategy_data.derivation_path,
             );
             strategies_data.insert(strategy_id, strategy_data);

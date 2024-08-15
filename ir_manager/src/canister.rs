@@ -6,7 +6,7 @@ use crate::{
     state::*,
     strategy::StrategyData,
     types::{InitArgs, ManagerError, Market, StrategyQueryData, SwapResponse},
-    utils::{generate_strategies, only_controller},
+    utils::{generate_strategies, only_controller, string_to_address},
 };
 use alloy_primitives::Address;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
@@ -84,6 +84,7 @@ impl IrManager {
 
     /// Starts timers for executing strategies and managing the canister's cycle balance.
     /// Each strategy executes on a 1-hour interval, and cycle balance checks happen every 24 hours.
+    #[update]
     pub fn start_timers(&self, init_args: InitArgs) -> Result<(), ManagerError> {
         only_controller(caller())?;
 
@@ -93,10 +94,8 @@ impl IrManager {
         }
 
         // Parse and assign initialization arguments
-        let collateral_registry = Address::from_str(&init_args.collateral_registry)
-            .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
-        let hint_helper = Address::from_str(&init_args.hint_helper)
-            .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
+        let collateral_registry = string_to_address(init_args.collateral_registry)?;
+        let hint_helper = string_to_address(init_args.hint_helper)?;
 
         let rpc_principal = init_args.rpc_principal;
         let strategies = init_args.strategies;
