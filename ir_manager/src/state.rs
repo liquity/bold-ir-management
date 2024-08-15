@@ -35,6 +35,8 @@ thread_local! {
     /// ckETH mint value
     /// The amount of Ether that will be used to mint new ckETH tokens when the balance is below the threshold
     pub static ETHER_RECHARGE_VALUE: Cell<U256> = Cell::new(U256::from(30_000_000_000_000_000 as u64)); // 0.03 ETH in WEI
+    /// Cycles discount percentage
+    pub static CYCLES_DISCOUNT_PERCENTAGE: Cell<u64> = Cell::new(2); // 0.03 ETH in WEI
     /// ckETH balance threshold of the canister.
     /// The recharging cycle will mint more ckETH if the balance falls below this number
     pub static CKETH_THRESHOLD: RefCell<Nat> = RefCell::new(Nat::from(30_000_000_000_000_000 as u64)); // 0.03 ETH in WEI
