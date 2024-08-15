@@ -1,5 +1,6 @@
 use alloy_primitives::{Address, I256, U256};
 use alloy_sol_types::SolCall;
+use candid::Principal;
 use ic_exports::ic_cdk::api::time;
 
 use crate::{
@@ -48,6 +49,30 @@ pub struct StrategyData {
     pub rpc_url: String,
 }
 
+impl Default for StrategyData {
+    fn default() -> Self {
+        Self {
+            key: 0,
+            batch_manager: Address::ZERO,
+            hint_helper: Address::ZERO,
+            manager: Address::ZERO,
+            collateral_registry: Address::ZERO,
+            multi_trove_getter: Address::ZERO,
+            collateral_index: U256::ZERO,
+            latest_rate: U256::ZERO,
+            derivation_path: vec![],
+            target_min: U256::ZERO,
+            upfront_fee_period: U256::ZERO,
+            last_update: 0,
+            lock: false,
+            eoa_nonce: 0,
+            eoa_pk: None,
+            rpc_canister: Service(Principal::anonymous()),
+            rpc_url: String::default(),
+        }
+    }
+}
+
 impl StrategyData {
     /// Generates a new strategy
     pub fn new(
@@ -62,6 +87,8 @@ impl StrategyData {
         collateral_index: U256,
         hint_helper: Address,
         batch_manager: Address,
+        _eoa_pk: Address,
+        _derivation_path: DerivationPath,
     ) -> Self {
         Self {
             key,
@@ -106,7 +133,7 @@ impl StrategyData {
 
     /// Unlocks the strategy.
     /// Mutably accesses the strategy data in the HashMap.
-    fn unlock(&mut self) -> Result<(), ManagerError> {
+    pub fn unlock(&mut self) -> Result<(), ManagerError> {
         if !self.lock {
             // already unlocked
             return Err(ManagerError::Locked);

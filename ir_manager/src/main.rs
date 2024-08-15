@@ -6,7 +6,6 @@ mod gas;
 mod signer;
 mod state;
 mod strategy;
-mod timers;
 mod types;
 mod utils;
 

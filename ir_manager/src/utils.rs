@@ -7,6 +7,7 @@ use ic_exports::ic_cdk::{
     self,
     api::{
         call::CallResult,
+        is_controller,
         management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     },
     call, id, print,
@@ -20,13 +21,19 @@ use crate::{
     },
     exchange::*,
     gas::{estimate_transaction_fees, FeeEstimates},
-    signer::{
-        get_canister_public_key, pubkey_bytes_to_address, sign_eip1559_transaction, SignRequest,
-    },
+    signer::{sign_eip1559_transaction, SignRequest},
     state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, STRATEGY_DATA},
     strategy::StrategyData,
     types::{Account, DerivationPath, ManagerError, Market, StrategyInput},
 };
+
+pub fn only_controller(caller: Principal) -> Result<(), ManagerError> {
+    if !is_controller(&caller) {
+        // only the controller should be able to call this function
+        return Err(ManagerError::Unauthorized);
+    }
+    Ok(())
+}
 
 /// Generates strategies for each market. Returns a HashMap<u32, StrategyData>.
 pub fn generate_strategies(
@@ -40,9 +47,12 @@ pub fn generate_strategies(
 ) -> HashMap<u32, StrategyData> {
     let mut strategies_data: HashMap<u32, StrategyData> = HashMap::new();
     let mut strategy_id = 0;
-
+    let mut state_strategies = STRATEGY_DATA
+        .with(|strategies| strategies.borrow().clone())
+        .into_iter();
     markets.into_iter().for_each(|market| {
         strategies.iter().enumerate().for_each(|(index, strategy)| {
+            let state_strategy_data = state_strategies.next().unwrap().1;
             let strategy_data = StrategyData::new(
                 strategy_id,
                 market.manager.clone(),
@@ -55,6 +65,8 @@ pub fn generate_strategies(
                 nat_to_u256(&market.collateral_index),
                 hint_helper.clone(),
                 market.batch_managers[index],
+                state_strategy_data.eoa_pk.unwrap(),
+                state_strategy_data.derivation_path,
             );
             strategies_data.insert(strategy_id, strategy_data);
             strategy_id += 1;
@@ -263,32 +275,6 @@ pub async fn get_block_number(
     let decoded_response: EthCallResponse = serde_json::from_str(&encoded_response)
         .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
     Ok(decoded_response.result)
-}
-
-pub async fn set_public_keys() {
-    let strategies =
-        STRATEGY_DATA.with(|strategies_hashmap| strategies_hashmap.borrow_mut().clone());
-
-    for (_id, strategy) in strategies {
-        let derivation_path = strategy.derivation_path.clone();
-        let key_id = EcdsaKeyId {
-            curve: EcdsaCurve::Secp256k1,
-            name: String::from("key_1"),
-        };
-
-        // Calculate the public key asynchronously
-        let public_key_bytes = get_canister_public_key(key_id, None, Some(derivation_path)).await;
-        let eoa_pk = Address::from_str(&pubkey_bytes_to_address(&public_key_bytes)).unwrap();
-
-        // Update the strategy with the public key
-        STRATEGY_DATA.with(|strategies_hashmap| {
-            strategies_hashmap
-                .borrow_mut()
-                .get_mut(&_id)
-                .unwrap()
-                .eoa_pk = Some(eoa_pk);
-        });
-    }
 }
 
 pub async fn send_raw_transaction(

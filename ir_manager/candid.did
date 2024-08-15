@@ -19,6 +19,7 @@ type JsonRpcError = record { code : int64; message : text };
 type ManagerError = variant {
   Custom : text;
   Locked;
+  Unauthorized;
   DecodingError : text;
   RpcResponseError : RpcError;
   CyclesBalanceAboveRechargingThreshold;
@@ -71,6 +72,7 @@ type ValidationError = variant {
   InvalidHex : text;
 };
 service : {
+  assign_keys : () -> (Result);
   get_strategies : () -> (vec StrategyQueryData) query;
   start : (InitArgs) -> (Result);
   swap_cketh : () -> (Result_1);

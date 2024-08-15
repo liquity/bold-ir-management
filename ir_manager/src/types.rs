@@ -10,6 +10,7 @@ use crate::evm_rpc::RpcError;
 
 #[derive(CandidType, Debug)]
 pub enum ManagerError {
+    Unauthorized,
     NonExistentValue,
     RpcResponseError(RpcError),
     DecodingError(String),
@@ -51,7 +52,6 @@ pub struct MarketInput {
     pub manager: String,
     pub multi_trove_getter: String,
     pub collateral_index: Nat,
-    pub batch_managers: Vec<String>,
 }
 
 impl TryFrom<MarketInput> for Market {
@@ -62,14 +62,7 @@ impl TryFrom<MarketInput> for Market {
             .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
         let multi_trove_getter = Address::from_str(&value.multi_trove_getter)
             .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
-        let batch_managers: Vec<Address> = value
-            .batch_managers
-            .into_iter()
-            .map(|batch_manager| {
-                Address::from_str(&batch_manager)
-                    .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let batch_managers: Vec<Address> = vec![];
 
         Ok(Self {
             manager,
