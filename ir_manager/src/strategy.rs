@@ -10,6 +10,7 @@ use crate::{
     utils::{decode_response, eth_call_args, get_block_number, rpc_provider},
 };
 
+/// Struct containing all information necessary to execute a strategy
 #[derive(Clone)]
 pub struct StrategyData {
     /// Key in the Hashmap<u32, StrategyData> that is `STRATEGY_DATA`
@@ -173,14 +174,12 @@ impl StrategyData {
         }
 
         let redemption_fee = self.fetch_redemption_rate(&block_number).await?;
-        let redemption_split = unbacked_portion_price_and_redeemability._0
-            / self
-                .fetch_total_unbacked(unbacked_portion_price_and_redeemability._0, &block_number)
-                .await?;
-        let target_amount = redemption_split
-            * entire_system_debt
-            * ((redemption_fee * self.target_min) / U256::from(5))
-            / U256::from(1000);
+        let total_unbacked = self
+            .fetch_total_unbacked(unbacked_portion_price_and_redeemability._0, &block_number)
+            .await?;
+
+        let redemption_split = unbacked_portion_price_and_redeemability._0 / total_unbacked;
+        let target_amount = redemption_split * entire_system_debt;
 
         let new_rate = self
             .run_strategy(

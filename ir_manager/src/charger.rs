@@ -48,8 +48,6 @@ pub async fn recharge_cketh() -> Result<(), ManagerError> {
 async fn ether_deposit() -> Result<(), ManagerError> {
     let ether_value = ETHER_RECHARGE_VALUE.with(|ether_value| ether_value.get());
     let cketh_helper: String = CKETH_HELPER.with(|cketh_helper| cketh_helper.borrow().clone());
-    let rpc_canister: Service = RPC_CANISTER.with(|canister| canister.borrow().clone());
-    let rpc_url: String = RPC_URL.with(|rpc| rpc.borrow().clone());
     let mut strategies: Vec<StrategyData> = STRATEGY_DATA
         .with(|strategies_hashmap| strategies_hashmap.borrow().clone().into_values().collect());
 
@@ -63,10 +61,11 @@ async fn ether_deposit() -> Result<(), ManagerError> {
             None => continue, // Skip if eoa_pk is None
         };
 
-        let balance = match fetch_balance(&rpc_canister, &rpc_url, eoa.to_string()).await {
-            Ok(balance) => balance,
-            Err(_) => continue, // Skip on error
-        };
+        let balance =
+            match fetch_balance(&strategy.rpc_canister, &strategy.rpc_url, eoa.to_string()).await {
+                Ok(balance) => balance,
+                Err(_) => continue, // Skip on error
+            };
 
         if balance > ether_value {
             let encoded_canister_id: FixedBytes<32> =
@@ -92,8 +91,8 @@ async fn ether_deposit() -> Result<(), ManagerError> {
                 ether_value,
                 strategy.eoa_nonce,
                 strategy.derivation_path.clone(),
-                &rpc_canister,
-                &rpc_url,
+                &strategy.rpc_canister,
+                &strategy.rpc_url,
                 100000000,
             )
             .await

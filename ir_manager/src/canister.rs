@@ -172,16 +172,25 @@ impl IrManager {
         set_timer_interval(Duration::from_secs(86_400), move || {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
             spawn(async move {
-                for _ in 0..=*max_retry_attempts {
-                    let result = match recharge_cketh().await {
-                        Ok(()) => Ok(()),
-                        Err(_error) => recharge_cketh().await,
-                    };
+                let mut turn = 0;
 
-                    // Exit on successful recharge
-                    if result.is_ok() {
-                        break;
+                while turn <= *max_retry_attempts {
+                    let result = recharge_cketh().await;
+
+                    match result {
+                        Ok(()) => break, // Exit on success
+                        Err(err) => {
+                            print(format!(
+                                "[ERROR] Error running the daily ckETH recharge cycle, attempt {} => {:#?}",
+                                turn, err
+                            ));
+                            if turn == *max_retry_attempts {
+                                break; // Stop retrying after max attempts
+                            }
+                        }
                     }
+
+                    turn += 1;
                 }
             });
         });
