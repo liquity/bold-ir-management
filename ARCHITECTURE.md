@@ -1,4 +1,4 @@
-# ARCHITECTURE
+# Architecture
 
 This document provides a high-level overview of the architecture of the BOLD Interest Rate Manager project, outlining the structure of the repository and the responsibilities of each major component.
 
@@ -30,9 +30,6 @@ This document provides a high-level overview of the architecture of the BOLD Int
     - **`Interfaces/`**: Houses interfaces that define interactions with Liquity v2 smart contracts. These interfaces include contracts such as `IActivePool.sol`, `IBoldToken.sol`, `ITroveManager.sol`, and others that facilitate communication between the Batch Manager and the Liquity Protocol.
     - **`Types/`**: Defines custom Solidity types used within the contracts, such as `BatchId.sol`, `LatestBatchData.sol`, `LatestTroveData.sol`, and `TroveChange.sol`.
 
-- **`test/`**
-    - **Purpose**: Contains Solidity test files. The primary test here is `BatchManager.t.sol`, which verifies the functionality and correctness of the `BatchManager.sol` contract.
-
 ### 5. `dfx.json`
 - **Purpose**: Configuration file for the DFINITY Internet Computer development environment. It defines settings for canister deployment, building, and managing Internet Computer projects.
 
@@ -58,7 +55,6 @@ This document provides a high-level overview of the architecture of the BOLD Int
     - **`signer.rs`**: Implements tECDSA signature generation and signing logic, allowing the canister to securely authorize Ethereum transactions.
     - **`state.rs`**: Manages the internal state of the canister, including tracking strategies and configuration settings.
     - **`strategy.rs`**: Defines the strategies for adjusting interest rates, including the logic for evaluating and executing these strategies.
-    - **`timers.rs`**: Implements the timing logic for periodic checks and updates, such as hourly trove checks and daily ckETH minting.
     - **`types.rs`**: Defines custom types used within the Rust code, providing clear and structured data handling across the canister's logic.
     - **`utils.rs`**: A utility module that provides common helper functions used across the canister's codebase.
 
