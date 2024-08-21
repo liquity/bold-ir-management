@@ -95,16 +95,16 @@ contract BatchManager {
      * @dev Proxy for setting the new rate
      */
     function setNewRate(
-        address _batchAddress,
-        uint256 _newColl,
-        uint256 _newDebt,
-        uint256 _newAnnualInterestRate
+        uint128 _newAnnualInterestRate,
+        uint256 _upperHint,
+        uint256 _lowerHint,
+        uint256 _maxUpfrontFee
     ) external onlyBatchManagerEOA {
-        troveManager.onSetBatchManagerAnnualInterestRate(
-            _batchAddress,
-            _newColl,
-            _newDebt,
-            _newAnnualInterestRate
+        borrowerOperations.setBatchManagerAnnualInterestRate(
+            _newAnnualInterestRate,
+            _upperHint,
+            _lowerHint,
+            _maxUpfrontFee
         );
     }
 }
