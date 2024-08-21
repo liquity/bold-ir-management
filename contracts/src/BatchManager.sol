@@ -5,6 +5,7 @@ pragma solidity 0.8.20;
 import "./Interfaces/IBoldToken.sol";
 import "./Interfaces/ITroveManager.sol";
 import "./Interfaces/IWETHPriceFeed.sol";
+import "./Interfaces/IBorrowerOperations.sol";
 
 /**
  * @title Liquity V2 Autonomous Interest Rate Manager
@@ -48,6 +49,9 @@ contract BatchManager {
         borrowerOperations = _borrowerOperations;
         boldToken = _boldToken;
         wethPriceFeed = _wethPricefeed;
+
+        // The contract needs to register itself as a batch manager
+        // borrowerOperations.registerBatchManager(0, 100, 2, 2, 7);
 
         emit initialized(
             batchManagerEOA,
