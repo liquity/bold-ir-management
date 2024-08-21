@@ -135,7 +135,7 @@ sol!(
     function getRedemptionRateWithDecay() public view override returns (uint256);
     function getEntireSystemDebt() public view returns (uint256 entireSystemDebt);
     function getUnbackedPortionPriceAndRedeemability() external returns (uint256, uint256, bool);
-    function getMultipleSortedTroves(int256 _startIdx, uint256 _count) external view returns (CombinedTroveData[] memory _troves);
+    function getMultipleSortedTroves(uint256 _collIndex, int256 _startIdx, uint256 _count) external view returns (CombinedTroveData[] memory _troves);
     function getTroveAnnualInterestRate(uint256 _troveId) external view returns (uint256);
     function predictAdjustBatchInterestRateUpfrontFee(
         uint256 _collIndex,

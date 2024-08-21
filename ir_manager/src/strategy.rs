@@ -1,7 +1,7 @@
 use alloy_primitives::{Address, I256, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
-use ic_exports::ic_cdk::api::time;
+use ic_exports::ic_cdk::{api::time, print};
 
 use crate::{
     evm_rpc::{RpcService, Service},
@@ -151,7 +151,6 @@ impl StrategyData {
         self.lock()?;
 
         let block_number = get_block_number(&self.rpc_canister, &self.rpc_url).await?;
-
         let time_since_last_update = U256::from(time() - self.last_update);
 
         let entire_system_debt: U256 = self.fetch_entire_system_debt(&block_number).await?;
@@ -163,16 +162,15 @@ impl StrategyData {
         let mut troves_index = U256::from(0);
         loop {
             let fetched_troves = self
-                .fetch_multiple_sorted_troves(troves_index, U256::from(1500), &block_number)
+                .fetch_multiple_sorted_troves(troves_index, U256::from(1000), &block_number)
                 .await?;
             let fetched_troves_count = fetched_troves.len();
             troves.extend(fetched_troves);
-            if fetched_troves_count != 1500 {
+            if fetched_troves_count != 1000 {
                 break;
             }
-            troves_index += U256::from(1500);
+            troves_index += U256::from(1000);
         }
-
         let redemption_fee = self.fetch_redemption_rate(&block_number).await?;
         let total_unbacked = self
             .fetch_total_unbacked(unbacked_portion_price_and_redeemability._0, &block_number)
@@ -181,7 +179,6 @@ impl StrategyData {
         let redemption_split = unbacked_portion_price_and_redeemability._0 / total_unbacked;
         let maximum_redeemable_against_collateral = redemption_split * entire_system_debt;
         let target_amount = ((redemption_fee * self.target_min) / U256::from(5)) / U256::from(1000);
-
         let new_rate = self
             .run_strategy(
                 troves,
@@ -210,7 +207,7 @@ impl StrategyData {
         block_number: &str,
     ) -> Result<U256, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
-        let max_response_bytes = 100; // two uint256 + one address = 84 bytes
+        let max_response_bytes = 100 + 200; // two uint256 + one address = 84 bytes
         let arguments = predictAdjustBatchInterestRateUpfrontFeeCall {
             _collIndex: self.collateral_index,
             _batchAddress: self.batch_manager.clone(),
@@ -253,7 +250,7 @@ impl StrategyData {
             block_number,
         );
 
-        let max_response_bytes = 50; // one uint256 = 32 bytes
+        let max_response_bytes = 50 + 200; // one uint256 = 32 bytes
         let cycles = estimate_cycles(
             &self.rpc_canister,
             rpc_provider(&self.rpc_url),
@@ -281,7 +278,7 @@ impl StrategyData {
             block_number,
         );
 
-        let max_response_bytes = 50; // one uint256 = 32 bytes
+        let max_response_bytes = 50 + 200; // one uint256 = 32 bytes
         let cycles = estimate_cycles(
             &self.rpc_canister,
             rpc_provider(&self.rpc_url),
@@ -320,7 +317,7 @@ impl StrategyData {
             block_number,
         );
 
-        let max_response_bytes = 50; // two uint256, one bool = 65 bytes
+        let max_response_bytes = 65 + 500; // two uint256, one bool = 65 bytes
         let cycles = estimate_cycles(
             &self.rpc_canister,
             rpc_provider(&self.rpc_url),
@@ -349,6 +346,7 @@ impl StrategyData {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
         let parameters = getMultipleSortedTrovesCall {
+            _collIndex: self.collateral_index,
             _startIdx: I256::from_raw(index),
             _count: count,
         };
@@ -359,8 +357,10 @@ impl StrategyData {
             block_number,
         );
 
-        let trove_size_bytes = 380; // eleven uint256, one address = 372 bytes
-        let max_response_bytes = trove_size_bytes * count.to::<u64>();
+        print(&json_data);
+
+        let trove_size_bytes = 380 + 100; // eleven uint256, one address = 372 bytes
+        let max_response_bytes = trove_size_bytes * count.to::<u64>() + 1000;
         let cycles = estimate_cycles(
             &self.rpc_canister,
             rpc_provider(&self.rpc_url),
@@ -473,7 +473,7 @@ impl StrategyData {
                     block_number,
                 );
 
-                let max_response_bytes = 50; // one uint256 = 32 bytes
+                let max_response_bytes = 50 + 200; // one uint256 = 32 bytes
                 let cycles = estimate_cycles(
                     &self.rpc_canister,
                     rpc_provider(&self.rpc_url),

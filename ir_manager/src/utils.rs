@@ -12,7 +12,7 @@ use ic_exports::ic_cdk::{
         is_controller,
         management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     },
-    call, id,
+    call, id, print,
 };
 use serde_json::json;
 
@@ -182,21 +182,27 @@ pub fn rpc_provider(rpc_url: &str) -> RpcService {
     })
 }
 
+/// Returns `T` from Solidity struct.
 pub fn decode_response<T, F: SolCall<Return = T>>(
     canister_response: CallResult<(RequestResult,)>,
 ) -> Result<T, ManagerError> {
+    // Handles the inter-canister call errors
     match canister_response {
         Ok((rpc_response,)) => handle_rpc_response::<T, F>(rpc_response),
         Err(e) => Err(ManagerError::Custom(e.1)),
     }
 }
 
+/// Returns `T` from Solidity struct if RPC response is Ok
 pub fn handle_rpc_response<T, F: SolCall<Return = T>>(
     rpc_response: RequestResult,
 ) -> Result<T, ManagerError> {
+    // Handle RPC response
     match rpc_response {
         RequestResult::Ok(hex_data) => {
-            let decoded_hex = hex::decode(hex_data)
+            let decoded_response: EthCallResponse = serde_json::from_str(&hex_data)
+                .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
+            let decoded_hex = hex::decode(&decoded_response.result[2..])
                 .map_err(|err| ManagerError::DecodingError(err.to_string()))?;
             F::abi_decode_returns(&decoded_hex, false)
                 .map_err(|err| ManagerError::DecodingError(err.to_string()))
@@ -261,8 +267,17 @@ pub async fn get_block_number(
     })
     .to_string();
 
+    let max_response_bytes = 200;
+    let cycles = estimate_cycles(
+        rpc_canister,
+        rpc_provider(&rpc_url),
+        args.clone(),
+        max_response_bytes,
+    )
+    .await?;
+
     let rpc_canister_response = rpc_canister
-        .request(rpc, args, 500000, 10_000_000_000)
+        .request(rpc, args, max_response_bytes, cycles)
         .await;
 
     let encoded_response = decode_request_response_encoded(rpc_canister_response)?;

@@ -74,6 +74,7 @@ type ValidationError = variant {
 service : {
   assign_keys : () -> (Result);
   get_strategies : () -> (vec StrategyQueryData) query;
+  get_strategy_address : (nat32) -> (opt text) query;
   start : (nat64) -> (Result);
   start_timers : (InitArgs) -> (Result);
   swap_cketh : () -> (Result_1);

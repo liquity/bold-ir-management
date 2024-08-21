@@ -16,7 +16,7 @@ use ic_exports::{
         api::management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
         caller, print, spawn,
     },
-    ic_cdk_timers::set_timer_interval,
+    ic_cdk_timers::{set_timer, set_timer_interval},
 };
 
 #[derive(Canister)]
@@ -138,13 +138,14 @@ impl IrManager {
         // Set timers for each strategy (execute every 1 hour)
         strategies.into_iter().for_each(|(_, strategy)| {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
-            set_timer_interval(Duration::from_secs(3600), move || {
+
+            // TODO: REMOVE AFTER TESTING
+
+            set_timer(Duration::ZERO, move || {
                 let mut strategy = strategy.clone();
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {
-                    let mut turn = 0;
-
-                    while turn <= *max_retry_attempts {
+                    for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
 
                         // Handle success or failure for each strategy execution attempt
@@ -156,16 +157,33 @@ impl IrManager {
                                     "[ERROR] Error running strategy number {}, attempt {} => {:#?}",
                                     strategy.key, turn, err
                                 ));
-                                if turn == *max_retry_attempts {
-                                    break; // Stop retrying after max attempts
-                                }
                             }
                         }
-
-                        turn += 1;
                     }
                 });
             });
+
+            // set_timer_interval(Duration::from_secs(3600), move || {
+            //     let mut strategy = strategy.clone();
+            //     let max_retry_attempts = Arc::clone(&max_retry_attempts);
+            //     spawn(async move {
+            //         for turn in 1..=*max_retry_attempts {
+            //             let result = strategy.execute().await;
+
+            //             // Handle success or failure for each strategy execution attempt
+            //             match result {
+            //                 Ok(()) => break, // Exit on success
+            //                 Err(err) => {
+            //                     let _ = strategy.unlock(); // Unlock on failure
+            //                     print(format!(
+            //                         "[ERROR] Error running strategy number {}, attempt {} => {:#?}",
+            //                         strategy.key, turn, err
+            //                     ));
+            //                 }
+            //             }
+            //         }
+            //     });
+            // });
         });
 
         // Set a recurring timer for recharging ckETH balance (execute every 24 hours)
@@ -207,6 +225,18 @@ impl IrManager {
                 .values()
                 .map(|strategy| StrategyQueryData::from(strategy.clone()))
                 .collect()
+        })
+    }
+
+    /// Returns the strategy EOA
+    #[query]
+    pub fn get_strategy_address(&self, index: u32) -> Option<String> {
+        STRATEGY_DATA.with(|data| {
+            let binding = data.borrow();
+            match binding.get(&index) {
+                Some(strategy) => Some(strategy.eoa_pk.unwrap().to_string()),
+                None => None,
+            }
         })
     }
 
