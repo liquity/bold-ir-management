@@ -144,12 +144,12 @@ sol!(
     ) external view returns (uint256);
 
     // Liquity externals
-    function setBatchManagerAnnualInterestRate(
+    function setNewRate(
         uint128 _newAnnualInterestRate,
         uint256 _upperHint,
         uint256 _lowerHint,
         uint256 _maxUpfrontFee
-    ) external;
+    );
 
     // ckETH Helper
     function deposit(bytes32 _principal) public payable;

@@ -2,12 +2,16 @@ use alloy_primitives::{Address, I256, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
 use ic_exports::ic_cdk::{api::time, print};
+use serde_json::json;
 
 use crate::{
-    evm_rpc::{RpcService, Service},
+    evm_rpc::{EthCallResponse, RpcService, SendRawTransactionResult, Service},
     state::{MANAGERS, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
     types::*,
-    utils::{decode_response, estimate_cycles, eth_call_args, get_block_number, rpc_provider},
+    utils::{
+        decode_request_response_encoded, decode_response, estimate_cycles, eth_call_args,
+        get_block_number, rpc_provider, send_raw_transaction,
+    },
 };
 
 /// Struct containing all information necessary to execute a strategy
@@ -193,12 +197,183 @@ impl StrategyData {
         if let Some(_rate) = new_rate {
             // send a signed transaction to update the rate for the batch
             // get hints
+            let upper_hint = U256::from(0);
+            let lower_hint = U256::from(0);
 
             // update strategy data
+            let payload = setNewRateCall {
+                _newAnnualInterestRate: _rate.to::<u128>(),
+                _upperHint: upper_hint,
+                _lowerHint: lower_hint,
+                _maxUpfrontFee: self.upfront_fee_period,
+            };
+
+            let tx_response = send_raw_transaction(
+                self.batch_manager.to_string(),
+                payload.abi_encode(),
+                U256::ZERO,
+                self.eoa_nonce,
+                self.derivation_path.clone(),
+                &self.rpc_canister,
+                &self.rpc_url,
+                1000000000,
+            )
+            .await?;
+
+            match tx_response {
+                crate::evm_rpc::MultiSendRawTransactionResult::Consistent(tx_result) => {
+                    return match tx_result {
+                        crate::evm_rpc::SendRawTransactionResult::Ok(status) => match status {
+                            crate::evm_rpc::SendRawTransactionStatus::Ok(_) => {
+                                self.eoa_nonce += 1;
+                                self.apply_change();
+                                self.unlock()?;
+                                Ok(())
+                            }
+                            crate::evm_rpc::SendRawTransactionStatus::NonceTooLow | crate::evm_rpc::SendRawTransactionStatus::TooHigh => {
+                                self.update_rate_with_nonce(_rate, upper_hint, lower_hint)
+                                    .await
+                            }
+                            crate::evm_rpc::SendRawTransactionStatus::InsufficientFunds => {
+                                Err(ManagerError::Custom(
+                                    "Not enough Ether balance to cover the gas fee.".to_string(),
+                                ))
+                            }
+                        },
+                        crate::evm_rpc::SendRawTransactionResult::Err(err) => {
+                            Err(ManagerError::RpcResponseError(err))
+                        }
+                    }
+                }
+                crate::evm_rpc::MultiSendRawTransactionResult::Inconsistent(
+                    inconsistent_responses,
+                ) => {
+                    for (_, response) in inconsistent_responses {
+                        if let SendRawTransactionResult::Ok(
+                            crate::evm_rpc::SendRawTransactionStatus::Ok(_),
+                        ) = response
+                        {
+                            return Ok(());
+                        }
+                    }
+                    return Err(ManagerError::Custom(
+                        "None of the RPC responses were OK.".to_string(),
+                    ));
+                }
+            }
         }
 
         self.unlock()?;
         Ok(())
+    }
+
+    async fn update_rate_with_nonce(
+        &mut self,
+        rate: U256,
+        upper_hint: U256,
+        lower_hint: U256,
+    ) -> Result<(), ManagerError> {
+        // fetch nonce
+        self.eoa_nonce = self.get_nonce().await?.to::<u64>();
+        self.apply_change();
+
+        // send tx with new nonce
+        let payload = setNewRateCall {
+            _newAnnualInterestRate: rate.to::<u128>(),
+            _upperHint: upper_hint,
+            _lowerHint: lower_hint,
+            _maxUpfrontFee: self.upfront_fee_period,
+        };
+
+        let tx_response = send_raw_transaction(
+            self.batch_manager.to_string(),
+            payload.abi_encode(),
+            U256::ZERO,
+            self.eoa_nonce,
+            self.derivation_path.clone(),
+            &self.rpc_canister,
+            &self.rpc_url,
+            1000000000,
+        )
+        .await?;
+
+        match tx_response {
+            crate::evm_rpc::MultiSendRawTransactionResult::Consistent(tx_result) => {
+                return match tx_result {
+                    crate::evm_rpc::SendRawTransactionResult::Ok(status) => match status {
+                        crate::evm_rpc::SendRawTransactionStatus::Ok(_) => {
+                            self.eoa_nonce += 1;
+                            self.apply_change();
+                            self.unlock()?;
+                            Ok(())
+                        }
+                        crate::evm_rpc::SendRawTransactionStatus::NonceTooLow => Err(
+                            ManagerError::Custom("Could not detect the right nonce.".to_string()),
+                        ),
+                        crate::evm_rpc::SendRawTransactionStatus::TooHigh => Err(
+                            ManagerError::Custom("Could not detect the right nonce.".to_string()),
+                        ),
+                        crate::evm_rpc::SendRawTransactionStatus::InsufficientFunds => {
+                            Err(ManagerError::Custom(
+                                "Not enough Ether balance to cover the gas fee.".to_string(),
+                            ))
+                        }
+                    },
+                    crate::evm_rpc::SendRawTransactionResult::Err(err) => {
+                        Err(ManagerError::RpcResponseError(err))
+                    }
+                }
+            }
+            crate::evm_rpc::MultiSendRawTransactionResult::Inconsistent(inconsistent_responses) => {
+                for (_, response) in inconsistent_responses {
+                    if let SendRawTransactionResult::Ok(
+                        crate::evm_rpc::SendRawTransactionStatus::Ok(_),
+                    ) = response
+                    {
+                        return Ok(());
+                    }
+                }
+                return Err(ManagerError::Custom(
+                    "None of the RPC responses were OK.".to_string(),
+                ));
+            }
+        }
+    }
+
+    async fn get_nonce(&self) -> Result<U256, ManagerError> {
+        let rpc: RpcService = rpc_provider(&self.rpc_url);
+
+        let request_json = json!({
+            "id": 1,
+            "jsonrpc": "2.0",
+            "params": [
+            self.eoa_pk,
+            "latest"
+            ],
+            "method": "eth_getTransactionCount"
+        })
+        .to_string();
+
+        let cycles = estimate_cycles(
+            &self.rpc_canister,
+            rpc_provider(&self.rpc_url),
+            request_json.clone(),
+            1000,
+        )
+        .await?;
+
+        let rpc_canister_response = self
+            .rpc_canister
+            .request(rpc, request_json, 1000, cycles)
+            .await;
+
+        let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
+        let decoded_response: EthCallResponse = serde_json::from_str(&encoded_response)
+            .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
+        let hex_decoded_response = hex::decode(&decoded_response.result[2..])
+            .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
+
+        Ok(U256::from_be_slice(&hex_decoded_response))
     }
 
     async fn predict_upfront_fee(
