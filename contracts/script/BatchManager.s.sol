@@ -9,11 +9,33 @@ import "../src/Interfaces/IBorrowerOperations.sol";
 import "../src/Interfaces/IWETHPriceFeed.sol";
 
 contract BatchManagerDeployer is Script {
-    function run(address strategyEOA, ITroveManager troveManager, IBorrowerOperations borrowerOperations, IBoldToken boldToken, IWETHPriceFeed wethPriceFeed) external {
+    function run(
+        address strategyEOA,
+        ITroveManager troveManager,
+        IBorrowerOperations borrowerOperations,
+        IBoldToken boldToken,
+        IWETHPriceFeed wethPriceFeed,
+        uint128 minInterestRate,
+        uint128 maxInterestRate,
+        uint128 currentInterestRate,
+        uint128 fee,
+        uint128 minInterestRateChangePeriod
+    ) external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
 
-        BatchManager batchManagerContract = new BatchManager(strategyEOA, troveManager, borrowerOperations, boldToken, wethPriceFeed);
+        BatchManager batchManagerContract = new BatchManager(
+            strategyEOA,
+            troveManager,
+            borrowerOperations,
+            boldToken,
+            wethPriceFeed,
+            minInterestRate,
+            maxInterestRate,
+            currentInterestRate,
+            fee,
+            minInterestRateChangePeriod
+        );
 
         vm.stopBroadcast();
     }

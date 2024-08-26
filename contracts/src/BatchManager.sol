@@ -42,7 +42,12 @@ contract BatchManager {
         ITroveManager _troveManager,
         IBorrowerOperations _borrowerOperations,
         IBoldToken _boldToken,
-        IWETHPriceFeed _wethPricefeed
+        IWETHPriceFeed _wethPricefeed,
+        uint128 minInterestRate,
+        uint128 maxInterestRate,
+        uint128 currentInterestRate,
+        uint128 fee,
+        uint128 minInterestRateChangePeriod
     ) {
         batchManagerEOA = _batchManagerEOA;
         troveManager = _troveManager;
@@ -51,7 +56,7 @@ contract BatchManager {
         wethPriceFeed = _wethPricefeed;
 
         // The contract needs to register itself as a batch manager
-        // borrowerOperations.registerBatchManager(0, 100, 2, 2, 7);
+        borrowerOperations.registerBatchManager(minInterestRate, maxInterestRate, currentInterestRate, fee, minInterestRateChangePeriod);
 
         emit initialized(
             batchManagerEOA,
