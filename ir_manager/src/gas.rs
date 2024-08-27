@@ -1,14 +1,17 @@
 use alloy_primitives::U256;
 use candid::Nat;
+use ic_exports::ic_cdk::print;
 use serde_bytes::ByteBuf;
+use serde_json::json;
 use std::{ops::Add, str::FromStr};
 
 use crate::{
     evm_rpc::{
-        BlockTag, FeeHistory, FeeHistoryArgs, FeeHistoryResult, MultiFeeHistoryResult, RpcServices,
-        Service,
+        BlockTag, EthCallResponse, FeeHistory, FeeHistoryArgs, FeeHistoryResult,
+        MultiFeeHistoryResult, RpcServices, Service,
     },
     types::ManagerError,
+    utils::{decode_request_response_encoded, estimate_cycles, rpc_provider},
 };
 
 /// The minimum suggested maximum priority fee per gas.
@@ -112,4 +115,48 @@ pub async fn estimate_transaction_fees(
 pub fn nat_to_u256(n: &Nat) -> Result<U256, ManagerError> {
     let string_value = n.to_string();
     U256::from_str(&string_value).map_err(|err| ManagerError::Custom(format!("{:#?}", err)))
+}
+
+pub async fn get_estimate_gas(
+    rpc_canister: &Service,
+    rpc_url: &str,
+    data: Vec<u8>,
+    to: String,
+    from: String,
+) -> Result<U256, ManagerError> {
+    let args = json!({
+        "id": 1,
+        "jsonrpc": "2.0",
+        "params": [ {
+            "from": from,
+            "to": to,
+            "data": format!("0x{}", hex::encode(data))
+        },
+        "latest"
+        ],
+        "method": "eth_estimateGas"
+    })
+    .to_string();
+
+    let cycles = estimate_cycles(rpc_canister, rpc_provider(rpc_url), args.clone(), 1000).await?;
+
+    let rpc_canister_response = rpc_canister
+        .request(rpc_provider(rpc_url), args, 1000, cycles)
+        .await;
+
+    let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
+
+    let decoded_response: EthCallResponse = serde_json::from_str(&encoded_response)
+        .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
+
+    let hex_string = if decoded_response.result[2..].len() % 2 == 1 {
+        format!("0{}", decoded_response.result[2..].to_string())
+    } else {
+        decoded_response.result[2..].to_string()
+    };
+
+    let hex_decoded_response = hex::decode(&hex_string)
+        .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
+
+    Ok(U256::from_be_slice(&hex_decoded_response))
 }
