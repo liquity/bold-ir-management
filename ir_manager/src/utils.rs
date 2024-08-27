@@ -2,6 +2,7 @@
 
 use std::{collections::HashMap, str::FromStr};
 
+use alloy::consensus::TxEip1559;
 use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
 use candid::{Nat, Principal};
@@ -22,8 +23,8 @@ use crate::{
         RpcService, RpcServices, Service,
     },
     exchange::*,
-    gas::{estimate_transaction_fees, FeeEstimates},
-    signer::{sign_eip1559_transaction, SignRequest},
+    gas::{estimate_transaction_fees, get_estimate_gas, FeeEstimates},
+    signer::sign_eip1559_transaction,
     state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, STRATEGY_DATA},
     strategy::StrategyData,
     types::{Account, DerivationPath, ManagerError, Market, StrategyInput},
@@ -288,6 +289,7 @@ pub async fn get_block_number(
 
 pub async fn send_raw_transaction(
     to: String,
+    from: String,
     data: Vec<u8>,
     value: U256,
     nonce: u64,
@@ -296,7 +298,7 @@ pub async fn send_raw_transaction(
     rpc_url: &str,
     cycles: u128,
 ) -> Result<MultiSendRawTransactionResult, ManagerError> {
-    let input = Bytes::from(data);
+    let input = Bytes::from(data.clone());
     let rpc = RpcServices::Custom {
         chainId: 1,
         services: vec![RpcApi {
@@ -310,14 +312,15 @@ pub async fn send_raw_transaction(
         max_priority_fee_per_gas,
     } = estimate_transaction_fees(9, rpc.clone(), rpc_canister).await?;
 
+    let estimated_gas = get_estimate_gas(rpc_canister, rpc_url, data, to.clone(), from).await?;
+
     let key_id = EcdsaKeyId {
         curve: EcdsaCurve::Secp256k1,
         name: String::from("key_1"),
     };
 
-    let request = SignRequest {
-        chain_id: 1,
-        from: None,
+    let request = TxEip1559 {
+        chain_id: 1337, // todo: change with mainnet id or query from rpc
         to: TxKind::Call(
             Address::from_str(&to)
                 .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?,
@@ -326,7 +329,9 @@ pub async fn send_raw_transaction(
         max_priority_fee_per_gas: max_priority_fee_per_gas.to::<u128>(),
         value,
         nonce,
-        data: input,
+        gas_limit: estimated_gas.to::<u128>(),
+        access_list: Default::default(),
+        input,
     };
 
     let signed_transaction = sign_eip1559_transaction(request, key_id, derivation_path).await;
