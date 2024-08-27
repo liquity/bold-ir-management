@@ -163,7 +163,7 @@ pub enum FeeHistoryResult {
     Err(RpcError),
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(Debug, CandidType, Deserialize)]
 pub enum RpcService {
     EthSepolia(EthSepoliaService),
     Custom(RpcApi),
@@ -295,7 +295,7 @@ pub enum MultiGetTransactionReceiptResult {
     Inconsistent(Vec<(RpcService, GetTransactionReceiptResult)>),
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(Debug, CandidType, Deserialize)]
 pub enum SendRawTransactionStatus {
     Ok(Option<String>),
     NonceTooLow,
@@ -303,13 +303,13 @@ pub enum SendRawTransactionStatus {
     InsufficientFunds,
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(Debug, CandidType, Deserialize)]
 pub enum SendRawTransactionResult {
     Ok(SendRawTransactionStatus),
     Err(RpcError),
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(Debug, CandidType, Deserialize)]
 pub enum MultiSendRawTransactionResult {
     Consistent(SendRawTransactionResult),
     Inconsistent(Vec<(RpcService, SendRawTransactionResult)>),

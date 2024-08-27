@@ -183,7 +183,7 @@ impl StrategyData {
         let redemption_split = unbacked_portion_price_and_redeemability._0 / total_unbacked;
         let maximum_redeemable_against_collateral = redemption_split * entire_system_debt;
         let target_amount = ((redemption_fee * self.target_min) / U256::from(5)) / U256::from(1000);
-        let new_rate = self
+        let strategy_result = self
             .run_strategy(
                 troves,
                 time_since_last_update,
@@ -194,22 +194,24 @@ impl StrategyData {
             )
             .await?;
 
-        if let Some(_rate) = new_rate {
+        if let Some((new_rate, max_upfront_fee)) = strategy_result {
             // send a signed transaction to update the rate for the batch
             // get hints
+
             let upper_hint = U256::from(0);
             let lower_hint = U256::from(0);
 
             // update strategy data
             let payload = setNewRateCall {
-                _newAnnualInterestRate: _rate.to::<u128>(),
+                _newAnnualInterestRate: new_rate.to::<u128>(),
                 _upperHint: upper_hint,
                 _lowerHint: lower_hint,
-                _maxUpfrontFee: self.upfront_fee_period,
+                _maxUpfrontFee: max_upfront_fee + U256::from(1_000_000_000_000 as u128),
             };
 
             let tx_response = send_raw_transaction(
                 self.batch_manager.to_string(),
+                self.eoa_pk.unwrap().to_string(),
                 payload.abi_encode(),
                 U256::ZERO,
                 self.eoa_nonce,
@@ -230,9 +232,15 @@ impl StrategyData {
                                 self.unlock()?;
                                 Ok(())
                             }
-                            crate::evm_rpc::SendRawTransactionStatus::NonceTooLow | crate::evm_rpc::SendRawTransactionStatus::TooHigh => {
-                                self.update_rate_with_nonce(_rate, upper_hint, lower_hint)
-                                    .await
+                            crate::evm_rpc::SendRawTransactionStatus::NonceTooLow
+                            | crate::evm_rpc::SendRawTransactionStatus::TooHigh => {
+                                self.update_rate_with_nonce(
+                                    new_rate,
+                                    upper_hint,
+                                    lower_hint,
+                                    max_upfront_fee + U256::from(1_000_000_000_000 as u128),
+                                )
+                                .await
                             }
                             crate::evm_rpc::SendRawTransactionStatus::InsufficientFunds => {
                                 Err(ManagerError::Custom(
@@ -272,6 +280,7 @@ impl StrategyData {
         rate: U256,
         upper_hint: U256,
         lower_hint: U256,
+        max_upfront_fee: U256,
     ) -> Result<(), ManagerError> {
         // fetch nonce
         self.eoa_nonce = self.get_nonce().await?.to::<u64>();
@@ -282,11 +291,12 @@ impl StrategyData {
             _newAnnualInterestRate: rate.to::<u128>(),
             _upperHint: upper_hint,
             _lowerHint: lower_hint,
-            _maxUpfrontFee: self.upfront_fee_period,
+            _maxUpfrontFee: max_upfront_fee,
         };
 
         let tx_response = send_raw_transaction(
             self.batch_manager.to_string(),
+            self.eoa_pk.unwrap().to_string(),
             payload.abi_encode(),
             U256::ZERO,
             self.eoa_nonce,
@@ -370,7 +380,14 @@ impl StrategyData {
         let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
         let decoded_response: EthCallResponse = serde_json::from_str(&encoded_response)
             .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
-        let hex_decoded_response = hex::decode(&decoded_response.result[2..])
+
+        let hex_string = if decoded_response.result[2..].len() % 2 == 1 {
+            format!("0{}", decoded_response.result[2..].to_string())
+        } else {
+            decoded_response.result[2..].to_string()
+        };
+
+        let hex_decoded_response = hex::decode(&hex_string)
             .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
 
         Ok(U256::from_be_slice(&hex_decoded_response))
@@ -532,8 +549,6 @@ impl StrategyData {
             block_number,
         );
 
-        print(&json_data);
-
         let trove_size_bytes = 380 + 100; // eleven uint256, one address = 372 bytes
         let max_response_bytes = trove_size_bytes * count.to::<u64>() + 1000;
         let cycles = estimate_cycles(
@@ -597,31 +612,32 @@ impl StrategyData {
         maximum_redeemable_against_collateral: U256,
         target_amount: U256,
         block_number: &str,
-    ) -> Result<Option<U256>, ManagerError> {
+    ) -> Result<Option<(U256, U256)>, ManagerError> {
         if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
             // Check if decrease/increase is valid
             let new_rate = self
                 .calculate_new_rate(troves, target_amount, block_number)
                 .await?;
+            let upfront_fee = self.predict_upfront_fee(new_rate, block_number).await?;
+            return Ok(Some((new_rate, upfront_fee))); // todo: remove this line after testing
             if self.increase_check(
                 current_debt_in_front,
                 maximum_redeemable_against_collateral,
                 target_amount,
             ) {
-                return Ok(Some(new_rate));
+                return Ok(Some((new_rate, upfront_fee)));
             } else if self.first_decrease_check(
                 current_debt_in_front,
                 maximum_redeemable_against_collateral,
                 target_amount,
             ) {
-                let upfront_fee = self.predict_upfront_fee(new_rate, block_number).await?;
                 if self.second_decrease_check(
                     time_since_last_update,
                     upfront_fee_period,
                     new_rate,
                     upfront_fee,
                 ) {
-                    return Ok(Some(new_rate));
+                    return Ok(Some((new_rate, upfront_fee)));
                 }
             }
         }

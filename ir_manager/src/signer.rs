@@ -8,19 +8,9 @@ use candid::Principal;
 use ic_exports::ic_cdk::api::management_canister::ecdsa::{
     ecdsa_public_key, sign_with_ecdsa, EcdsaKeyId, EcdsaPublicKeyArgument, SignWithEcdsaArgument,
 };
+use ic_exports::ic_cdk::print;
 
 use crate::types::DerivationPath;
-
-pub struct SignRequest {
-    pub chain_id: u64,
-    pub from: Option<String>,
-    pub to: TxKind,
-    pub max_fee_per_gas: u128,
-    pub max_priority_fee_per_gas: u128,
-    pub value: U256,
-    pub nonce: u64,
-    pub data: Bytes,
-}
 
 pub async fn get_canister_public_key(
     key_id: EcdsaKeyId,
@@ -38,23 +28,11 @@ pub async fn get_canister_public_key(
 }
 
 pub async fn sign_eip1559_transaction(
-    req: SignRequest,
+    tx: TxEip1559,
     key_id: EcdsaKeyId,
     derivation_path: DerivationPath,
 ) -> String {
     const EIP1559_TX_ID: u8 = 2;
-
-    let tx = TxEip1559 {
-        to: req.to,
-        value: req.value,
-        input: req.data,
-        nonce: req.nonce,
-        access_list: Default::default(),
-        max_priority_fee_per_gas: req.max_priority_fee_per_gas,
-        max_fee_per_gas: req.max_fee_per_gas,
-        chain_id: req.chain_id,
-        ..Default::default()
-    };
 
     let tx_hash = tx.signature_hash();
 
@@ -78,7 +56,6 @@ pub async fn sign_eip1559_transaction(
     let tx_envelope = TxEnvelope::from(signed_tx);
 
     let signed_tx_bytes = tx_envelope.encoded_2718();
-
     format!("0x{}", hex::encode(&signed_tx_bytes))
 }
 

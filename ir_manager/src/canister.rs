@@ -139,12 +139,14 @@ impl IrManager {
         strategies.into_iter().for_each(|(_, strategy)| {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
 
-            // TODO: REMOVE AFTER TESTING
-
             set_timer(Duration::ZERO, move || {
                 let mut strategy = strategy.clone();
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {
+                    print(format!(
+                        "[INIT] Running strategy number {} with EOA {:#?}",
+                        strategy.key, strategy.eoa_pk
+                    ));
                     for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
 

@@ -87,6 +87,7 @@ async fn ether_deposit() -> Result<(), ManagerError> {
             // Fetch the cycles with estimation and send transaction
             return send_raw_transaction(
                 cketh_helper,
+                strategy.eoa_pk.unwrap().to_string(),
                 transaction_data,
                 ether_value,
                 strategy.eoa_nonce,

@@ -21,7 +21,7 @@ thread_local! {
     /// Exchange rate canister's principal ID
     pub static EXCHANGE_RATE_CANISTER: Cell<Principal> = Cell::new(Principal::from_slice("uf6dk-hyaaa-aaaaq-qaaaq-cai".as_bytes()));
     /// Max number of retry attempts
-    pub static MAX_RETRY_ATTEMPTS: Cell<u8> = Cell::new(1);
+    pub static MAX_RETRY_ATTEMPTS: Cell<u8> = Cell::new(2);
     /// Cycles balance threshold of the canister
     pub static CYCLES_THRESHOLD: Cell<u64> = Cell::new(50_000_000_000);
     /// A counter that tracks EOA turns for minting ckETH
