@@ -55,10 +55,12 @@ impl IrManager {
     pub async fn assign_keys(&mut self) -> Result<(), ManagerError> {
         only_controller(caller())?;
 
-        let strategies_len =
-            STRATEGY_DATA.with(|strategies_hashmap| strategies_hashmap.borrow().len());
+        let strategies = STRATEGY_DATA.with(|strategies_hashmap| {
+            let binding = strategies_hashmap.borrow();
+            binding.clone().into_iter()
+        });
 
-        for id in 0..strategies_len {
+        for (id, strategy) in strategies {
             let derivation_path = vec![id.to_be_bytes().to_vec()];
             let key_id = EcdsaKeyId {
                 curve: EcdsaCurve::Secp256k1,
@@ -69,13 +71,18 @@ impl IrManager {
             let public_key_bytes =
                 get_canister_public_key(key_id, None, Some(derivation_path.clone())).await;
             let eoa_pk = Address::from_str(&pubkey_bytes_to_address(&public_key_bytes)).unwrap();
-
-            // Update strategy data with the public key and derivation path
             STRATEGY_DATA.with(|strategies_hashmap| {
                 let mut state_strategies = strategies_hashmap.borrow_mut();
                 let state_strategy = state_strategies.get_mut(&(id as u32)).unwrap();
                 state_strategy.eoa_pk = Some(eoa_pk);
                 state_strategy.derivation_path = derivation_path;
+            });
+            let nonce = strategy.get_nonce().await?;
+            // Update strategy data with the public key and derivation path
+            STRATEGY_DATA.with(|strategies_hashmap| {
+                let mut state_strategies = strategies_hashmap.borrow_mut();
+                let state_strategy = state_strategies.get_mut(&(id as u32)).unwrap();
+                state_strategy.eoa_nonce = nonce.to::<u64>();
             });
         }
 

@@ -206,8 +206,10 @@ impl StrategyData {
                 _newAnnualInterestRate: new_rate.to::<u128>(),
                 _upperHint: upper_hint,
                 _lowerHint: lower_hint,
-                _maxUpfrontFee: max_upfront_fee + U256::from(1_000_000_000_000 as u128),
+                _maxUpfrontFee: max_upfront_fee * U256::from(4),
             };
+
+            print("[TRANSACTION] Sending a new rate transaction...");
 
             let tx_response = send_raw_transaction(
                 self.batch_manager.to_string(),
@@ -230,6 +232,7 @@ impl StrategyData {
                                 self.eoa_nonce += 1;
                                 self.apply_change();
                                 self.unlock()?;
+                                print("[TRANSACTION] New rate transaction was submitted successfully...");
                                 Ok(())
                             }
                             crate::evm_rpc::SendRawTransactionStatus::NonceTooLow
@@ -238,7 +241,7 @@ impl StrategyData {
                                     new_rate,
                                     upper_hint,
                                     lower_hint,
-                                    max_upfront_fee + U256::from(1_000_000_000_000 as u128),
+                                    max_upfront_fee * U256::from(4),
                                 )
                                 .await
                             }
@@ -350,7 +353,7 @@ impl StrategyData {
         }
     }
 
-    async fn get_nonce(&self) -> Result<U256, ManagerError> {
+    pub async fn get_nonce(&self) -> Result<U256, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
         let request_json = json!({
