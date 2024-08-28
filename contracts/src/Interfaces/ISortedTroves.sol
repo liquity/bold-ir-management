@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.20;
+pragma solidity 0.8.18;
 
 import "./ITroveManager.sol";
 import {BatchId, BATCH_ID_ZERO} from "../Types/BatchId.sol";

@@ -1,26 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.20;
+pragma solidity ^0.8.0;
 
 import "./ILiquityBase.sol";
-import "./ITroveManager.sol";
+import "./IAddRemoveManagers.sol";
+import "./IBoldToken.sol";
 import "./IPriceFeed.sol";
 import "./ISortedTroves.sol";
+import "./ITroveManager.sol";
+import "./IWETH.sol";
 
-// Common interface for the Trove Manager.
-interface IBorrowerOperations is ILiquityBase {
-    function troveManager() external view returns (ITroveManager);
-    function sortedTroves() external view returns (ISortedTroves);
-
-    function setAddresses(
-        address _activePoolAddress,
-        address _defaultPoolAddress,
-        address _gasPoolAddress,
-        address _collSurplusPoolAddress,
-        address _priceFeedAddress,
-        address _sortedTrovesAddress,
-        address _boldTokenAddress
-    ) external;
+// Common interface for the Borrower Operations.
+interface IBorrowerOperations is ILiquityBase, IAddRemoveManagers {
+    function CCR() external view returns (uint256);
+    function MCR() external view returns (uint256);
+    function SCR() external view returns (uint256);
 
     function openTrove(
         address _owner,
@@ -30,19 +24,29 @@ interface IBorrowerOperations is ILiquityBase {
         uint256 _upperHint,
         uint256 _lowerHint,
         uint256 _annualInterestRate,
-        uint256 _maxUpfrontFee
+        uint256 _maxUpfrontFee,
+        address _addManager,
+        address _removeManager,
+        address _receiver
     ) external returns (uint256);
 
-    function openTroveAndJoinInterestBatchManager(
-        address _owner,
-        uint256 _ownerIndex,
-        uint256 _ETHAmount,
-        uint256 _boldAmount,
-        uint256 _upperHint,
-        uint256 _lowerHint,
-        address _interestBatchManager,
-        uint256 _maxUpfrontFee
-    ) external returns (uint256);
+    struct OpenTroveAndJoinInterestBatchManagerParams {
+        address owner;
+        uint256 ownerIndex;
+        uint256 collAmount;
+        uint256 boldAmount;
+        uint256 upperHint;
+        uint256 lowerHint;
+        address interestBatchManager;
+        uint256 maxUpfrontFee;
+        address addManager;
+        address removeManager;
+        address receiver;
+    }
+
+    function openTroveAndJoinInterestBatchManager(OpenTroveAndJoinInterestBatchManagerParams calldata _params)
+        external
+        returns (uint256);
 
     function addColl(uint256 _troveId, uint256 _ETHAmount) external;
 
@@ -52,7 +56,7 @@ interface IBorrowerOperations is ILiquityBase {
 
     function repayBold(uint256 _troveId, uint256 _amount) external;
 
-    function closeTrove(uint256 _troveId) external;
+    function closeTrove(uint256 _troveId) external returns (uint256);
 
     function adjustTrove(
         uint256 _troveId,
@@ -74,14 +78,22 @@ interface IBorrowerOperations is ILiquityBase {
         uint256 _maxUpfrontFee
     ) external;
 
+    function adjustTroveInterestRate(
+        uint256 _troveId,
+        uint256 _newAnnualInterestRate,
+        uint256 _upperHint,
+        uint256 _lowerHint,
+        uint256 _maxUpfrontFee
+    ) external;
+
+    function applyPendingDebt(uint256 _troveId, uint256 _lowerHint, uint256 _upperHint) external;
+
     function claimCollateral() external;
 
-    function setAddManager(uint256 _troveId, address _manager) external;
-    function setRemoveManager(uint256 _troveId, address _manager) external;
-    function addManagerOf(uint256 _troveId) external view returns (address);
-    function removeManagerOf(uint256 _troveId) external view returns (address);
+    function hasBeenShutDown() external view returns (bool);
+    function shutdown() external;
+    function shutdownFromOracleFailure(address _failedOracleAddr) external;
 
-    function getCompositeDebt(uint256 _debt) external pure returns (uint256);
     function checkBatchManagerExists(address _batchMananger) external view returns (bool);
 
     // -- individual delegation --
@@ -145,14 +157,13 @@ interface IBorrowerOperations is ILiquityBase {
         uint256 _lowerHint,
         uint256 _maxUpfrontFee
     ) external;
-    function applyBatchInterestAndFeePermissionless(address _batchAddress) external;
-    function adjustTroveInterestRate(
+    function switchBatchManager(
         uint256 _troveId,
-        uint256 _newAnnualInterestRate,
-        uint256 _upperHint,
-        uint256 _lowerHint,
+        uint256 _removeUpperHint,
+        uint256 _removeLowerHint,
+        address _newBatchManager,
+        uint256 _addUpperHint,
+        uint256 _addLowerHint,
         uint256 _maxUpfrontFee
     ) external;
-
-    function applyTroveInterestPermissionless(uint256 _troveId) external;
 }

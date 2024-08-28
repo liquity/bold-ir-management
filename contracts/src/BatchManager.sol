@@ -6,18 +6,21 @@ import "./Interfaces/IBoldToken.sol";
 import "./Interfaces/ITroveManager.sol";
 import "./Interfaces/IWETHPriceFeed.sol";
 import "./Interfaces/IBorrowerOperations.sol";
+import "./Interfaces/ISortedTroves.sol";
 
 /**
  * @title Liquity V2 Autonomous Interest Rate Manager
  * @dev Allows for BOLD<>ETH conversions with a discounted rate and the distribution of the collected ether to the corresponding EOA.
  */
 contract BatchManager {
+    uint256 immutable discountRate;
     address immutable batchManagerEOA;
 
     IBorrowerOperations immutable borrowerOperations;
     ITroveManager immutable troveManager;
     IBoldToken immutable boldToken;
     IWETHPriceFeed immutable wethPriceFeed;
+    ISortedTroves immutable sortedTroves;
 
     // event for EVM logging
     event initialized(
@@ -43,20 +46,30 @@ contract BatchManager {
         IBorrowerOperations _borrowerOperations,
         IBoldToken _boldToken,
         IWETHPriceFeed _wethPricefeed,
+        ISortedTroves _sortedTroves,
         uint128 minInterestRate,
         uint128 maxInterestRate,
         uint128 currentInterestRate,
         uint128 fee,
-        uint128 minInterestRateChangePeriod
+        uint128 minInterestRateChangePeriod,
+        uint128 _discountRate
     ) {
         batchManagerEOA = _batchManagerEOA;
         troveManager = _troveManager;
         borrowerOperations = _borrowerOperations;
         boldToken = _boldToken;
         wethPriceFeed = _wethPricefeed;
+        sortedTroves = _sortedTroves;
+        discountRate = _discountRate;
 
         // The contract needs to register itself as a batch manager
-        borrowerOperations.registerBatchManager(minInterestRate, maxInterestRate, currentInterestRate, fee, minInterestRateChangePeriod);
+        borrowerOperations.registerBatchManager(
+            minInterestRate,
+            maxInterestRate,
+            currentInterestRate,
+            fee,
+            minInterestRateChangePeriod
+        );
 
         emit initialized(
             batchManagerEOA,
@@ -76,7 +89,7 @@ contract BatchManager {
 
         // check current bold holdings
         uint256 boldHoldings = boldToken.balanceOf(address(this));
-        uint256 expectedBold = msg.value * rate;
+        uint256 expectedBold = msg.value * rate / (1 ether - discountRate);
 
         if (boldHoldings >= expectedBold) {
             // we have enough bold
@@ -88,9 +101,8 @@ contract BatchManager {
             .accruedManagementFee;
 
         if (accruedBold + boldHoldings >= expectedBold) {
-            borrowerOperations.applyBatchInterestAndFeePermissionless(
-                address(this)
-            );
+            (head, tail) = sortedTroves.batches(address(this));
+            borrowerOperations.applyPendingDebt(head, 0, 0);
             boldToken.transfer(msg.sender, expectedBold);
             return;
         }

@@ -206,7 +206,7 @@ impl StrategyData {
                 _newAnnualInterestRate: new_rate.to::<u128>(),
                 _upperHint: upper_hint,
                 _lowerHint: lower_hint,
-                _maxUpfrontFee: max_upfront_fee * U256::from(4),
+                _maxUpfrontFee: max_upfront_fee + U256::from(1_000_000_000_000_000 as u128), // + %0.001 ,
             };
 
             print("[TRANSACTION] Sending a new rate transaction...");
@@ -220,7 +220,7 @@ impl StrategyData {
                 self.derivation_path.clone(),
                 &self.rpc_canister,
                 &self.rpc_url,
-                1000000000,
+                1_000_000_000,
             )
             .await?;
 
@@ -232,7 +232,7 @@ impl StrategyData {
                                 self.eoa_nonce += 1;
                                 self.apply_change();
                                 self.unlock()?;
-                                print("[TRANSACTION] New rate transaction was submitted successfully...");
+                                print(format!("[TRANSACTION] New rate transaction was submitted successfully for batch manager {}.", self.batch_manager.to_string()));
                                 Ok(())
                             }
                             crate::evm_rpc::SendRawTransactionStatus::NonceTooLow
@@ -241,7 +241,7 @@ impl StrategyData {
                                     new_rate,
                                     upper_hint,
                                     lower_hint,
-                                    max_upfront_fee * U256::from(4),
+                                    max_upfront_fee + U256::from(1_000_000_000_000_000 as u128), // + %0.001
                                 )
                                 .await
                             }
@@ -254,7 +254,7 @@ impl StrategyData {
                         crate::evm_rpc::SendRawTransactionResult::Err(err) => {
                             Err(ManagerError::RpcResponseError(err))
                         }
-                    }
+                    };
                 }
                 crate::evm_rpc::MultiSendRawTransactionResult::Inconsistent(
                     inconsistent_responses,
