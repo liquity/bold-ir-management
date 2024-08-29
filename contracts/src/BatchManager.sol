@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0
 
-pragma solidity 0.8.20;
-
+pragma solidity ^0.8.0;
 import "./Interfaces/IBoldToken.sol";
 import "./Interfaces/ITroveManager.sol";
 import "./Interfaces/IWETHPriceFeed.sol";
 import "./Interfaces/IBorrowerOperations.sol";
 import "./Interfaces/ISortedTroves.sol";
+import {BatchId} from "./Types/BatchId.sol";
 
 /**
  * @title Liquity V2 Autonomous Interest Rate Manager
@@ -89,7 +89,7 @@ contract BatchManager {
 
         // check current bold holdings
         uint256 boldHoldings = boldToken.balanceOf(address(this));
-        uint256 expectedBold = msg.value * rate / (1 ether - discountRate);
+        uint256 expectedBold = (msg.value * rate) / (1 ether - discountRate);
 
         if (boldHoldings >= expectedBold) {
             // we have enough bold
@@ -101,7 +101,9 @@ contract BatchManager {
             .accruedManagementFee;
 
         if (accruedBold + boldHoldings >= expectedBold) {
-            (head, tail) = sortedTroves.batches(address(this));
+            (uint256 head,) = sortedTroves.batches(
+                BatchId.wrap(address(this))
+            );
             borrowerOperations.applyPendingDebt(head, 0, 0);
             boldToken.transfer(msg.sender, expectedBold);
             return;
