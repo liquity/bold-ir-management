@@ -23,12 +23,14 @@ pub type DerivationPath = Vec<Vec<u8>>;
 
 #[derive(CandidType, Deserialize)]
 pub struct StrategyInput {
-    pub target_min: Nat,
+    pub target_min: f64,
 }
 
 #[derive(CandidType)]
 pub struct StrategyQueryData {
-    pub manager: String,
+    pub trove_manager: String,
+    pub batch_manager: String,
+    pub locked: bool,
     pub latest_rate: String,
     pub target_min: String,
     pub eoa_pk: Option<String>,
@@ -38,11 +40,13 @@ pub struct StrategyQueryData {
 impl From<StrategyData> for StrategyQueryData {
     fn from(value: StrategyData) -> Self {
         Self {
-            manager: value.manager.to_string(),
             latest_rate: value.latest_rate.to_string(),
             target_min: value.target_min.to_string(),
             eoa_pk: value.eoa_pk.map(|pk| pk.to_string()),
             last_update: value.last_update,
+            trove_manager: value.manager.to_string(),
+            batch_manager: value.batch_manager.to_string(),
+            locked: value.lock,
         }
     }
 }

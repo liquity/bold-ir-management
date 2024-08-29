@@ -61,6 +61,9 @@ impl IrManager {
         });
 
         for (id, strategy) in strategies {
+            if strategy.eoa_pk.is_some() {
+                continue;
+            }
             let derivation_path = vec![id.to_be_bytes().to_vec()];
             let key_id = EcdsaKeyId {
                 curve: EcdsaCurve::Secp256k1,
@@ -92,7 +95,7 @@ impl IrManager {
     /// Starts timers for executing strategies and managing the canister's cycle balance.
     /// Each strategy executes on a 1-hour interval, and cycle balance checks happen every 24 hours.
     #[update]
-    pub fn start_timers(&self, init_args: InitArgs) -> Result<(), ManagerError> {
+    pub async fn start_timers(&self, init_args: InitArgs) -> Result<(), ManagerError> {
         only_controller(caller())?;
 
         let state_strategies_len = STRATEGY_DATA.with(|strategies| strategies.borrow().len());
@@ -125,16 +128,18 @@ impl IrManager {
         MANAGERS.with(|managers_vector| *managers_vector.borrow_mut() = managers);
 
         // Generate strategies from parsed market data and initialization arguments
+        let generated_strategies = generate_strategies(
+            parsed_markets,
+            collateral_registry,
+            hint_helper,
+            strategies,
+            rpc_principal,
+            rpc_url,
+            upfront_fee_period,
+        )
+        .await?;
+    
         STRATEGY_DATA.with(|data| {
-            let generated_strategies = generate_strategies(
-                parsed_markets,
-                collateral_registry,
-                hint_helper,
-                strategies,
-                rpc_principal,
-                rpc_url,
-                upfront_fee_period,
-            );
             *data.borrow_mut() = generated_strategies;
         });
 
@@ -152,14 +157,17 @@ impl IrManager {
                 spawn(async move {
                     print(format!(
                         "[INIT] Running strategy number {} with EOA {:#?}",
-                        strategy.key, strategy.eoa_pk
+                        strategy.key, strategy.eoa_pk.unwrap()
                     ));
                     for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
 
                         // Handle success or failure for each strategy execution attempt
                         match result {
-                            Ok(()) => break, // Exit on success
+                            Ok(()) => {
+                                print(format!("[FINISH] Strategy number {} ran successfully on attempt number {}.", strategy.key, turn));
+                                break;
+                            }, // Exit on success
                             Err(err) => {
                                 let _ = strategy.unlock(); // Unlock on failure
                                 print(format!(

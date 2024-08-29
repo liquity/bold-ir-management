@@ -1,14 +1,13 @@
 use alloy::consensus::{SignableTransaction, TxEip1559, TxEnvelope};
 use alloy::eips::eip2718::Encodable2718;
 use alloy::hex;
-use alloy::primitives::{keccak256, Address, Bytes, FixedBytes, Parity, TxKind, U256};
+use alloy::primitives::{keccak256, Address, FixedBytes, Parity};
 use alloy::signers::Signature;
 use candid::Principal;
 
 use ic_exports::ic_cdk::api::management_canister::ecdsa::{
     ecdsa_public_key, sign_with_ecdsa, EcdsaKeyId, EcdsaPublicKeyArgument, SignWithEcdsaArgument,
 };
-use ic_exports::ic_cdk::print;
 
 use crate::types::DerivationPath;
 

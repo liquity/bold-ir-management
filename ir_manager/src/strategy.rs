@@ -1,4 +1,4 @@
-use alloy_primitives::{Address, I256, U256};
+use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
 use ic_exports::ic_cdk::{api::time, print};
@@ -6,7 +6,9 @@ use serde_json::json;
 
 use crate::{
     evm_rpc::{EthCallResponse, RpcService, SendRawTransactionResult, Service},
-    state::{MANAGERS, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP},
+    state::{
+        MANAGERS, MAX_NUMBER_OF_TROVES, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP,
+    },
     types::*,
     utils::{
         decode_request_response_encoded, decode_response, estimate_cycles, eth_call_args,
@@ -36,7 +38,7 @@ pub struct StrategyData {
     /// Derivation path of the ECDSA signature
     pub derivation_path: DerivationPath,
     /// Minimum target for this strategy
-    pub target_min: U256,
+    pub target_min: f64,
     /// Upfront fee period constant denominated in seconds
     pub upfront_fee_period: U256,
     /// Timestamp of the last time the strategy had updated the batch's interest rate.
@@ -66,7 +68,7 @@ impl Default for StrategyData {
             collateral_index: U256::ZERO,
             latest_rate: U256::ZERO,
             derivation_path: vec![],
-            target_min: U256::ZERO,
+            target_min: 0.0,
             upfront_fee_period: U256::ZERO,
             last_update: 0,
             lock: false,
@@ -85,7 +87,7 @@ impl StrategyData {
         manager: Address,
         collateral_registry: Address,
         multi_trove_getter: Address,
-        target_min: U256,
+        target_min: f64,
         rpc_canister: Service,
         rpc_url: String,
         upfront_fee_period: U256,
@@ -164,34 +166,37 @@ impl StrategyData {
 
         let mut troves: Vec<DebtPerInterestRate> = vec![];
         let mut troves_index = U256::from(0);
+        let max_count = U256::from(MAX_NUMBER_OF_TROVES.with(|number| number.get()));
         loop {
             let fetched_troves = self
-                .fetch_multiple_sorted_troves(troves_index, U256::from(1000), &block_number)
+                .fetch_multiple_sorted_troves(troves_index, max_count, &block_number)
                 .await?;
-            let fetched_troves_count = fetched_troves.len();
+            let last_trove = fetched_troves.last().unwrap().clone();
             troves.extend(fetched_troves);
-            if fetched_troves_count != 1000 {
+            if last_trove.debt == U256::ZERO && last_trove.interestRate == U256::ZERO {
                 break;
             }
-            troves_index += U256::from(1000);
+            troves_index += max_count; // todo: should this be max_count - 1?
         }
+
         let redemption_fee = self.fetch_redemption_rate(&block_number).await?;
         let total_unbacked = self
             .fetch_total_unbacked(unbacked_portion_price_and_redeemability._0, &block_number)
             .await?;
-
         let redemption_split = unbacked_portion_price_and_redeemability._0 / total_unbacked;
         let maximum_redeemable_against_collateral = redemption_split * entire_system_debt;
-        let target_amount = self
-            .target_min
-            .pow((U256::from(5) / U256::from(1_000)) / redemption_fee);
+        let exponent = 0.005 / redemption_fee.to::<u64>() as f64;
+        let target_amount = self.target_min.powf(exponent);
+
+        print(format!("Target amount set at {}", target_amount));
+
         let strategy_result = self
             .run_strategy(
                 troves,
                 time_since_last_update,
                 self.upfront_fee_period,
                 maximum_redeemable_against_collateral,
-                target_amount,
+                U256::from(target_amount),
                 &block_number,
             )
             .await?;
@@ -211,7 +216,11 @@ impl StrategyData {
                 _maxUpfrontFee: max_upfront_fee + U256::from(1_000_000_000_000_000 as u128), // + %0.001 ,
             };
 
-            print("[TRANSACTION] Sending a new rate transaction...");
+            print(format!(
+                "[TRANSACTION] Sending a new rate transaction with rate {} to batch manager {}...",
+                new_rate,
+                self.batch_manager.to_string()
+            ));
 
             let tx_response = send_raw_transaction(
                 self.batch_manager.to_string(),
@@ -233,8 +242,8 @@ impl StrategyData {
                             crate::evm_rpc::SendRawTransactionStatus::Ok(_) => {
                                 self.eoa_nonce += 1;
                                 self.apply_change();
+                                print(format!("[TRANSACTION] Strategy number {}: New rate transaction was submitted successfully for batch manager {}.", self.key, self.batch_manager.to_string()));
                                 self.unlock()?;
-                                print(format!("[TRANSACTION] New rate transaction was submitted successfully for batch manager {}.", self.batch_manager.to_string()));
                                 Ok(())
                             }
                             crate::evm_rpc::SendRawTransactionStatus::NonceTooLow
@@ -249,7 +258,7 @@ impl StrategyData {
                             }
                             crate::evm_rpc::SendRawTransactionStatus::InsufficientFunds => {
                                 Err(ManagerError::Custom(
-                                    "Not enough Ether balance to cover the gas fee.".to_string(),
+                                    format!("[GAS] Strategy {}: Not enough Ether balance to cover the gas fee.", self.key)
                                 ))
                             }
                         },
@@ -261,11 +270,16 @@ impl StrategyData {
                 crate::evm_rpc::MultiSendRawTransactionResult::Inconsistent(
                     inconsistent_responses,
                 ) => {
+                    print(format!("[INCONSISTENCY DETECTED] Inconsistent RPC responses were received for strategy number {}. Investigating...", self.key));
                     for (_, response) in inconsistent_responses {
                         if let SendRawTransactionResult::Ok(
                             crate::evm_rpc::SendRawTransactionStatus::Ok(_),
                         ) = response
                         {
+                            self.eoa_nonce += 1;
+                            self.apply_change();
+                            print(format!("[TRANSACTION] Inconsistency ignored for strategy {}, as at least one RPC response was ok. New rate transaction was submitted successfully for batch manager {}.", self.key, self.batch_manager.to_string()));
+                            self.unlock()?;
                             return Ok(());
                         }
                     }
@@ -275,7 +289,7 @@ impl StrategyData {
                 }
             }
         }
-
+        print(format!("[NO TRANSACTION] Strategy number {} finished its run successfully without submitting a transaction.", self.key));
         self.unlock()?;
         Ok(())
     }
@@ -308,7 +322,7 @@ impl StrategyData {
             self.derivation_path.clone(),
             &self.rpc_canister,
             &self.rpc_url,
-            1000000000,
+            1_000_000_000,
         )
         .await?;
 

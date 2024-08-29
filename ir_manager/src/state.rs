@@ -22,6 +22,8 @@ thread_local! {
     pub static EXCHANGE_RATE_CANISTER: Cell<Principal> = Cell::new(Principal::from_slice("uf6dk-hyaaa-aaaaq-qaaaq-cai".as_bytes()));
     /// Max number of retry attempts
     pub static MAX_RETRY_ATTEMPTS: Cell<u8> = Cell::new(2);
+    /// Max number of troves to fetch in one call
+    pub static MAX_NUMBER_OF_TROVES: Cell<u128> = Cell::new(500);
     /// Cycles balance threshold of the canister
     pub static CYCLES_THRESHOLD: Cell<u64> = Cell::new(50_000_000_000);
     /// A counter that tracks EOA turns for minting ckETH

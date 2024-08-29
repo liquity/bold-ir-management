@@ -13,7 +13,7 @@ use ic_exports::ic_cdk::{
         is_controller,
         management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     },
-    call, id, print,
+    call, id,
 };
 use serde_json::json;
 
@@ -73,7 +73,7 @@ pub fn string_to_address(input: String) -> Result<Address, ManagerError> {
 }
 
 /// Generates strategies for each market. Returns a HashMap<u32, StrategyData>.
-pub fn generate_strategies(
+pub async fn generate_strategies(
     markets: Vec<Market>,
     collateral_registry: Address,
     hint_helper: Address,
@@ -81,21 +81,30 @@ pub fn generate_strategies(
     rpc_principal: Principal,
     rpc_url: String,
     upfront_fee_period: Nat,
-) -> HashMap<u32, StrategyData> {
-    let mut strategies_data: HashMap<u32, StrategyData> = HashMap::new();
+) -> Result<HashMap<u32, StrategyData>, ManagerError> {
+    let mut strategies_data = HashMap::new();
     let mut strategy_id = 0;
-    let mut state_strategies = STRATEGY_DATA
+
+    // Get a mutable copy of state strategies
+    let mut state_strategies_iter = STRATEGY_DATA
         .with(|strategies| strategies.borrow().clone())
         .into_iter();
-    markets.into_iter().for_each(|market| {
-        strategies.iter().enumerate().for_each(|(index, strategy)| {
-            let state_strategy_data = state_strategies.next().unwrap().1;
-            let strategy_data = StrategyData::new(
+
+    for market in markets.into_iter() {
+        for (index, strategy) in strategies.iter().enumerate() {
+            // Safely get the next state strategy data
+            let state_strategy_data = match state_strategies_iter.next() {
+                Some((_, data)) => data,
+                None => return Err(ManagerError::NonExistentValue),
+            };
+
+            // Create a new strategy data object
+            let mut strategy_data = StrategyData::new(
                 strategy_id,
                 market.manager.clone(),
                 collateral_registry.clone(),
                 market.multi_trove_getter.clone(),
-                nat_to_u256(&strategy.target_min),
+                strategy.target_min,
                 Service(rpc_principal.clone()),
                 rpc_url.clone(),
                 nat_to_u256(&upfront_fee_period),
@@ -105,12 +114,17 @@ pub fn generate_strategies(
                 state_strategy_data.eoa_pk,
                 state_strategy_data.derivation_path,
             );
+
+            // Retrieve the nonce and handle potential errors
+            strategy_data.eoa_nonce = strategy_data.get_nonce().await?.to::<u64>();
+
+            // Insert the strategy data into the hashmap
             strategies_data.insert(strategy_id, strategy_data);
             strategy_id += 1;
-        });
-    });
+        }
+    }
 
-    strategies_data
+    Ok(strategies_data)
 }
 
 /// Converts values of type `Nat` to `U256`

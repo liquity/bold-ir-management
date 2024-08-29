@@ -1,6 +1,6 @@
 use alloy_primitives::U256;
 use candid::Nat;
-use ic_exports::ic_cdk::print;
+
 use serde_bytes::ByteBuf;
 use serde_json::json;
 use std::{ops::Add, str::FromStr};

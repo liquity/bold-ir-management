@@ -54,13 +54,15 @@ type RpcError = variant {
   ValidationError : ValidationError;
   HttpOutcallError : HttpOutcallError;
 };
-type StrategyInput = record { target_min : nat };
+type StrategyInput = record { target_min : float64 };
 type StrategyQueryData = record {
-  manager : text;
+  locked : bool;
+  batch_manager : text;
   latest_rate : text;
   eoa_pk : opt text;
   target_min : text;
   last_update : nat64;
+  trove_manager : text;
 };
 type SwapResponse = record { returning_ether : nat; accepted_cycles : nat };
 type ValidationError = variant {
