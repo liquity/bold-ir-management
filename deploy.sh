@@ -89,7 +89,7 @@ run_script() {
         echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
         echo -e "> [INFO] Deploying batch managers using Forge...${RESET_COLOR}"
         cd contracts
-        forge_output=$(forge script script/BatchManager.s.sol:BatchManagerDeployer --sig "run(address,address,address,address,address,uint128,uint128,uint128,uint128,uint128)" --rpc-url "$RPC_URL" --broadcast --verify -vvvv $STRATEGY_EOA $MANAGER $BORROWER_OPERATIONS $BOLD_TOKEN $WETH_PRICE_FEED $MIN_INTEREST_RATE $MAX_INTEREST_RATE $CURRENT_RATE $ANNUAL_MANAGEMENT_FEE $MIN_INTEREST_RATE_CHANGE_PERIOD)
+        forge_output=$(forge script script/BatchManager.s.sol:BatchManagerDeployer --sig "run(address,address,address,address,address,address,uint128,uint128,uint128,uint128,uint128)" --rpc-url "$RPC_URL" --broadcast --verify -vvvv $STRATEGY_EOA $MANAGER $BORROWER_OPERATIONS $BOLD_TOKEN $WETH_PRICE_FEED $SORTED_TROVES $MIN_INTEREST_RATE $MAX_INTEREST_RATE $CURRENT_RATE $ANNUAL_MANAGEMENT_FEE $MIN_INTEREST_RATE_CHANGE_PERIOD)
         cd ..
 
         # Extract contract address from Forge output
