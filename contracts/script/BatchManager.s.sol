@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import "forge-std/Script.sol";
 import "../src/BatchManager.sol";
 import "../src/Interfaces/ITroveManager.sol";
+import "../src/Interfaces/ISortedTroves.sol";
 import "../src/Interfaces/IBoldToken.sol";
 import "../src/Interfaces/IBorrowerOperations.sol";
 import "../src/Interfaces/IWETHPriceFeed.sol";
@@ -15,6 +16,7 @@ contract BatchManagerDeployer is Script {
         IBorrowerOperations borrowerOperations,
         IBoldToken boldToken,
         IWETHPriceFeed wethPriceFeed,
+        ISortedTroves sortedTroves,
         uint128 minInterestRate,
         uint128 maxInterestRate,
         uint128 currentInterestRate,
@@ -30,11 +32,13 @@ contract BatchManagerDeployer is Script {
             borrowerOperations,
             boldToken,
             wethPriceFeed,
+            sortedTroves,
             minInterestRate,
             maxInterestRate,
             currentInterestRate,
             fee,
-            minInterestRateChangePeriod
+            minInterestRateChangePeriod,
+            0.05 ether // discount rate
         );
 
         vm.stopBroadcast();
