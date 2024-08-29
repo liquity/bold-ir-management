@@ -162,7 +162,7 @@ impl StrategyData {
             .fetch_unbacked_portion_price_and_redeemablity(None, &block_number)
             .await?;
 
-        let mut troves: Vec<CombinedTroveData> = vec![];
+        let mut troves: Vec<DebtPerInterestRate> = vec![];
         let mut troves_index = U256::from(0);
         loop {
             let fetched_troves = self
@@ -182,7 +182,9 @@ impl StrategyData {
 
         let redemption_split = unbacked_portion_price_and_redeemability._0 / total_unbacked;
         let maximum_redeemable_against_collateral = redemption_split * entire_system_debt;
-        let target_amount = ((redemption_fee * self.target_min) / U256::from(5)) / U256::from(1000);
+        let target_amount = self
+            .target_min
+            .pow((U256::from(5) / U256::from(1_000)) / redemption_fee);
         let strategy_result = self
             .run_strategy(
                 troves,
@@ -537,18 +539,18 @@ impl StrategyData {
         index: U256,
         count: U256,
         block_number: &str,
-    ) -> Result<Vec<CombinedTroveData>, ManagerError> {
+    ) -> Result<Vec<DebtPerInterestRate>, ManagerError> {
         let rpc: RpcService = rpc_provider(&self.rpc_url);
 
-        let parameters = getMultipleSortedTrovesCall {
+        let parameters = getDebtPerInterestRateAscendingCall {
             _collIndex: self.collateral_index,
-            _startIdx: I256::from_raw(index),
-            _count: count,
+            _startId: index,
+            _maxIterations: count,
         };
 
         let json_data = eth_call_args(
             self.multi_trove_getter.to_string(),
-            getMultipleSortedTrovesCall::abi_encode(&parameters),
+            getDebtPerInterestRateAscendingCall::abi_encode(&parameters),
             block_number,
         );
 
@@ -567,10 +569,10 @@ impl StrategyData {
             .request(rpc, json_data, max_response_bytes, cycles)
             .await;
 
-        decode_response::<getMultipleSortedTrovesReturn, getMultipleSortedTrovesCall>(
+        decode_response::<getDebtPerInterestRateAscendingReturn, getDebtPerInterestRateAscendingCall>(
             rpc_canister_response,
         )
-        .map(|data| Ok(data._troves))
+        .map(|data| Ok(data._0))
         .unwrap_or_else(|e| Err(e))
     }
 
@@ -595,7 +597,7 @@ impl StrategyData {
         Ok(total_unbacked)
     }
 
-    fn get_current_debt_in_front(&self, troves: Vec<CombinedTroveData>) -> Option<U256> {
+    fn get_current_debt_in_front(&self, troves: Vec<DebtPerInterestRate>) -> Option<U256> {
         let mut counted_debt = U256::from(0);
 
         for (_, trove) in troves.iter().enumerate() {
@@ -609,7 +611,7 @@ impl StrategyData {
 
     async fn run_strategy(
         &self,
-        troves: Vec<CombinedTroveData>,
+        troves: Vec<DebtPerInterestRate>,
         time_since_last_update: U256,
         upfront_fee_period: U256,
         maximum_redeemable_against_collateral: U256,
@@ -618,9 +620,7 @@ impl StrategyData {
     ) -> Result<Option<(U256, U256)>, ManagerError> {
         if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
             // Check if decrease/increase is valid
-            let new_rate = self
-                .calculate_new_rate(troves, target_amount, block_number)
-                .await?;
+            let new_rate = self.calculate_new_rate(troves, target_amount).await?;
             let upfront_fee = self.predict_upfront_fee(new_rate, block_number).await?;
             return Ok(Some((new_rate, upfront_fee))); // todo: remove this line after testing
             if self.increase_check(
@@ -650,44 +650,14 @@ impl StrategyData {
 
     async fn calculate_new_rate(
         &self,
-        troves: Vec<CombinedTroveData>,
+        troves: Vec<DebtPerInterestRate>,
         target_amount: U256,
-        block_number: &str,
     ) -> Result<U256, ManagerError> {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);
         for (_, trove) in troves.iter().enumerate() {
             if counted_debt > target_amount {
-                // get trove current interest rate
-                let rpc: RpcService = rpc_provider(&self.rpc_url);
-
-                let json_data = eth_call_args(
-                    self.manager.to_string(),
-                    getTroveAnnualInterestRateCall { _troveId: trove.id }.abi_encode(),
-                    block_number,
-                );
-
-                let max_response_bytes = 50 + 200; // one uint256 = 32 bytes
-                let cycles = estimate_cycles(
-                    &self.rpc_canister,
-                    rpc_provider(&self.rpc_url),
-                    json_data.clone(),
-                    max_response_bytes,
-                )
-                .await?;
-
-                let rpc_canister_response = self
-                    .rpc_canister
-                    .request(rpc, json_data, max_response_bytes, cycles)
-                    .await;
-
-                let interest_rate = decode_response::<
-                    getTroveAnnualInterestRateReturn,
-                    getTroveAnnualInterestRateCall,
-                >(rpc_canister_response)?
-                ._0;
-
-                new_rate = interest_rate + U256::from(10000000000000000 as u64);
+                new_rate = trove.interestRate + U256::from(10_000_000_000_000_000 as u64);
                 break;
             }
             counted_debt += trove.debt;

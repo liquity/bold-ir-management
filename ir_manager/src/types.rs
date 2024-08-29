@@ -116,26 +116,22 @@ pub struct Account {
 
 sol!(
     // Liquity types
-    struct CombinedTroveData {
-        uint256 id;
-        uint256 debt;
-        uint256 coll;
-        uint256 stake;
-        uint256 annualInterestRate;
-        uint256 lastDebtUpdateTime;
-        uint256 lastInterestRateAdjTime;
+    struct DebtPerInterestRate {
         address interestBatchManager;
-        uint256 batchDebtShares;
-        uint256 batchCollShares;
-        uint256 snapshotETH;
-        uint256 snapshotBoldDebt;
+        uint256 interestRate;
+        uint256 debt;
     }
 
     // Liquity getters
     function getRedemptionRateWithDecay() public view override returns (uint256);
     function getEntireSystemDebt() public view returns (uint256 entireSystemDebt);
     function getUnbackedPortionPriceAndRedeemability() external returns (uint256, uint256, bool);
-    function getMultipleSortedTroves(uint256 _collIndex, int256 _startIdx, uint256 _count) external view returns (CombinedTroveData[] memory _troves);
+
+    function getDebtPerInterestRateAscending(uint256 _collIndex, uint256 _startId, uint256 _maxIterations)
+        external
+        view
+        returns (DebtPerInterestRate[] memory, uint256 currId);
+
     function getTroveAnnualInterestRate(uint256 _troveId) external view returns (uint256);
     function predictAdjustBatchInterestRateUpfrontFee(
         uint256 _collIndex,
