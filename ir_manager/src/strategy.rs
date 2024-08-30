@@ -188,7 +188,13 @@ impl StrategyData {
         let exponent = 0.005 / redemption_fee.to::<u64>() as f64;
         let target_amount = self.target_min.powf(exponent);
 
-        print(format!("Target amount set at {}", target_amount));
+        print(format!(
+            "Target amount = {}, exponent = {}, redemption_fee as f64 = {}, self.target_min = {}",
+            target_amount,
+            exponent,
+            redemption_fee.to::<u64>() as f64,
+            self.target_min
+        ));
 
         let strategy_result = self
             .run_strategy(
@@ -241,6 +247,8 @@ impl StrategyData {
                         crate::evm_rpc::SendRawTransactionResult::Ok(status) => match status {
                             crate::evm_rpc::SendRawTransactionStatus::Ok(_) => {
                                 self.eoa_nonce += 1;
+                                self.last_update = time();
+                                self.latest_rate = new_rate;
                                 self.apply_change();
                                 print(format!("[TRANSACTION] Strategy number {}: New rate transaction was submitted successfully for batch manager {}.", self.key, self.batch_manager.to_string()));
                                 self.unlock()?;
@@ -277,6 +285,8 @@ impl StrategyData {
                         ) = response
                         {
                             self.eoa_nonce += 1;
+                            self.last_update = time();
+                            self.latest_rate = new_rate;
                             self.apply_change();
                             print(format!("[TRANSACTION] Inconsistency ignored for strategy {}, as at least one RPC response was ok. New rate transaction was submitted successfully for batch manager {}.", self.key, self.batch_manager.to_string()));
                             self.unlock()?;

@@ -80,13 +80,6 @@ impl IrManager {
                 state_strategy.eoa_pk = Some(eoa_pk);
                 state_strategy.derivation_path = derivation_path;
             });
-            let nonce = strategy.get_nonce().await?;
-            // Update strategy data with the public key and derivation path
-            STRATEGY_DATA.with(|strategies_hashmap| {
-                let mut state_strategies = strategies_hashmap.borrow_mut();
-                let state_strategy = state_strategies.get_mut(&(id as u32)).unwrap();
-                state_strategy.eoa_nonce = nonce.to::<u64>();
-            });
         }
 
         Ok(())
@@ -138,7 +131,7 @@ impl IrManager {
             upfront_fee_period,
         )
         .await?;
-    
+
         STRATEGY_DATA.with(|data| {
             *data.borrow_mut() = generated_strategies;
         });
@@ -237,9 +230,12 @@ impl IrManager {
     #[query]
     pub fn get_strategies(&self) -> Vec<StrategyQueryData> {
         STRATEGY_DATA.with(|vector_data| {
-            vector_data
-                .borrow()
-                .values()
+            let binding = vector_data.borrow();
+            let values = binding.values();
+            if values.len() == 0 {
+                return vec![];
+            }
+            values
                 .map(|strategy| StrategyQueryData::from(strategy.clone()))
                 .collect()
         })
@@ -251,7 +247,12 @@ impl IrManager {
         STRATEGY_DATA.with(|data| {
             let binding = data.borrow();
             match binding.get(&index) {
-                Some(strategy) => Some(strategy.eoa_pk.unwrap().to_string()),
+                Some(strategy) => {
+                    if let Some(pk) = strategy.eoa_pk {
+                        return Some(pk.to_string());
+                    }
+                    None
+                }
                 None => None,
             }
         })

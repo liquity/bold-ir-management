@@ -21,7 +21,8 @@ contract BatchManagerDeployer is Script {
         uint128 maxInterestRate,
         uint128 currentInterestRate,
         uint128 fee,
-        uint128 minInterestRateChangePeriod
+        uint128 minInterestRateChangePeriod,
+        uint128 discountRate
     ) external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
@@ -38,7 +39,7 @@ contract BatchManagerDeployer is Script {
             currentInterestRate,
             fee,
             minInterestRateChangePeriod,
-            0.05 ether // discount rate
+            discountRate
         );
 
         vm.stopBroadcast();
