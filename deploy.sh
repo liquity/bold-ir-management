@@ -31,12 +31,18 @@ run_script() {
     # Step 2: Deploy the canister to the Internet Computer (IC)
     echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
     echo -e "> [INFO] Deploying the canister to the Internet Computer (IC)...${RESET_COLOR}"
-    dfx deploy --ic
-    if [ $? -ne 0 ]; then
-        echo -e "> ${ERROR_COLOR}[ERROR] Canister deployment failed!${RESET_COLOR}"
-        exit 1
+    deploy_output=$(dfx deploy --ic)
+    if echo "$deploy_output" | grep -q "Module hash"; then
+        echo -e "> ${INFO_COLOR}[INFO] Canister already installed. Skipping Step 5.${RESET_COLOR}"
+        skip_step_5=true
+    else
+        skip_step_5=false
+        if [ $? -ne 0 ]; then
+            echo -e "> ${ERROR_COLOR}[ERROR] Canister deployment failed!${RESET_COLOR}"
+            exit 1
+        fi
+        echo -e "> ${SUCCESS_COLOR}[INFO] Canister deployed successfully.${RESET_COLOR}"
     fi
-    echo -e "> ${SUCCESS_COLOR}[INFO] Canister deployed successfully.${RESET_COLOR}"
     echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
     
     # Step 3: Start the 'ir_manager' canister
@@ -62,16 +68,17 @@ run_script() {
     echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
     
     # Step 5: Call the 'assign_keys' method on the canister
-    echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
-    echo -e "> [INFO] Calling the 'assign_keys' method on the canister...${RESET_COLOR}"
-    dfx canister call --ic ir_manager assign_keys
-    if [ $? -ne 0 ]; then
-        echo -e "> ${ERROR_COLOR}[ERROR] Failed to call 'assign_keys' method!${RESET_COLOR}"
-        exit 1
+    if [ "$skip_step_5" = false ]; then
+        echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
+        echo -e "> [INFO] Calling the 'assign_keys' method on the canister...${RESET_COLOR}"
+        dfx canister call --ic ir_manager assign_keys
+        if [ $? -ne 0 ]; then
+            echo -e "> ${ERROR_COLOR}[ERROR] Failed to call 'assign_keys' method!${RESET_COLOR}"
+            exit 1
+        fi
+        echo -e "> ${SUCCESS_COLOR}[INFO] 'assign_keys' method called successfully.${RESET_COLOR}"
+        echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
     fi
-    echo -e "> ${SUCCESS_COLOR}[INFO] 'assign_keys' method called successfully.${RESET_COLOR}"
-    echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
-    
     # Step 6: Extract the strategy EOA by calling 'get_strategy_address' and parsing the result
     echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
     echo -e "> [INFO] Retrieving the strategy EOA...${RESET_COLOR}"
@@ -98,23 +105,23 @@ run_script() {
             --verifier-url https://testnet.liquity.org/sourcify/server \
         src/BatchManager.sol:BatchManager)
         cd ..
-        
+        echo "$forge_output"
         # Correct the extraction of contract address from Forge output
-        BATCH_MANAGER=$(echo "$forge_output" | grep -oP 'BatchManager@0x\K[0-9a-fA-F]{40}' | head -n 1)
+        BATCH_MANAGER=$(echo "$forge_output" | grep -oP 'Deployed to: (0x[0-9a-fA-F]{40})' | sed 's/Deployed to: //' | head -n 1)
         if [ -z "$BATCH_MANAGER" ]; then
             echo -e "> ${ERROR_COLOR}[ERROR] Failed to extract Batch Manager contract address!${RESET_COLOR}"
             exit 1
         fi
         
-        echo "> Extracted Batch Manager address: 0x$BATCH_MANAGER"
+        echo "> Extracted Batch Manager address: $BATCH_MANAGER"
         
         cd ..
         
-        echo -e "> ${SUCCESS_COLOR}[INFO] Batch Manager deployed successfully at address: 0x$BATCH_MANAGER${RESET_COLOR}"
+        echo -e "> ${SUCCESS_COLOR}[INFO] Batch Manager deployed successfully at address: $BATCH_MANAGER${RESET_COLOR}"
         echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
     else
         echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
-        echo -e "> [INFO] Using existing Batch Manager at address: 0x$BATCH_MANAGER${RESET_COLOR}"
+        echo -e "> [INFO] Using existing Batch Manager at address: $BATCH_MANAGER${RESET_COLOR}"
         echo -e "> ${INFO_COLOR}${BREAK_LINE}${RESET_COLOR}"
     fi
     
@@ -129,7 +136,7 @@ run_script() {
         markets = vec {
           record {
             manager = \"$MANAGER\";
-            batch_managers = vec { \"0x$BATCH_MANAGER\" };
+            batch_managers = vec { \"$BATCH_MANAGER\" };
             collateral_index = 0;
             multi_trove_getter = \"$MULTI_TROVE_GETTER\";
           }
@@ -157,13 +164,7 @@ read answer
 if [ "$answer" == "y" ]; then
     echo -n "> Enter the Batch Manager address: "
     read BATCH_MANAGER
-    
-    # Check if the input starts with "0x" and strip it if present
-    if [[ "$BATCH_MANAGER" == 0x* ]]; then
-        BATCH_MANAGER="${BATCH_MANAGER:2}"
-    fi
-    
-    echo "> Stripped Batch Manager address: $BATCH_MANAGER"
+
 else
     BATCH_MANAGER=""
 fi
