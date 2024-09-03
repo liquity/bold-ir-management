@@ -7,7 +7,8 @@ use serde_json::json;
 use crate::{
     evm_rpc::{EthCallResponse, RpcService, SendRawTransactionResult, Service},
     state::{
-        MANAGERS, MAX_NUMBER_OF_TROVES, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP,
+        MANAGERS, MAX_NUMBER_OF_TROVES, SCALE, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN,
+        TOLERANCE_MARGIN_UP,
     },
     types::*,
     utils::{
@@ -185,8 +186,9 @@ impl StrategyData {
             .await?;
         let redemption_split = unbacked_portion_price_and_redeemability._0 / total_unbacked;
         let maximum_redeemable_against_collateral = redemption_split * entire_system_debt;
-        let exponent = 0.005 / redemption_fee.to::<u64>() as f64;
-        let target_amount = self.target_min.powf(exponent);
+
+        let exponent: f64 = (0.005 * SCALE) / (redemption_fee.to::<u64>() as f64);
+        let target_amount = self.target_min.powf(exponent) * SCALE;
 
         print(format!(
             "Target amount = {}, exponent = {}, redemption_fee as f64 = {}, self.target_min = {}",
@@ -219,13 +221,12 @@ impl StrategyData {
                 _newAnnualInterestRate: new_rate.to::<u128>(),
                 _upperHint: upper_hint,
                 _lowerHint: lower_hint,
-                _maxUpfrontFee: max_upfront_fee + U256::from(1_000_000_000_000_000 as u128), // + %0.001 ,
+                _maxUpfrontFee: max_upfront_fee + U256::from(1_000_000_000_000_000_u128), // + %0.001 ,
             };
 
             print(format!(
                 "[TRANSACTION] Sending a new rate transaction with rate {} to batch manager {}...",
-                new_rate,
-                self.batch_manager.to_string()
+                new_rate, self.batch_manager
             ));
 
             let tx_response = send_raw_transaction(
@@ -250,7 +251,7 @@ impl StrategyData {
                                 self.last_update = time();
                                 self.latest_rate = new_rate;
                                 self.apply_change();
-                                print(format!("[TRANSACTION] Strategy number {}: New rate transaction was submitted successfully for batch manager {}.", self.key, self.batch_manager.to_string()));
+                                print(format!("[TRANSACTION] Strategy number {}: New rate transaction was submitted successfully for batch manager {}.", self.key, self.batch_manager));
                                 self.unlock()?;
                                 Ok(())
                             }
@@ -260,7 +261,7 @@ impl StrategyData {
                                     new_rate,
                                     upper_hint,
                                     lower_hint,
-                                    max_upfront_fee + U256::from(1_000_000_000_000_000 as u128), // + %0.001
+                                    max_upfront_fee + U256::from(1_000_000_000_000_000_u128), // + %0.001
                                 )
                                 .await
                             }
@@ -288,7 +289,7 @@ impl StrategyData {
                             self.last_update = time();
                             self.latest_rate = new_rate;
                             self.apply_change();
-                            print(format!("[TRANSACTION] Inconsistency ignored for strategy {}, as at least one RPC response was ok. New rate transaction was submitted successfully for batch manager {}.", self.key, self.batch_manager.to_string()));
+                            print(format!("[TRANSACTION] Inconsistency ignored for strategy {}, as at least one RPC response was ok. New rate transaction was submitted successfully for batch manager {}.", self.key, self.batch_manager));
                             self.unlock()?;
                             return Ok(());
                         }
@@ -337,32 +338,31 @@ impl StrategyData {
         .await?;
 
         match tx_response {
-            crate::evm_rpc::MultiSendRawTransactionResult::Consistent(tx_result) => {
-                return match tx_result {
-                    crate::evm_rpc::SendRawTransactionResult::Ok(status) => match status {
-                        crate::evm_rpc::SendRawTransactionStatus::Ok(_) => {
-                            self.eoa_nonce += 1;
-                            self.apply_change();
-                            self.unlock()?;
-                            Ok(())
-                        }
-                        crate::evm_rpc::SendRawTransactionStatus::NonceTooLow => Err(
-                            ManagerError::Custom("Could not detect the right nonce.".to_string()),
-                        ),
-                        crate::evm_rpc::SendRawTransactionStatus::TooHigh => Err(
-                            ManagerError::Custom("Could not detect the right nonce.".to_string()),
-                        ),
-                        crate::evm_rpc::SendRawTransactionStatus::InsufficientFunds => {
-                            Err(ManagerError::Custom(
-                                "Not enough Ether balance to cover the gas fee.".to_string(),
-                            ))
-                        }
-                    },
-                    crate::evm_rpc::SendRawTransactionResult::Err(err) => {
-                        Err(ManagerError::RpcResponseError(err))
+            crate::evm_rpc::MultiSendRawTransactionResult::Consistent(tx_result) => match tx_result
+            {
+                crate::evm_rpc::SendRawTransactionResult::Ok(status) => match status {
+                    crate::evm_rpc::SendRawTransactionStatus::Ok(_) => {
+                        self.eoa_nonce += 1;
+                        self.apply_change();
+                        self.unlock()?;
+                        Ok(())
                     }
+                    crate::evm_rpc::SendRawTransactionStatus::NonceTooLow => Err(
+                        ManagerError::Custom("Could not detect the right nonce.".to_string()),
+                    ),
+                    crate::evm_rpc::SendRawTransactionStatus::TooHigh => Err(ManagerError::Custom(
+                        "Could not detect the right nonce.".to_string(),
+                    )),
+                    crate::evm_rpc::SendRawTransactionStatus::InsufficientFunds => {
+                        Err(ManagerError::Custom(
+                            "Not enough Ether balance to cover the gas fee.".to_string(),
+                        ))
+                    }
+                },
+                crate::evm_rpc::SendRawTransactionResult::Err(err) => {
+                    Err(ManagerError::RpcResponseError(err))
                 }
-            }
+            },
             crate::evm_rpc::MultiSendRawTransactionResult::Inconsistent(inconsistent_responses) => {
                 for (_, response) in inconsistent_responses {
                     if let SendRawTransactionResult::Ok(
@@ -372,9 +372,9 @@ impl StrategyData {
                         return Ok(());
                     }
                 }
-                return Err(ManagerError::Custom(
+                Err(ManagerError::Custom(
                     "None of the RPC responses were OK.".to_string(),
-                ));
+                ))
             }
         }
     }
@@ -407,16 +407,22 @@ impl StrategyData {
             .await;
 
         let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
-        let decoded_response: EthCallResponse = serde_json::from_str(&encoded_response)
-            .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
+
+        let decoded_response: EthCallResponse =
+            serde_json::from_str(&encoded_response).map_err(|err| {
+                ManagerError::DecodingError(format!(
+                    "Could not decode eth_getTransactionCount reponse: {} error: {}",
+                    &encoded_response, err
+                ))
+            })?;
 
         let hex_string = if decoded_response.result[2..].len() % 2 == 1 {
-            format!("0{}", decoded_response.result[2..].to_string())
+            format!("0{}", &decoded_response.result[2..])
         } else {
             decoded_response.result[2..].to_string()
         };
 
-        let hex_decoded_response = hex::decode(&hex_string)
+        let hex_decoded_response = hex::decode(hex_string)
             .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
 
         Ok(U256::from_be_slice(&hex_decoded_response))
@@ -431,7 +437,7 @@ impl StrategyData {
         let max_response_bytes = 100 + 200; // two uint256 + one address = 84 bytes
         let arguments = predictAdjustBatchInterestRateUpfrontFeeCall {
             _collIndex: self.collateral_index,
-            _batchAddress: self.batch_manager.clone(),
+            _batchAddress: self.batch_manager,
             _newInterestRate: new_rate,
         };
 
@@ -458,8 +464,7 @@ impl StrategyData {
             predictAdjustBatchInterestRateUpfrontFeeReturn,
             predictAdjustBatchInterestRateUpfrontFeeCall,
         >(rpc_canister_response)
-        .map(|data| Ok(data._0))
-        .unwrap_or_else(|e| Err(e))
+        .map(|data| Ok(data._0))?
     }
 
     /// Returns the debt of the entire system across all markets if successful.
@@ -486,8 +491,7 @@ impl StrategyData {
             .await;
 
         decode_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(rpc_canister_response)
-            .map(|data| Ok(data.entireSystemDebt))
-            .unwrap_or_else(|e| Err(e))
+            .map(|data| Ok(data.entireSystemDebt))?
     }
 
     async fn fetch_redemption_rate(&self, block_number: &str) -> Result<U256, ManagerError> {
@@ -516,8 +520,7 @@ impl StrategyData {
         decode_response::<getRedemptionRateWithDecayReturn, getRedemptionRateWithDecayCall>(
             rpc_canister_response,
         )
-        .map(|data| Ok(data._0))
-        .unwrap_or_else(|e| Err(e))
+        .map(|data| Ok(data._0))?
     }
 
     async fn fetch_unbacked_portion_price_and_redeemablity(
@@ -596,8 +599,7 @@ impl StrategyData {
         decode_response::<getDebtPerInterestRateAscendingReturn, getDebtPerInterestRateAscendingCall>(
             rpc_canister_response,
         )
-        .map(|data| Ok(data._0))
-        .unwrap_or_else(|e| Err(e))
+        .map(|data| Ok(data._0))?
     }
 
     /// Fetches the total unbacked amount across all collateral markets excluding the ones defined in the parameter.
@@ -624,7 +626,7 @@ impl StrategyData {
     fn get_current_debt_in_front(&self, troves: Vec<DebtPerInterestRate>) -> Option<U256> {
         let mut counted_debt = U256::from(0);
 
-        for (_, trove) in troves.iter().enumerate() {
+        for trove in troves.iter() {
             if trove.interestBatchManager == self.batch_manager {
                 return Some(trove.debt);
             }
@@ -679,9 +681,9 @@ impl StrategyData {
     ) -> Result<U256, ManagerError> {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);
-        for (_, trove) in troves.iter().enumerate() {
+        for trove in troves.iter() {
             if counted_debt > target_amount {
-                new_rate = trove.interestRate + U256::from(10_000_000_000_000_000 as u64);
+                new_rate = trove.interestRate + U256::from(100_000_000_000_000_u64); // 1 bps = 0.01%
                 break;
             }
             counted_debt += trove.debt;

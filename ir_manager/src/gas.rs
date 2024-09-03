@@ -35,7 +35,7 @@ pub async fn fee_history(
         rewardPercentiles: reward_percentiles.map(ByteBuf::from),
     };
 
-    let cycles = 10_000_000_000;
+    let cycles = 25_000_000_000;
 
     match evm_rpc
         .eth_fee_history(rpc_services, None, fee_history_args, cycles)
@@ -44,7 +44,7 @@ pub async fn fee_history(
         Ok((res,)) => match res {
             MultiFeeHistoryResult::Consistent(fee_history) => match fee_history {
                 FeeHistoryResult::Ok(fee_history) => {
-                    fee_history.ok_or_else(|| ManagerError::NonExistentValue)
+                    fee_history.ok_or(ManagerError::NonExistentValue)
                 }
                 FeeHistoryResult::Err(e) => Err(ManagerError::RpcResponseError(e)),
             },
@@ -83,7 +83,7 @@ pub async fn estimate_transaction_fees(
     let base_fee_per_gas = fee_history
         .baseFeePerGas
         .last()
-        .ok_or_else(|| ManagerError::NonExistentValue)?
+        .ok_or(ManagerError::NonExistentValue)?
         .clone();
 
     // obtain the 95th percentile of the tips for the past 9 blocks
@@ -138,24 +138,29 @@ pub async fn get_estimate_gas(
     })
     .to_string();
 
-    let cycles = estimate_cycles(rpc_canister, rpc_provider(rpc_url), args.clone(), 1000).await?;
+    let cycles = estimate_cycles(rpc_canister, rpc_provider(rpc_url), args.clone(), 2000).await?;
 
     let rpc_canister_response = rpc_canister
-        .request(rpc_provider(rpc_url), args, 1000, cycles)
+        .request(rpc_provider(rpc_url), args, 2000, cycles)
         .await;
 
     let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
 
-    let decoded_response: EthCallResponse = serde_json::from_str(&encoded_response)
-        .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
+    let decoded_response: EthCallResponse =
+        serde_json::from_str(&encoded_response).map_err(|err| {
+            ManagerError::DecodingError(format!(
+                "Could not decode eth_estimateGas response: {} error: {}",
+                &encoded_response, err
+            ))
+        })?;
 
     let hex_string = if decoded_response.result[2..].len() % 2 == 1 {
-        format!("0{}", decoded_response.result[2..].to_string())
+        format!("0{}", &decoded_response.result[2..])
     } else {
         decoded_response.result[2..].to_string()
     };
 
-    let hex_decoded_response = hex::decode(&hex_string)
+    let hex_decoded_response = hex::decode(hex_string)
         .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
 
     Ok(U256::from_be_slice(&hex_decoded_response))

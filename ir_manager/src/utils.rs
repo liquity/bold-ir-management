@@ -215,10 +215,20 @@ pub fn handle_rpc_response<T, F: SolCall<Return = T>>(
     // Handle RPC response
     match rpc_response {
         RequestResult::Ok(hex_data) => {
-            let decoded_response: EthCallResponse = serde_json::from_str(&hex_data)
-                .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
-            let decoded_hex = hex::decode(&decoded_response.result[2..])
-                .map_err(|err| ManagerError::DecodingError(err.to_string()))?;
+            let decoded_response: EthCallResponse =
+                serde_json::from_str(&hex_data).map_err(|err| {
+                    ManagerError::DecodingError(format!(
+                        "Could not decode request result: {} error: {}",
+                        hex_data, err
+                    ))
+                })?;
+            let decoded_hex = hex::decode(&decoded_response.result[2..]).map_err(|err| {
+                ManagerError::DecodingError(format!(
+                    "Could not decode hex: {} error: {}",
+                    &decoded_response.result[2..],
+                    err.to_string()
+                ))
+            })?;
             F::abi_decode_returns(&decoded_hex, false)
                 .map_err(|err| ManagerError::DecodingError(err.to_string()))
         }

@@ -9,6 +9,8 @@ use ic_exports::candid::Principal;
 
 use crate::strategy::StrategyData;
 
+pub const SCALE: f64 = 1e18;
+
 thread_local! {
     /// HashMap containing all strategies' information
     pub static STRATEGY_DATA: RefCell<HashMap<u32, StrategyData>> = RefCell::new(HashMap::new());

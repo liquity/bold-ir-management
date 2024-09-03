@@ -93,7 +93,7 @@ impl IrManager {
 
         let state_strategies_len = STRATEGY_DATA.with(|strategies| strategies.borrow().len());
         if state_strategies_len != init_args.markets.len() * init_args.strategies.len() {
-            return Err(ManagerError::Custom("The original count of strategies does not correspond to the number of markets and strategies that is sent.".to_string()));
+            return Err(ManagerError::Custom(format!("The original count of strategies {} does not correspond to the number of markets and strategies that is sent {}.", state_strategies_len, init_args.markets.len() * init_args.strategies.len())));
         }
 
         // Parse and assign initialization arguments
@@ -149,7 +149,7 @@ impl IrManager {
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {
                     print(format!(
-                        "[INIT] Running strategy number {} with EOA {:#?}",
+                        "[INIT] Running strategy {} with EOA address {:#?}",
                         strategy.key, strategy.eoa_pk.unwrap()
                     ));
                     for turn in 1..=*max_retry_attempts {
