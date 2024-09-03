@@ -96,10 +96,13 @@ contract BatchManager {
             boldToken.transfer(msg.sender, expectedBold);
             return;
         }
+        
         uint256 accruedBold = troveManager
             .getLatestBatchData(address(this))
             .accruedManagementFee;
-
+        
+        require(accruedBold + boldHoldings >= expectedBold, "The contract doesn't have enough BOLD for this amount of Ether.");
+        
         if (accruedBold + boldHoldings >= expectedBold) {
             (uint256 head, ) = sortedTroves.batches(
                 BatchId.wrap(address(this))
