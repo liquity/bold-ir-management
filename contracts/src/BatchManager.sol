@@ -101,7 +101,7 @@ contract BatchManager {
             .accruedManagementFee;
 
         if (accruedBold + boldHoldings >= expectedBold) {
-            (uint256 head,) = sortedTroves.batches(
+            (uint256 head, ) = sortedTroves.batches(
                 BatchId.wrap(address(this))
             );
             borrowerOperations.applyPendingDebt(head, 0, 0);
@@ -125,5 +125,12 @@ contract BatchManager {
             _lowerHint,
             _maxUpfrontFee
         );
+    }
+
+    /**
+     * @dev Returns the batch manager EOA
+     */
+    function ManagerEOA() external view returns (address) {
+        return batchManagerEOA;
     }
 }
