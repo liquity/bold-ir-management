@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # ASCII Art because why not
+clear
 echo " _     ___ ___  _   _ ___ _______   __    __     ______  "
 echo "| |   |_ _/ _ \| | | |_ _|_   _\ \ / /    \ \   / /___ \ "
 echo "| |    | | | | | | | || |  | |  \ V /      \ \ / /  __) |"
