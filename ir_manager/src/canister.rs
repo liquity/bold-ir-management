@@ -144,7 +144,7 @@ impl IrManager {
         strategies.into_iter().for_each(|(_, strategy)| {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
 
-            set_timer(Duration::ZERO, move || {
+            set_timer(Duration::from_secs(3_600), move || {
                 let mut strategy = strategy.clone();
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {
@@ -164,7 +164,7 @@ impl IrManager {
                             Err(err) => {
                                 let _ = strategy.unlock(); // Unlock on failure
                                 print(format!(
-                                    "[ERROR] Error running strategy number {}, attempt {} => {:#?}",
+                                    "[ERROR] Strategy number {}, attempt {} => {:#?}",
                                     strategy.key, turn, err
                                 ));
                             }
@@ -172,28 +172,6 @@ impl IrManager {
                     }
                 });
             });
-
-            // set_timer_interval(Duration::from_secs(3600), move || {
-            //     let mut strategy = strategy.clone();
-            //     let max_retry_attempts = Arc::clone(&max_retry_attempts);
-            //     spawn(async move {
-            //         for turn in 1..=*max_retry_attempts {
-            //             let result = strategy.execute().await;
-
-            //             // Handle success or failure for each strategy execution attempt
-            //             match result {
-            //                 Ok(()) => break, // Exit on success
-            //                 Err(err) => {
-            //                     let _ = strategy.unlock(); // Unlock on failure
-            //                     print(format!(
-            //                         "[ERROR] Error running strategy number {}, attempt {} => {:#?}",
-            //                         strategy.key, turn, err
-            //                     ));
-            //                 }
-            //             }
-            //         }
-            //     });
-            // });
         });
 
         // Set a recurring timer for recharging ckETH balance (execute every 24 hours)

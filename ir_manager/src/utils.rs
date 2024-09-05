@@ -344,7 +344,8 @@ pub async fn send_raw_transaction(
     };
 
     let request = TxEip1559 {
-        chain_id: 1337, // todo: change with mainnet id or query from rpc
+        // chain_id: 11155111, // Sepolia test-net
+        chain_id: 1, // Ethereum main-net
         to: TxKind::Call(
             Address::from_str(&to)
                 .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?,

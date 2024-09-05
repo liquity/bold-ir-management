@@ -177,7 +177,7 @@ impl StrategyData {
             if last_trove.debt == U256::ZERO && last_trove.interestRate == U256::ZERO {
                 break;
             }
-            troves_index += max_count; // todo: should this be max_count - 1?
+            troves_index += max_count;
         }
 
         let redemption_fee = self.fetch_redemption_rate(&block_number).await?;
@@ -648,7 +648,7 @@ impl StrategyData {
             // Check if decrease/increase is valid
             let new_rate = self.calculate_new_rate(troves, target_amount).await?;
             let upfront_fee = self.predict_upfront_fee(new_rate, block_number).await?;
-            return Ok(Some((new_rate, upfront_fee))); // todo: remove this line after testing
+            // return Ok(Some((new_rate, upfront_fee))); You can uncomment this line to test the canister without waiting for an update condition to be satisfied.
             if self.increase_check(
                 current_debt_in_front,
                 maximum_redeemable_against_collateral,
