@@ -2,94 +2,150 @@
 
 ## Overview
 
-The BOLD Interest Rate (IR) Manager is a Rust-based canister designed to work in tandem with the Batch Manager Solidity smart contract. Together, they automatically adjust troves' interest rates for the Liquity Protocol v2. This automated adjustment process leverages the Internet Computer's tECDSA signatures to create Ethereum Mainnet Externally Owned Accounts (EOAs) and execute rate adjustment transactions via these accounts.
+The **BOLD Interest Rate (IR) Manager** is an innovative Rust-based canister that integrates seamlessly with the **Batch Manager** Solidity smart contract to automate the adjustment of interest rates for troves within the **Liquity Protocol v2**. This solution utilizes the Internet Computer’s threshold ECDSA (tECDSA) signatures to manage Ethereum Mainnet Externally Owned Accounts (EOAs) and securely execute rate adjustment transactions, offering a decentralized and secure way to maintain optimal interest rates across multiple strategies.
 
-The BOLD IR Manager can manage multiple strategies, each linked to different Batch Manager contracts and EOAs. It periodically checks the state of sorted troves every hour and will initiate an update transaction if any of the rate adjustment conditions—whether to increase or decrease the rates—are met.
+The BOLD IR Manager is capable of managing multiple interest rate adjustment strategies, each associated with different Batch Manager contracts and EOAs. It continuously monitors the state of sorted troves, checking every hour whether the conditions for rate adjustment—either an increase or a decrease—are met. If the conditions are met, the manager initiates a transaction to adjust the rates, maintaining the system’s stability and ensuring competitive borrowing costs.
 
 ## Calculations
 
-Whenever a strategy is being executed, the following calculations are performed:
+During the execution of each strategy, the following calculations are performed to determine whether an interest rate adjustment is necessary:
 
-- Increase check:
+- **Increase Check:**
+  
+  The system checks whether the conditions for increasing the interest rate are met.
 
-    ![](./assets/update_condition.png)
+  ![Increase Check](./assets/update_condition.png)
 
-- First decrease check:
+- **First Decrease Check:**
 
-    ![](./assets/first_decrease_condition.png)
+  This check determines if an initial condition for reducing the interest rate is satisfied.
 
-- Second decrease check:
+  ![First Decrease Check](./assets/first_decrease_condition.png)
 
-    ![](./assets/second_decrease_condition.png)
+- **Second Decrease Check:**
 
-- New rate calculation:
+  A secondary check is performed to assess if further reduction in the interest rate is required.
 
-    ![](./assets/new_rate.png)
+  ![Second Decrease Check](./assets/second_decrease_condition.png)
 
-- Definitions:
+- **New Rate Calculation:**
 
-    ![](./assets/definitions.png)
+  Calculates the new interest rate based on the outcome of the checks.
 
-    ![](./assets/maximumRedemptionCollateral.png)
+  ![New Rate Calculation](./assets/new_rate.png)
+
+- **Definitions:**
+
+  Provides detailed definitions of the terms and parameters used in the rate adjustment calculations.
+
+  ![Definitions](./assets/definitions.png)
+
+  ![Maximum Redemption Collateral](./assets/maximumRedemptionCollateral.png)
 
 ## Recharge Flow
 
-The diagram below illustrates how the canister recharges itself automatically by providing financial incentives to external participants. These participants can supply the protocol with ETH and Cycles in exchange for BOLD and ckETH, respectively.
+The BOLD IR Manager includes a self-sustaining recharge mechanism. The diagram below illustrates how the canister automatically recharges itself by offering financial incentives to external participants. These participants can supply the protocol with ETH and Cycles in exchange for BOLD tokens and ckETH, respectively.
 
-![Recharge Flow](./assets/Recharge_flow.png)
+![Recharge Flow](./assets/diagrams/Arbitrage.png)
 
-### How It Works
+### Recharge Mechanism Explanation
 
-#### How the New Rate is Set
+1. **ETH Supply and ckETH Minting**: Participants send ETH to the Batch Manager contract on Ethereum. The Strategy EOA uses this ETH to mint ckETH, which can then be transferred back to the Internet Computer. The system periodically checks (every 24 hours) if the canister’s ckETH balance falls below a specific threshold, prompting a new minting of ckETH.
 
-1. **Periodic Trove Checks**: The BOLD IR Manager periodically checks the state of troves every hour. It evaluates whether the interest rates need adjustment based on predefined conditions for increasing or decreasing rates.
+2. **Cycle Acceptance and Exchange**: If the canister's cycle balance is low, it will accept cycles from participants in exchange for ckETH, maintaining a stable supply of resources to continue its operations.
 
-2. **tECDSA Signature Generation**: If a rate adjustment is needed, the IR Manager generates a tECDSA signature to authorize a transaction on the Ethereum network. This signature is used to create an Ethereum transaction that adjusts the interest rates as required.
+3. **Financial Incentives and Arbitrage Opportunities**: The system creates arbitrage opportunities where participants can supply ETH to receive discounted BOLD tokens or send Cycles to receive ckETH, ensuring a continuous supply of essential resources to sustain the protocol.
 
-3. **Executing Transactions via EOAs**: The authorized transaction is executed via the EOAs on the Ethereum Mainnet, which have been set up by the IR Manager. This ensures that the rate adjustments are carried out efficiently and securely on the Ethereum blockchain.
+## Rate Adjustment Flow
 
-#### How the Canister and EOAs Keep Their Gas Tokens as ETH and Cycles
+The rate adjustment process follows a specific flow to ensure that interest rates are updated efficiently and securely. The diagram below illustrates this flow:
 
-1. **ckETH Minting & Transfer**: The process begins with the Ethereum side where ETH is sent to the Batch Manager, which is responsible for collecting accrued fees as BOLD. The Strategy EOA then mints ckETH using the sent ETH. However, the ckETH minting checks occur only every 24 hours. New ckETH will only be minted if the canister's ckETH balance is below a specific threshold, and it will mint a predefined amount. This is necessary because minting ckETH takes approximately 20 minutes to be picked up by the Internet Computer's ckETH Minter canister. The goal is to ensure that there is always enough ckETH available to provide to users sending cycles, if the canister is accepting cycles.
+![Rate Adjustment Flow Diagram](./assets/diagrams/RateAdjustment.png)
 
-2. **Cycle Acceptance Check**: The decision to accept cycles is determined by the canister's cycles balance. If the balance falls below a certain threshold, the canister will accept cycles and mint ckETH in response.
+### Rate Adjustment Process Details
 
-3. **Maintaining Gas Token Reserves**: Both the canister and EOAs must maintain sufficient reserves of gas tokens (ETH on Ethereum and cycles on the Internet Computer) to continue operating efficiently. The Batch Manager ensures that the necessary ETH is available by managing the accrued fees and supplying the EOAs with enough ETH. Similarly, the canister checks its cycle balance and recharges itself as needed to sustain its operations.
+1. **Monitoring Trove States**: The IR Manager periodically checks the troves’ states to evaluate the need for rate adjustments. If any conditions for rate modification (increase or decrease) are met, it prepares to initiate a transaction.
 
-4. **Arbitrage Opportunity**: An arbitrageur can send ETH to receive discounted BOLD or send cycles to receive ckETH. This mechanism incentivizes the continuous supply of ETH and Cycles to the protocol, ensuring that it remains self-sustaining.
+2. **Generating tECDSA Signatures**: When an adjustment is necessary, the IR Manager generates a tECDSA signature, a secure method of authorizing transactions on the Ethereum network without exposing the private keys.
+
+3. **Executing Adjustments**: Using the generated signature, the IR Manager executes the required transactions through the EOAs on the Ethereum Mainnet. This approach ensures that the interest rates are adjusted in a decentralized, secure, and automated manner.
+
+## Concurrency Across Strategies
+
+The BOLD IR Manager is designed to handle multiple strategies concurrently, ensuring that interest rates are adjusted in real-time across various protocols and markets. The diagram below illustrates how concurrency is managed:
+
+![Concurrency Across Strategies Diagram](./assets/diagrams/Concurrency.png)
+
+### Internet Computer's Concurrency
+
+On the Internet Computer, concurrency is managed by leveraging the protocol’s ability to handle asynchronous messages. This allows the system to yield control between different processes and resume them later, ensuring efficient resource management and smooth operation.
+
+![IC Concurrency](./assets/diagrams/InternetComputerConcurrency.png)
+
+## How It Works
+
+### How the New Rate is Set
+
+1. **Periodic Trove Checks**: Every hour, the BOLD IR Manager checks the state of troves. It evaluates whether interest rates need to be adjusted based on predefined conditions, including market demand, collateral ratios, and protocol-defined parameters.
+
+2. **tECDSA Signature Generation**: If a rate adjustment is deemed necessary, the IR Manager generates a tECDSA signature. This signature is used to authorize the transaction on the Ethereum network securely.
+
+3. **Executing Transactions via EOAs**: The IR Manager uses the generated tECDSA signature to sign and execute transactions via EOAs on the Ethereum Mainnet. This method ensures that adjustments are made without exposing private keys or compromising security.
+
+### Gas Token Management for Canister and EOAs
+
+1. **ckETH Minting & Transfer**: On the Ethereum side, ETH is sent to the Batch Manager, which manages accrued fees as BOLD tokens. The Strategy EOA mints ckETH using this ETH. Minting occurs every 24 hours if the canister's ckETH balance is below a specified threshold, ensuring a sufficient supply for protocol operations.
+
+2. **Cycle Acceptance Check**: The canister accepts cycles when its balance falls below a certain level. It exchanges cycles for ckETH to maintain adequate operational reserves.
+
+3. **Maintaining Gas Token Reserves**: The Batch Manager ensures enough ETH is available by managing accrued fees and supplying the EOAs with necessary resources. Simultaneously, the canister checks its cycle balance and recharges as needed.
+
+4. **Arbitrage Opportunities**: Arbitrage participants can send ETH for discounted BOLD or cycles for ckETH, incentivizing the continuous supply of ETH and Cycles to the protocol.
 
 ## Canister Methods
 
-The BOLD IR Manager canister exposes several key methods for interaction:
+The BOLD IR Manager canister provides several methods to enable interaction and configuration:
 
-- **`start`**: Initializes the canister's strategy data state with placeholder values that allow for tECDSA key generation.
-- **`assign_keys`**: Initializes public keys for the strategies' EOAs to interact securely with Ethereum.
-- **`start_timers`**: Accepts `InitArgs` as input to start all relevant timers for interest rate adjustments, ckETH balance checks, and more. This method allows for customizable configuration on initialization, including the specification of markets, RPC settings, collateral registry, and strategies. It also blackholes the canister (removes all controllers)
-- **`swap_cketh`**: Allows any caller to send cycles for recharging purposes and receive ckETH in return. This method returns a `SwapResponse` that contains details about the transaction, such as the amount of ether returned and cycles accepted.
-- **`get_strategies`**: Retrieves all active strategies along with their corresponding EOAs and related data, such as the latest rate and the last update time.
+- **`start`**: Initializes the canister with default strategy data necessary for tECDSA key generation.
+- **`assign_keys`**: Sets up public keys for the strategies' EOAs, allowing secure interactions on Ethereum.
+- **`start_timers`**: Accepts initialization arguments to start various timers for interest rate adjustments, ckETH balance checks, and other processes. Configurations include markets, RPC settings, collateral registry, and strategies.
+- **`swap_cketh`**: Allows participants to exchange cycles for ckETH, providing details on the transaction (amount of ETH returned, cycles accepted).
+- **`get_strategies`**: Fetches all active strategies, associated EOAs, and relevant data such as the current rate and last update time.
 
 ## Technical Details: tECDSA Signatures
 
 ### What are tECDSA Signatures?
 
-Threshold ECDSA (tECDSA) is a cryptographic technique that allows multiple parties to collaboratively generate a digital signature without ever revealing the private key. This is particularly useful in decentralized environments where the security of the private key is paramount.
+Threshold ECDSA (tECDSA) is a cryptographic method that enables multiple parties to jointly generate a digital signature without ever revealing the private key. This technique enhances security in decentralized environments by eliminating single points of failure.
 
-### How tECDSA is Used in the BOLD IR Manager
+### Usage in the BOLD IR Manager
 
-In the BOLD IR Manager, tECDSA signatures are used to authorize Ethereum transactions from the canister without the need to expose or directly handle the private keys. This process involves the following steps:
+In the BOLD IR Manager, tECDSA signatures play a crucial role in authorizing Ethereum transactions:
 
-1. **Distributed Key Generation (DKG)**: The Internet Computer's canisters participate in a distributed key generation process, where a private key is split into shares among multiple nodes.
+1. **Distributed Key Generation (DKG)**: The Internet Computer canisters participate in generating a private key that is divided among multiple nodes.
 
-2. **Signature Generation**: When a transaction needs to be signed, these nodes work together to generate a tECDSA signature using their key shares. The full private key is never reconstructed, enhancing security.
+2. **Signature Generation**: When a transaction requires signing, the nodes collaborate to generate a tECDSA signature using their shares of the private key. The private key is never fully reconstructed, enhancing security.
 
-3. **Transaction Execution**: The tECDSA signature is then used to sign Ethereum transactions that adjust interest rates or manage ETH balances. This ensures that the transactions are secure and that the private key is never compromised.
+3. **Transaction Execution**: The tECDSA signature authorizes Ethereum transactions for rate adjustments or ETH management, ensuring that private keys remain secure.
 
-4. **Security and Decentralization**: By utilizing tECDSA, the BOLD IR Manager can maintain a high level of security while operating in a decentralized manner. The process eliminates the need for a single point of failure, as the private key is never stored in one place.
+4. **Security and Decentralization**: The use of tECDSA ensures a high level of security and decentralization, minimizing the risk of a single point of failure and preventing private key exposure.
 
 ## Deployment Details
 
-The BOLD IR Manager canister is not upgradable and will be blackholed upon starting. This means that all controllers will be removed, making the canister immutable. Any user may choose to deploy their own Batch Manager contract and IR Manager canister to handle their troves. However, the Liquity Protocol will offer several pre-configured strategies for users to choose from.
+The BOLD IR Manager canister is designed to be immutable and non-upgradable. Upon initialization, it will be "blackholed," meaning all controllers are removed to make the canister immutable. Users have the flexibility to deploy their own Batch Manager contracts and IR Manager canisters, though pre-configured strategies will also be available through the Liquity Protocol.
+
+## Security Requirements
+
+The IR Manager Rust canister and the Batch Manager Solidity contract are designed for trustlessness, with no administrative or governance privileges:
+
+- **No Governance/Admin Access**: The canister and contract logic is fixed upon deployment, covering all aspects of strategy, rate adjustment calculations, and more.
+
+- **Minimized External Update Methods**: Only three external permissioned update methods are exposed to facilitate deployment and initialization. After deployment, these methods are locked, and the canister is blackholed to prevent unauthorized access. The canister also provides an external update method for Cycles<>ckETH arbitrage, while the Batch Manager contract exposes two functions: one for Ether<>BOLD arbitrage and another for proxying rate adjustment calls from strategy EOAs.
+
+- **Logs and Retry Mechanisms**: The canister includes retry loops to handle errors, reporting them in logs and reattempting operations if necessary. It is designed to minimize traps and panics, ensuring reliable autonomous operation.
 
 ## Summary
 
-The BOLD IR Manager and Batch Manager together ensure the automated adjustment of interest rates within the Liquity Protocol v2 by leveraging decentralized infrastructure and providing financial incentives for participation. This setup aims to maintain the protocol's long-term stability and sustainability, while allowing for flexibility in user deployment and strategy selection. The integration of tECDSA signatures further enhances the security and decentralization of the entire process.
+The BOLD IR Manager and Batch Manager collaboratively ensure the automated adjustment of interest rates within the Liquity Protocol v2 by leveraging decentralized infrastructure and providing financial incentives for participation. The setup is designed to maintain long-term protocol stability and sustainability while offering flexibility in deployment and strategy selection. The integration of tECDSA signatures further enhances security and decentralization, making the entire process robust and resistant to single points of failure.
+
+By combining cutting-edge cryptography with a decentralized approach, the BOLD IR Manager provides a secure, efficient, and automated solution for managing interest rates in DeFi, enabling the Liquity Protocol v2 to remain competitive and resilient in an ever-evolving financial landscape.
