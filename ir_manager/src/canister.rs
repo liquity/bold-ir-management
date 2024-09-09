@@ -5,8 +5,8 @@ use crate::{
     signer::{get_canister_public_key, pubkey_bytes_to_address},
     state::*,
     strategy::StrategyData,
-    types::{InitArgs, ManagerError, Market, StrategyQueryData, SwapResponse},
-    utils::{generate_strategies, only_controller, string_to_address},
+    types::{ManagerError, StrategyInput, StrategyQueryData, SwapResponse},
+    utils::{nat_to_u256, only_controller},
 };
 use alloy_primitives::Address;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
@@ -28,114 +28,68 @@ pub struct IrManager {
 impl PreUpdate for IrManager {}
 
 impl IrManager {
-    /// Initializes the strategy data with placeholders based on the `strategies_count` provided.
     #[update]
-    pub fn start(&mut self, strategies_count: u64) -> Result<(), ManagerError> {
+    pub async fn mint_strategy(&self, strategy: StrategyInput) -> Result<String, ManagerError> {
         only_controller(caller())?;
 
-        STRATEGY_DATA.with(|strategies| {
-            let mut state = strategies.borrow_mut();
-            let placeholder_data = vec![StrategyData::default(); strategies_count as usize];
+        let strategies = STRATEGY_DATA.with(|strategies| strategies.borrow().clone());
 
-            // Insert each placeholder strategy into the state HashMap.
-            placeholder_data
-                .into_iter()
-                .enumerate()
-                .for_each(|(index, strategy)| {
-                    state.insert(index as u32, strategy);
-                });
-        });
-
-        Ok(())
-    }
-
-    /// Generates and assigns derivation paths and public keys for each strategy.
-    /// The `eoa_pk` and `derivation_path` fields in each strategy are updated.
-    #[update]
-    pub async fn assign_keys(&mut self) -> Result<(), ManagerError> {
-        only_controller(caller())?;
-
-        let strategies = STRATEGY_DATA.with(|strategies_hashmap| {
-            let binding = strategies_hashmap.borrow();
-            binding.clone().into_iter()
-        });
-
-        for (id, strategy) in strategies {
-            if strategy.eoa_pk.is_some() {
-                continue;
-            }
-            let derivation_path = vec![id.to_be_bytes().to_vec()];
-            let key_id = EcdsaKeyId {
-                curve: EcdsaCurve::Secp256k1,
-                name: String::from("key_1"),
-            };
-
-            // Asynchronously calculate the public key for each strategy
-            let public_key_bytes =
-                get_canister_public_key(key_id, None, Some(derivation_path.clone())).await;
-            let eoa_pk = Address::from_str(&pubkey_bytes_to_address(&public_key_bytes)).unwrap();
-            STRATEGY_DATA.with(|strategies_hashmap| {
-                let mut state_strategies = strategies_hashmap.borrow_mut();
-                let state_strategy = state_strategies.get_mut(&(id as u32)).unwrap();
-                state_strategy.eoa_pk = Some(eoa_pk);
-                state_strategy.derivation_path = derivation_path;
-            });
+        if strategies.get(&strategy.key).is_some() {
+            return Err(ManagerError::Custom(
+                "This strategy key is already being used.".to_string(),
+            ));
         }
 
-        Ok(())
+        MANAGERS.with(|managers| managers.borrow_mut().push(strategy.manager.clone()));
+
+        let derivation_path = vec![strategy.key.to_be_bytes().to_vec()];
+        let key_id = EcdsaKeyId {
+            curve: EcdsaCurve::Secp256k1,
+            name: String::from("key_1"),
+        };
+        let public_key_bytes =
+            get_canister_public_key(key_id, None, Some(derivation_path.clone())).await;
+        let eoa_pk = Address::from_str(&pubkey_bytes_to_address(&public_key_bytes)).unwrap();
+        let rpc_canister = crate::evm_rpc::Service(strategy.rpc_principal);
+        let strategy_data = StrategyData::new(
+            strategy.key,
+            strategy.manager,
+            strategy.collateral_registry,
+            strategy.multi_trove_getter,
+            strategy.target_min,
+            rpc_canister,
+            strategy.rpc_url,
+            nat_to_u256(&strategy.upfront_fee_period),
+            nat_to_u256(&strategy.collateral_index),
+            strategy.hint_helper,
+            Some(eoa_pk),
+            derivation_path,
+        )?;
+
+        STRATEGY_DATA.with(|strategies| {
+            let mut binding = strategies.borrow_mut();
+            binding.insert(strategy.key, strategy_data);
+        });
+
+        Ok(eoa_pk.to_string())
+    }
+
+    #[update]
+    pub async fn set_batch_manager(
+        &self,
+        key: u32,
+        batch_manager: String,
+    ) -> Result<(), ManagerError> {
+        only_controller(caller())?;
+        let address = Address::from_str(&batch_manager).unwrap();
+        StrategyData::set_batch_manager(key, address)
     }
 
     /// Starts timers for executing strategies and managing the canister's cycle balance.
     /// Each strategy executes on a 1-hour interval, and cycle balance checks happen every 24 hours.
     #[update]
-    pub async fn start_timers(&self, init_args: InitArgs) -> Result<(), ManagerError> {
+    pub async fn start_timers(&self) -> Result<(), ManagerError> {
         only_controller(caller())?;
-
-        let state_strategies_len = STRATEGY_DATA.with(|strategies| strategies.borrow().len());
-        if state_strategies_len != init_args.markets.len() * init_args.strategies.len() {
-            return Err(ManagerError::Custom(format!("The original count of strategies {} does not correspond to the number of markets and strategies that is sent {}.", state_strategies_len, init_args.markets.len() * init_args.strategies.len())));
-        }
-
-        // Parse and assign initialization arguments
-        let collateral_registry = string_to_address(init_args.collateral_registry)?;
-        let hint_helper = string_to_address(init_args.hint_helper)?;
-
-        let rpc_principal = init_args.rpc_principal;
-        let strategies = init_args.strategies;
-        let rpc_url = init_args.rpc_url;
-        let markets = init_args.markets;
-        let upfront_fee_period = init_args.upfront_fee_period;
-
-        let mut managers = vec![];
-
-        // Parse markets into usable data structures
-        let parsed_markets: Vec<Market> = markets
-            .into_iter()
-            .map(|market| {
-                managers.push(market.manager.clone());
-                Market::try_from(market)
-            })
-            .collect::<Result<Vec<Market>, ManagerError>>()?;
-
-        // Update the MANAGERS state with the market managers
-        MANAGERS.with(|managers_vector| *managers_vector.borrow_mut() = managers);
-
-        // Generate strategies from parsed market data and initialization arguments
-        let generated_strategies = generate_strategies(
-            parsed_markets,
-            collateral_registry,
-            hint_helper,
-            strategies,
-            rpc_principal,
-            rpc_url,
-            upfront_fee_period,
-        )
-        .await?;
-
-        STRATEGY_DATA.with(|data| {
-            *data.borrow_mut() = generated_strategies;
-        });
-
         // Retrieve all strategies for setting up timers
         let strategies = STRATEGY_DATA.with(|vector_data| vector_data.borrow().clone());
         let max_retry_attempts = Arc::new(MAX_RETRY_ATTEMPTS.with(|attempts| attempts.get()));
@@ -144,7 +98,8 @@ impl IrManager {
         strategies.into_iter().for_each(|(_, strategy)| {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
 
-            set_timer(Duration::from_secs(3_600), move || {
+            //set_timer(Duration::from_secs(3_600), move || {
+            set_timer(Duration::ZERO, move || {
                 let mut strategy = strategy.clone();
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {

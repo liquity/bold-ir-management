@@ -6,15 +6,6 @@ type HttpOutcallError = variant {
     parsingError : opt text;
   };
 };
-type InitArgs = record {
-  rpc_principal : principal;
-  hint_helper : text;
-  markets : vec MarketInput;
-  upfront_fee_period : nat;
-  rpc_url : text;
-  collateral_registry : text;
-  strategies : vec StrategyInput;
-};
 type JsonRpcError = record { code : int64; message : text };
 type ManagerError = variant {
   Custom : text;
@@ -24,12 +15,6 @@ type ManagerError = variant {
   RpcResponseError : RpcError;
   CyclesBalanceAboveRechargingThreshold;
   NonExistentValue;
-};
-type MarketInput = record {
-  manager : text;
-  batch_managers : vec text;
-  collateral_index : nat;
-  multi_trove_getter : text;
 };
 type ProviderError = variant {
   TooFewCycles : record { expected : nat; received : nat };
@@ -46,15 +31,27 @@ type RejectionCode = variant {
   SysFatal;
   CanisterReject;
 };
-type Result = variant { Ok; Err : ManagerError };
-type Result_1 = variant { Ok : SwapResponse; Err : ManagerError };
+type Result = variant { Ok : text; Err : ManagerError };
+type Result_1 = variant { Ok; Err : ManagerError };
+type Result_2 = variant { Ok : SwapResponse; Err : ManagerError };
 type RpcError = variant {
   JsonRpcError : JsonRpcError;
   ProviderError : ProviderError;
   ValidationError : ValidationError;
   HttpOutcallError : HttpOutcallError;
 };
-type StrategyInput = record { target_min : float64 };
+type StrategyInput = record {
+  key : nat32;
+  manager : text;
+  rpc_principal : principal;
+  hint_helper : text;
+  collateral_index : nat;
+  multi_trove_getter : text;
+  upfront_fee_period : nat;
+  rpc_url : text;
+  target_min : float64;
+  collateral_registry : text;
+};
 type StrategyQueryData = record {
   locked : bool;
   batch_manager : text;
@@ -74,10 +71,10 @@ type ValidationError = variant {
   InvalidHex : text;
 };
 service : {
-  assign_keys : () -> (Result);
   get_strategies : () -> (vec StrategyQueryData) query;
   get_strategy_address : (nat32) -> (opt text) query;
-  start : (nat64) -> (Result);
-  start_timers : (InitArgs) -> (Result);
-  swap_cketh : () -> (Result_1);
+  mint_strategy : (StrategyInput) -> (Result);
+  set_batch_manager : (nat32, text) -> (Result_1);
+  start_timers : () -> (Result_1);
+  swap_cketh : () -> (Result_2);
 }

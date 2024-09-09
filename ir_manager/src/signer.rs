@@ -31,8 +31,6 @@ pub async fn sign_eip1559_transaction(
     key_id: EcdsaKeyId,
     derivation_path: DerivationPath,
 ) -> String {
-    const EIP1559_TX_ID: u8 = 2;
-
     let tx_hash = tx.signature_hash();
 
     let r_and_s = sign_with_ecdsa(SignWithEcdsaArgument {

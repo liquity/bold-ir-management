@@ -11,7 +11,7 @@ use crate::{
         MultiFeeHistoryResult, RpcServices, Service,
     },
     types::ManagerError,
-    utils::{decode_request_response_encoded, estimate_cycles, rpc_provider},
+    utils::{decode_request_response_encoded, request_with_dynamic_retries},
 };
 
 /// The minimum suggested maximum priority fee per gas.
@@ -138,11 +138,7 @@ pub async fn get_estimate_gas(
     })
     .to_string();
 
-    let cycles = estimate_cycles(rpc_canister, rpc_provider(rpc_url), args.clone(), 2000).await?;
-
-    let rpc_canister_response = rpc_canister
-        .request(rpc_provider(rpc_url), args, 2000, cycles)
-        .await;
+    let rpc_canister_response = request_with_dynamic_retries(rpc_canister, rpc_url, args).await?;
 
     let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
 

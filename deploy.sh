@@ -117,7 +117,7 @@ run_script() {
                 --private-key "$PRIVATE_KEY" \
                 --verify \
                 --verifier sourcify \
-                --verifier-url https://testnet.liquity.org/sourcify/server \
+                --verifier-url "$VERIFIER_URL" \
             src/BatchManager.sol:BatchManager)
             echo "$forge_output"
             BATCH_MANAGER=$(echo "$forge_output" | grep -oP 'Deployed to: (0x[0-9a-fA-F]{40})' | sed 's/Deployed to: //' | head -n 1)

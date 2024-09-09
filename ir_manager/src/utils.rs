@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::{collections::HashMap, str::FromStr};
+use std::str::FromStr;
 
 use alloy::consensus::TxEip1559;
 use alloy_primitives::{Address, Bytes, TxKind, U256};
@@ -13,21 +13,20 @@ use ic_exports::ic_cdk::{
         is_controller,
         management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     },
-    call, id,
+    call, id, print,
 };
 use serde_json::json;
 
 use crate::{
     evm_rpc::{
-        EthCallResponse, MultiSendRawTransactionResult, RequestCostResult, RequestResult, RpcApi,
-        RpcService, RpcServices, Service,
+        EthCallResponse, HttpOutcallError, MultiSendRawTransactionResult, RejectionCode,
+        RequestCostResult, RequestResult, RpcApi, RpcError, RpcService, RpcServices, Service,
     },
     exchange::*,
     gas::{estimate_transaction_fees, get_estimate_gas, FeeEstimates},
     signer::sign_eip1559_transaction,
-    state::{CKETH_LEDGER, EXCHANGE_RATE_CANISTER, STRATEGY_DATA},
-    strategy::StrategyData,
-    types::{Account, DerivationPath, ManagerError, Market, StrategyInput},
+    state::{CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER},
+    types::{Account, DerivationPath, ManagerError},
 };
 use num_traits::ToPrimitive;
 
@@ -70,61 +69,6 @@ pub fn only_controller(caller: Principal) -> Result<(), ManagerError> {
 /// Converts String to Address and returns ManagerError on failure
 pub fn string_to_address(input: String) -> Result<Address, ManagerError> {
     Address::from_str(&input).map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))
-}
-
-/// Generates strategies for each market. Returns a HashMap<u32, StrategyData>.
-pub async fn generate_strategies(
-    markets: Vec<Market>,
-    collateral_registry: Address,
-    hint_helper: Address,
-    strategies: Vec<StrategyInput>,
-    rpc_principal: Principal,
-    rpc_url: String,
-    upfront_fee_period: Nat,
-) -> Result<HashMap<u32, StrategyData>, ManagerError> {
-    let mut strategies_data = HashMap::new();
-    let mut strategy_id = 0;
-
-    // Get a mutable copy of state strategies
-    let mut state_strategies_iter = STRATEGY_DATA
-        .with(|strategies| strategies.borrow().clone())
-        .into_iter();
-
-    for market in markets.into_iter() {
-        for (index, strategy) in strategies.iter().enumerate() {
-            // Safely get the next state strategy data
-            let state_strategy_data = match state_strategies_iter.next() {
-                Some((_, data)) => data,
-                None => return Err(ManagerError::NonExistentValue),
-            };
-
-            // Create a new strategy data object
-            let mut strategy_data = StrategyData::new(
-                strategy_id,
-                market.manager.clone(),
-                collateral_registry.clone(),
-                market.multi_trove_getter.clone(),
-                strategy.target_min,
-                Service(rpc_principal.clone()),
-                rpc_url.clone(),
-                nat_to_u256(&upfront_fee_period),
-                nat_to_u256(&market.collateral_index),
-                hint_helper.clone(),
-                market.batch_managers[index],
-                state_strategy_data.eoa_pk,
-                state_strategy_data.derivation_path,
-            );
-
-            // Retrieve the nonce and handle potential errors
-            strategy_data.eoa_nonce = strategy_data.get_nonce().await?.to::<u64>();
-
-            // Insert the strategy data into the hashmap
-            strategies_data.insert(strategy_id, strategy_data);
-            strategy_id += 1;
-        }
-    }
-
-    Ok(strategies_data)
 }
 
 /// Converts values of type `Nat` to `U256`
@@ -283,7 +227,7 @@ pub async fn get_block_number(
     rpc_canister: &Service,
     rpc_url: &str,
 ) -> Result<String, ManagerError> {
-    let rpc: RpcService = rpc_provider(rpc_url);
+    let _rpc: RpcService = rpc_provider(rpc_url);
 
     let args = json!({
       "id": 1,
@@ -292,18 +236,7 @@ pub async fn get_block_number(
     })
     .to_string();
 
-    let max_response_bytes = 200;
-    let cycles = estimate_cycles(
-        rpc_canister,
-        rpc_provider(&rpc_url),
-        args.clone(),
-        max_response_bytes,
-    )
-    .await?;
-
-    let rpc_canister_response = rpc_canister
-        .request(rpc, args, max_response_bytes, cycles)
-        .await;
+    let rpc_canister_response = request_with_dynamic_retries(rpc_canister, rpc_url, args).await?;
 
     let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
     let decoded_response: EthCallResponse = serde_json::from_str(&encoded_response)
@@ -344,8 +277,8 @@ pub async fn send_raw_transaction(
     };
 
     let request = TxEip1559 {
-        // chain_id: 11155111, // Sepolia test-net
-        chain_id: 1, // Ethereum main-net
+        chain_id: 11155111, // Sepolia test-net
+        // chain_id: 1, // Ethereum main-net
         to: TxKind::Call(
             Address::from_str(&to)
                 .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?,
@@ -367,5 +300,57 @@ pub async fn send_raw_transaction(
     {
         Ok((response,)) => Ok(response),
         Err(e) => Err(ManagerError::Custom(e.1)),
+    }
+}
+
+fn is_response_size_error(err: &RequestResult) -> bool {
+    if let RequestResult::Err(RpcError::HttpOutcallError(HttpOutcallError::IcError {
+        code,
+        message,
+    })) = err
+    {
+        *code == RejectionCode::SysFatal && message.contains("Http body exceeds size limit")
+    } else {
+        false
+    }
+}
+
+pub async fn request_with_dynamic_retries(
+    rpc_canister: &Service,
+    rpc_url: &str,
+    json_data: String,
+) -> Result<CallResult<(RequestResult,)>, ManagerError> {
+    let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
+
+    loop {
+        // Estimate the cycles based on the current max response bytes
+        let cycles = estimate_cycles(
+            rpc_canister,
+            rpc_provider(rpc_url),
+            json_data.clone(),
+            max_response_bytes,
+        )
+        .await?;
+
+        // Perform the request using the provided function
+        let response = rpc_canister
+            .request(
+                rpc_provider(rpc_url),
+                json_data.clone(),
+                max_response_bytes,
+                cycles,
+            )
+            .await;
+        if let Ok((returned_response,)) = &response {
+            if is_response_size_error(returned_response) {
+                max_response_bytes *= 2;
+                print(format!(
+                    "[MODIFICATION] Doubling the max response bytes to {}",
+                    max_response_bytes
+                ));
+                continue;
+            }
+        }
+        return Ok(response);
     }
 }

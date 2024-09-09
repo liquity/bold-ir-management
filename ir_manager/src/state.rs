@@ -44,4 +44,5 @@ thread_local! {
     /// ckETH balance threshold of the canister.
     /// The recharging cycle will mint more ckETH if the balance falls below this number
     pub static CKETH_THRESHOLD: RefCell<Nat> = RefCell::new(Nat::from(30_000_000_000_000_000 as u64)); // 0.03 ETH in WEI
+    pub static DEFAULT_MAX_RESPONSE_BYTES: Cell<u64> = Cell::new(1_000);
 }

@@ -1,7 +1,5 @@
-use std::str::FromStr;
-
 use crate::strategy::StrategyData;
-use alloy_primitives::Address;
+
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
 use serde::{Deserialize, Serialize};
@@ -23,7 +21,16 @@ pub type DerivationPath = Vec<Vec<u8>>;
 
 #[derive(CandidType, Deserialize)]
 pub struct StrategyInput {
+    pub key: u32,
     pub target_min: f64,
+    pub manager: String,
+    pub multi_trove_getter: String,
+    pub collateral_index: Nat,
+    pub rpc_principal: Principal,
+    pub rpc_url: String,
+    pub upfront_fee_period: Nat,
+    pub collateral_registry: String,
+    pub hint_helper: String,
 }
 
 #[derive(CandidType)]
@@ -49,58 +56,6 @@ impl From<StrategyData> for StrategyQueryData {
             locked: value.lock,
         }
     }
-}
-
-#[derive(CandidType, Deserialize)]
-pub struct MarketInput {
-    pub manager: String,
-    pub multi_trove_getter: String,
-    pub collateral_index: Nat,
-    pub batch_managers: Vec<String>,
-}
-
-impl TryFrom<MarketInput> for Market {
-    type Error = ManagerError;
-
-    fn try_from(value: MarketInput) -> Result<Self, Self::Error> {
-        let manager = Address::from_str(&value.manager)
-            .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
-        let multi_trove_getter = Address::from_str(&value.multi_trove_getter)
-            .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
-        let batch_managers: Vec<Address> = value
-            .batch_managers
-            .into_iter()
-            .map(|batch_manager| {
-                Address::from_str(&batch_manager)
-                    .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(Self {
-            manager,
-            multi_trove_getter,
-            collateral_index: value.collateral_index,
-            batch_managers,
-        })
-    }
-}
-
-pub struct Market {
-    pub manager: Address,
-    pub multi_trove_getter: Address,
-    pub collateral_index: Nat,
-    pub batch_managers: Vec<Address>,
-}
-
-#[derive(CandidType, Deserialize)]
-pub struct InitArgs {
-    pub rpc_principal: Principal,
-    pub rpc_url: String,
-    pub markets: Vec<MarketInput>,
-    pub collateral_registry: String,
-    pub hint_helper: String,
-    pub strategies: Vec<StrategyInput>,
-    pub upfront_fee_period: Nat,
 }
 
 #[derive(CandidType, Debug, Serialize, Deserialize)]

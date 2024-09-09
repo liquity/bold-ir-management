@@ -5,15 +5,15 @@ use ic_exports::ic_cdk::{api::time, print};
 use serde_json::json;
 
 use crate::{
-    evm_rpc::{EthCallResponse, RpcService, SendRawTransactionResult, Service},
+    evm_rpc::{EthCallResponse, SendRawTransactionResult, Service},
     state::{
         MANAGERS, MAX_NUMBER_OF_TROVES, SCALE, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN,
         TOLERANCE_MARGIN_UP,
     },
     types::*,
     utils::{
-        decode_request_response_encoded, decode_response, estimate_cycles, eth_call_args,
-        get_block_number, rpc_provider, send_raw_transaction,
+        decode_request_response_encoded, decode_response, eth_call_args, get_block_number,
+        request_with_dynamic_retries, send_raw_transaction, string_to_address,
     },
 };
 
@@ -85,26 +85,25 @@ impl StrategyData {
     /// Generates a new strategy
     pub fn new(
         key: u32,
-        manager: Address,
-        collateral_registry: Address,
-        multi_trove_getter: Address,
+        manager: String,
+        collateral_registry: String,
+        multi_trove_getter: String,
         target_min: f64,
         rpc_canister: Service,
         rpc_url: String,
         upfront_fee_period: U256,
         collateral_index: U256,
-        hint_helper: Address,
-        batch_manager: Address,
+        hint_helper: String,
         eoa_pk: Option<Address>,
         derivation_path: DerivationPath,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, ManagerError> {
+        let result = Self {
             key,
-            batch_manager,
-            hint_helper,
-            manager,
-            collateral_registry,
-            multi_trove_getter,
+            batch_manager: Address::ZERO,
+            hint_helper: string_to_address(hint_helper)?,
+            manager: string_to_address(manager)?,
+            collateral_registry: string_to_address(collateral_registry)?,
+            multi_trove_getter: string_to_address(multi_trove_getter)?,
             collateral_index,
             latest_rate: U256::from(0),
             derivation_path,
@@ -116,7 +115,30 @@ impl StrategyData {
             eoa_pk,
             rpc_canister,
             rpc_url,
-        }
+        };
+        Ok(result)
+    }
+
+    /// Sets batch manager address for a certain strategy, if the address is not already set.
+    pub fn set_batch_manager(key: u32, batch_manager: Address) -> Result<(), ManagerError> {
+        STRATEGY_DATA.with(|strategies| {
+            let mut binding = strategies.borrow_mut();
+            let strategy = binding.get_mut(&key);
+
+            if let Some(strategy_inner) = strategy {
+                return match strategy_inner.batch_manager {
+                    Address::ZERO => {
+                        strategy_inner.batch_manager = batch_manager;
+                        Ok(())
+                    }
+                    _ => Err(ManagerError::Custom(
+                        "Batch manager is already set.".to_string(),
+                    )),
+                };
+            }
+
+            Err(ManagerError::NonExistentValue)
+        })
     }
 
     /// Replaces the strategy data in the HashMap
@@ -380,8 +402,6 @@ impl StrategyData {
     }
 
     pub async fn get_nonce(&self) -> Result<U256, ManagerError> {
-        let rpc: RpcService = rpc_provider(&self.rpc_url);
-
         let request_json = json!({
             "id": 1,
             "jsonrpc": "2.0",
@@ -393,18 +413,8 @@ impl StrategyData {
         })
         .to_string();
 
-        let cycles = estimate_cycles(
-            &self.rpc_canister,
-            rpc_provider(&self.rpc_url),
-            request_json.clone(),
-            1000,
-        )
-        .await?;
-
-        let rpc_canister_response = self
-            .rpc_canister
-            .request(rpc, request_json, 1000, cycles)
-            .await;
+        let rpc_canister_response =
+            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, request_json).await?;
 
         let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
 
@@ -433,8 +443,6 @@ impl StrategyData {
         new_rate: U256,
         block_number: &str,
     ) -> Result<U256, ManagerError> {
-        let rpc: RpcService = rpc_provider(&self.rpc_url);
-        let max_response_bytes = 100 + 200; // two uint256 + one address = 84 bytes
         let arguments = predictAdjustBatchInterestRateUpfrontFeeCall {
             _collIndex: self.collateral_index,
             _batchAddress: self.batch_manager,
@@ -447,18 +455,8 @@ impl StrategyData {
             block_number,
         );
 
-        let cycles = estimate_cycles(
-            &self.rpc_canister,
-            rpc_provider(&self.rpc_url),
-            json_data.clone(),
-            max_response_bytes,
-        )
-        .await?;
-
-        let rpc_canister_response = self
-            .rpc_canister
-            .request(rpc, json_data, max_response_bytes, cycles)
-            .await;
+        let rpc_canister_response =
+            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, json_data).await?;
 
         decode_response::<
             predictAdjustBatchInterestRateUpfrontFeeReturn,
@@ -469,53 +467,28 @@ impl StrategyData {
 
     /// Returns the debt of the entire system across all markets if successful.
     async fn fetch_entire_system_debt(&self, block_number: &str) -> Result<U256, ManagerError> {
-        let rpc: RpcService = rpc_provider(&self.rpc_url);
         let json_data = eth_call_args(
             self.manager.to_string(),
             getEntireSystemDebtCall::SELECTOR.to_vec(),
             block_number,
         );
 
-        let max_response_bytes = 50 + 200; // one uint256 = 32 bytes
-        let cycles = estimate_cycles(
-            &self.rpc_canister,
-            rpc_provider(&self.rpc_url),
-            json_data.clone(),
-            max_response_bytes,
-        )
-        .await?;
-
-        let rpc_canister_response = self
-            .rpc_canister
-            .request(rpc, json_data, max_response_bytes, cycles)
-            .await;
+        let rpc_canister_response =
+            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, json_data).await?;
 
         decode_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(rpc_canister_response)
             .map(|data| Ok(data.entireSystemDebt))?
     }
 
     async fn fetch_redemption_rate(&self, block_number: &str) -> Result<U256, ManagerError> {
-        let rpc: RpcService = rpc_provider(&self.rpc_url);
-
         let json_data = eth_call_args(
             self.collateral_registry.to_string(),
             getRedemptionRateWithDecayCall::SELECTOR.to_vec(),
             block_number,
         );
 
-        let max_response_bytes = 50 + 200; // one uint256 = 32 bytes
-        let cycles = estimate_cycles(
-            &self.rpc_canister,
-            rpc_provider(&self.rpc_url),
-            json_data.clone(),
-            max_response_bytes,
-        )
-        .await?;
-
-        let rpc_canister_response = self
-            .rpc_canister
-            .request(rpc, json_data, max_response_bytes, cycles)
-            .await;
+        let rpc_canister_response =
+            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, json_data).await?;
 
         decode_response::<getRedemptionRateWithDecayReturn, getRedemptionRateWithDecayCall>(
             rpc_canister_response,
@@ -528,8 +501,6 @@ impl StrategyData {
         manager: Option<String>,
         block_number: &str,
     ) -> Result<getUnbackedPortionPriceAndRedeemabilityReturn, ManagerError> {
-        let rpc: RpcService = rpc_provider(&self.rpc_url);
-
         let call_manager = match manager {
             Some(value) => value,
             None => self.manager.to_string(),
@@ -541,19 +512,8 @@ impl StrategyData {
             block_number,
         );
 
-        let max_response_bytes = 65 + 500; // two uint256, one bool = 65 bytes
-        let cycles = estimate_cycles(
-            &self.rpc_canister,
-            rpc_provider(&self.rpc_url),
-            json_data.clone(),
-            max_response_bytes,
-        )
-        .await?;
-
-        let rpc_canister_response = self
-            .rpc_canister
-            .request(rpc, json_data, max_response_bytes, cycles)
-            .await;
+        let rpc_canister_response =
+            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, json_data).await?;
 
         decode_response::<
             getUnbackedPortionPriceAndRedeemabilityReturn,
@@ -567,8 +527,6 @@ impl StrategyData {
         count: U256,
         block_number: &str,
     ) -> Result<Vec<DebtPerInterestRate>, ManagerError> {
-        let rpc: RpcService = rpc_provider(&self.rpc_url);
-
         let parameters = getDebtPerInterestRateAscendingCall {
             _collIndex: self.collateral_index,
             _startId: index,
@@ -581,20 +539,8 @@ impl StrategyData {
             block_number,
         );
 
-        let trove_size_bytes = 380 + 100; // eleven uint256, one address = 372 bytes
-        let max_response_bytes = trove_size_bytes * count.to::<u64>() + 1000;
-        let cycles = estimate_cycles(
-            &self.rpc_canister,
-            rpc_provider(&self.rpc_url),
-            json_data.clone(),
-            max_response_bytes,
-        )
-        .await?;
-
-        let rpc_canister_response = self
-            .rpc_canister
-            .request(rpc, json_data, max_response_bytes, cycles)
-            .await;
+        let rpc_canister_response =
+            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, json_data).await?;
 
         decode_response::<getDebtPerInterestRateAscendingReturn, getDebtPerInterestRateAscendingCall>(
             rpc_canister_response,
@@ -659,15 +605,13 @@ impl StrategyData {
                 current_debt_in_front,
                 maximum_redeemable_against_collateral,
                 target_amount,
+            ) && self.second_decrease_check(
+                time_since_last_update,
+                upfront_fee_period,
+                new_rate,
+                upfront_fee,
             ) {
-                if self.second_decrease_check(
-                    time_since_last_update,
-                    upfront_fee_period,
-                    new_rate,
-                    upfront_fee,
-                ) {
-                    return Ok(Some((new_rate, upfront_fee)));
-                }
+                return Ok(Some((new_rate, upfront_fee)));
             }
         }
 
