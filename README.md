@@ -8,39 +8,44 @@ The BOLD IR Manager is capable of managing multiple interest rate adjustment str
 
 ## Calculations
 
-During the execution of each strategy, the following calculations are performed to determine whether an interest rate adjustment is necessary:
+In Liquity V2, borrowers incur the following fees:
 
-- **Increase Check:**
-  
-  The system checks whether the conditions for increasing the interest rate are met.
+- [Interest rate](https://github.com/liquity/bold/blob/main/README.md#borrowing-and-interest-rates): a recurrent rate set by the borrower and charged on their current debt
+- [Premature adjustment fee](https://github.com/liquity/bold/blob/main/README.md#premature-adjustment-fees): a one-off fee corresponding to 1 week of the average interest rate of the respective collateral market, charged on the debt whenever the borrower adjusts their interest rate within less than 7 days since the last adjustment ("cooling off period"). The same fee is charged when a new Trove is opened or when its debt is increased ([see](https://github.com/liquity/bold/blob/main/README.md#upfront-borrowing-fees))
 
-  ![Increase Check](./assets/update_condition.png)
+Note: In addition to these fees, borrowers delegating to a batch manager may also be charged a management fee; [see](https://github.com/liquity/bold/blob/main/README.md#batch-management-fee)
 
-- **First Decrease Check:**
+An optimal interest rate strategy should minimize the costs of borrowing by striking a balance between the interest rate and its adjustment frequency as well as the redemption risk ([see](https://github.com/liquity/bold/blob/main/README.md#bold-redemptions) on redemptions in Liquity V2).
 
-  This check determines if an initial condition for reducing the interest rate is satisfied.
+To that end, for each defined strategy, the autonomous management system targets a specific debt percentage to be in front (i.e. to be redeemed first) of all the Troves participating in the strategy. To determine the debt in front, the system calculates the percentage of redemptions hitting the respective collateral branch and uses it to loop over the list of Troves in the branch, ordered by interest rate from lowest to highest.
 
-  ![First Decrease Check](./assets/first_decrease_condition.png)
+The base debt D is a parameter preset for each strategy and determines the target range for the debt in front, along with tolerance margins for up and down deviations defined as system-wide constants. The system thus aims to adjust the interest rate to achieve the mid point of the target range when the debt in front gets out of range, by increasing or decreasing the rate as needed.
 
-- **Second Decrease Check:**
+In times of elevated redemption risk, the target debt range is increased (rescaled) to create a larger buffer for subsequent redemptions and the possibility of other borrowers increasing their own interest rates. The current redemption fee is used as a proxy for recent redemption activity and a metric to predict further redemptions.
 
-  A secondary check is performed to assess if further reduction in the interest rate is required.
+Based on these considerations, the system checks whether the conditions for increasing the interest rate are met using this formula:
 
-  ![Second Decrease Check](./assets/second_decrease_condition.png)
+![Increase Check](./assets/update_condition.png)
 
-- **New Rate Calculation:**
+When the debt in front becomes larger than the upper bound of the target range, the interest rate is adjusted if both of the two following conditions hold:
 
-  Calculates the new interest rate based on the outcome of the checks.
+![First Decrease Check](./assets/first_decrease_condition.png)
 
-  ![New Rate Calculation](./assets/new_rate.png)
+![Second Decrease Check](./assets/second_decrease_condition.png)
 
-- **Definitions:**
+The second condition aims to keep the costs of premature adjustments low, by only performing the rate reduction if the last adjustment happened less than seven days ago, or if the prospective savings from the lowered interest rate until the end of the cooling off period exceed the adjustment fee. Note that the adjustment fee equals the (size-weighted) average interest paid by all borrowers in the same collateral branch as the borrowers participating in the given strategy ([see](https://github.com/liquity/bold/blob/main/README.md#premature-adjustment-fees)).
 
-  Provides detailed definitions of the terms and parameters used in the rate adjustment calculations.
+The new interest rate is calculated to achieve a debt in front corresponding to the mid point of the target range by looping over.
 
-  ![Definitions](./assets/definitions.png)
+![New Rate Calculation](./assets/new_rate.png)
 
-  ![Maximum Redemption Collateral](./assets/maximumRedemptionCollateral.png)
+Definitions of the terms and parameters used in the rate adjustment calculations:
+
+![Definitions](./assets/definitions.png)
+
+![Maximum Redemption Collateral](./assets/maximumRedemptionCollateral.png)
+
+![TargetAmount](./assets/targetAmount.png)
 
 ## Recharge Flow
 
