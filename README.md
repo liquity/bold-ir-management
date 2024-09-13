@@ -13,13 +13,14 @@ In Liquity V2, borrowers incur the following fees:
 - [Interest rate](https://github.com/liquity/bold/blob/main/README.md#borrowing-and-interest-rates): a recurrent rate set by the borrower and charged on their current debt
 - [Premature adjustment fee](https://github.com/liquity/bold/blob/main/README.md#premature-adjustment-fees): a one-off fee corresponding to 1 week of the average interest rate of the respective collateral market, charged on the debt whenever the borrower adjusts their interest rate within less than 7 days since the last adjustment ("cooling off period"). The same fee is charged when a new Trove is opened or when its debt is increased ([see](https://github.com/liquity/bold/blob/main/README.md#upfront-borrowing-fees))
 
-Note: In addition to these fees, borrowers delegating to a batch manager may also be charged a management fee; [see](https://github.com/liquity/bold/blob/main/README.md#batch-management-fee)
+> [!NOTE]
+> In addition to these fees, borrowers delegating to a batch manager may also be charged a management fee. [see](https://github.com/liquity/bold/blob/main/README.md#batch-management-fee)!
 
 An optimal interest rate strategy should minimize the costs of borrowing by striking a balance between the interest rate and its adjustment frequency as well as the redemption risk ([see](https://github.com/liquity/bold/blob/main/README.md#bold-redemptions) on redemptions in Liquity V2).
 
 To that end, for each defined strategy, the autonomous management system targets a specific debt percentage to be in front (i.e. to be redeemed first) of all the Troves participating in the strategy. To determine the debt in front, the system calculates the percentage of redemptions hitting the respective collateral branch and uses it to loop over the list of Troves in the branch, ordered by interest rate from lowest to highest.
 
-The base debt D is a parameter preset for each strategy and determines the target range for the debt in front, along with tolerance margins for up and down deviations defined as system-wide constants. The system thus aims to adjust the interest rate to achieve the mid point of the target range when the debt in front gets out of range, by increasing or decreasing the rate as needed.
+The base debt D_min is a parameter preset for each strategy and determines the target range for the debt in front, along with tolerance margins for up and down deviations defined as system-wide constants. The system thus aims to adjust the interest rate to achieve the mid point of the target range when the debt in front gets out of range, by increasing or decreasing the rate as needed.
 
 In times of elevated redemption risk, the target debt range is increased (rescaled) to create a larger buffer for subsequent redemptions and the possibility of other borrowers increasing their own interest rates. The current redemption fee is used as a proxy for recent redemption activity and a metric to predict further redemptions.
 
