@@ -594,7 +594,7 @@ impl StrategyData {
             // Check if decrease/increase is valid
             let new_rate = self.calculate_new_rate(troves, target_amount).await?;
             let upfront_fee = self.predict_upfront_fee(new_rate, block_number).await?;
-            // return Ok(Some((new_rate, upfront_fee))); You can uncomment this line to test the canister without waiting for an update condition to be satisfied.
+            // return Ok(Some((new_rate, upfront_fee))); // You can uncomment this line to test the canister without waiting for an update condition to be satisfied.
             if self.increase_check(
                 current_debt_in_front,
                 maximum_redeemable_against_collateral,

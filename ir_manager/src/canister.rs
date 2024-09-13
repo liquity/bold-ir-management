@@ -98,8 +98,7 @@ impl IrManager {
         strategies.into_iter().for_each(|(_, strategy)| {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
 
-            //set_timer(Duration::from_secs(3_600), move || {
-            set_timer(Duration::ZERO, move || {
+            set_timer(Duration::from_secs(3_600), move || {
                 let mut strategy = strategy.clone();
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {

@@ -80,7 +80,7 @@ contract OpenTroves is Script {
         ERC20Faucet weth = ERC20Faucet(address(collateralRegistry.getToken(0))); // branch #0 is WETH
         uint256 numBranches = collateralRegistry.totalCollaterals();
 
-        for (uint256 branch = 0; branch < numBranches; ++branch) {
+        for (uint256 branch = 0; branch < 1; ++branch) {
             BranchContracts memory c;
             c.collateral = ERC20Faucet(address(collateralRegistry.getToken(branch)));
             vm.label(address(c.collateral), "ERC20Faucet");
@@ -104,7 +104,7 @@ contract OpenTroves is Script {
                 });
             }
 
-            for (uint256 i = 1; i <= 10; ++i) {
+            for (uint256 i = 1; i <= 3; ++i) {
                 Proxy proxy = Proxy(Clones.clone(proxyImplementation));
                 vm.label(address(proxy), "Proxy");
 
@@ -113,7 +113,8 @@ contract OpenTroves is Script {
 
                 if (branch == 0) {
                     // collateral == WETH
-                    c.collateral.approve(address(c.borrowerOperations), ethAmount + ETH_GAS_COMPENSATION);
+                    c.collateral.approve(address(c.borrowerOperations), ethAmount * 2 + ETH_GAS_COMPENSATION);
+                    vm.sleep(10);
                 } else {
                     proxy.tap(weth);
                     c.collateral.approve(address(c.borrowerOperations), ethAmount);
