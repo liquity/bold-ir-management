@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **BOLD Interest Rate (IR) Manager** is an innovative Rust-based canister that integrates seamlessly with the **Batch Manager** Solidity smart contract to automate the adjustment of interest rates for troves within the **Liquity Protocol v2**. This solution utilizes the Internet Computer’s threshold ECDSA (tECDSA) signatures to manage Ethereum Mainnet Externally Owned Accounts (EOAs) and securely execute rate adjustment transactions, offering a decentralized and secure way to maintain optimal interest rates across multiple strategies.
+The **BOLD Interest Rate (IR) Manager** is an innovative Rust-based canister that integrates seamlessly with the **Batch Manager** Solidity smart contract to automate the adjustment of interest rates for troves within the **Liquity V2** protocol. This solution utilizes the Internet Computer’s threshold ECDSA (tECDSA) signatures to manage Ethereum Mainnet Externally Owned Accounts (EOAs) and securely execute rate adjustment transactions, offering a decentralized and secure way to maintain optimal interest rates across multiple strategies.
 
 The BOLD IR Manager is capable of managing multiple interest rate adjustment strategies, each associated with different Batch Manager contracts and EOAs. It continuously monitors the state of sorted troves, checking every hour whether the conditions for rate adjustment—either an increase or a decrease—are met. If the conditions are met, the manager initiates a transaction to adjust the rates, maintaining the system’s stability and ensuring competitive borrowing costs.
 
@@ -20,7 +20,7 @@ An optimal interest rate strategy should minimize the costs of borrowing by stri
 
 To that end, for each defined strategy, the autonomous management system targets a specific debt percentage to be in front (i.e. to be redeemed first) of all the Troves participating in the strategy. To determine the debt in front, the system calculates the percentage of redemptions hitting the respective collateral branch and uses it to loop over the list of Troves in the branch, ordered by interest rate from lowest to highest.
 
-The base debt D_min is a parameter preset for each strategy and determines the target range for the debt in front, along with tolerance margins for up and down deviations defined as system-wide constants. The system thus aims to adjust the interest rate to achieve the mid point of the target range when the debt in front gets out of range, by increasing or decreasing the rate as needed.
+The base debt D<sub>min</sub> is a parameter preset for each strategy and determines the target range for the debt in front, along with tolerance margins for up and down deviations (M<sub>u</sub> and M<sub>d</sub>) defined as system-wide constants. The system thus aims to adjust the interest rate to achieve the mid point of the target range when the debt in front gets out of range, by increasing or decreasing the rate as needed.
 
 In times of elevated redemption risk, the target debt range is increased (rescaled) to create a larger buffer for subsequent redemptions and the possibility of other borrowers increasing their own interest rates. The current redemption fee is used as a proxy for recent redemption activity and a metric to predict further redemptions.
 
