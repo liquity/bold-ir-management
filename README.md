@@ -111,9 +111,9 @@ On the Internet Computer, concurrency is managed by leveraging the protocol’s 
 
 The BOLD IR Manager canister provides several methods to enable interaction and configuration:
 
-- **`start`**: Initializes the canister with default strategy data necessary for tECDSA key generation.
-- **`assign_keys`**: Sets up public keys for the strategies' EOAs, allowing secure interactions on Ethereum.
-- **`start_timers`**: Accepts initialization arguments to start various timers for interest rate adjustments, ckETH balance checks, and other processes. Configurations include markets, RPC settings, collateral registry, and strategies.
+- **`mint_strategy`**: Creates a new strategy with the given parameters and returns the EOA for that strategy key.
+- **`set_batch_manager`**: Updates a strategy's batch manager, if unset.
+- **`start_timers`**: Starts the canister's timers.
 - **`swap_cketh`**: Allows participants to exchange cycles for ckETH, providing details on the transaction (amount of ETH returned, cycles accepted).
 - **`get_strategies`**: Fetches all active strategies, associated EOAs, and relevant data such as the current rate and last update time.
 
