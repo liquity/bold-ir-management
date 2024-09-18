@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **BOLD Interest Rate (IR) Manager** is an innovative Rust-based canister that integrates seamlessly with the **Batch Manager** Solidity smart contract to automate the adjustment of interest rates for troves within the **Liquity V2** protocol. This solution utilizes the Internet Computer’s threshold ECDSA (tECDSA) signatures to manage Ethereum Mainnet Externally Owned Accounts (EOAs) and securely execute rate adjustment transactions, offering a decentralized and secure way to maintain optimal interest rates across multiple strategies.
+The **BOLD Interest Rate (IR) Manager** is an innovative Rust-based canister that integrates seamlessly with the **Batch Manager** Solidity smart contract to automate the adjustment of interest rates for troves within the **Liquity V2**. This solution utilizes the Internet Computer’s threshold ECDSA (tECDSA) signatures to manage Ethereum Mainnet Externally Owned Accounts (EOAs) and securely execute rate adjustment transactions, offering a decentralized and secure way to maintain optimal interest rates across multiple strategies.
 
 The BOLD IR Manager is capable of managing multiple interest rate adjustment strategies, each associated with different Batch Manager contracts and EOAs. It continuously monitors the state of sorted troves, checking every hour whether the conditions for rate adjustment—either an increase or a decrease—are met. If the conditions are met, the manager initiates a transaction to adjust the rates, maintaining the system’s stability and ensuring competitive borrowing costs.
 
@@ -45,6 +45,8 @@ Definitions of the terms and parameters used in the rate adjustment calculations
 ![Definitions](./assets/definitions.png)
 
 ![Maximum Redemption Collateral](./assets/maximumRedemptionCollateral.png)
+
+![TargetPercentage](./assets/targetPercentage.png)
 
 ![TargetAmount](./assets/targetAmount.png)
 
@@ -152,6 +154,6 @@ The IR Manager Rust canister and the Batch Manager Solidity contract are designe
 
 ## Summary
 
-The BOLD IR Manager and Batch Manager collaboratively ensure the automated adjustment of interest rates within the Liquity Protocol v2 by leveraging decentralized infrastructure and providing financial incentives for participation. The setup is designed to maintain long-term protocol stability and sustainability while offering flexibility in deployment and strategy selection. The integration of tECDSA signatures further enhances security and decentralization, making the entire process robust and resistant to single points of failure.
+The BOLD IR Manager and Batch Manager collaboratively ensure the automated adjustment of interest rates within the Liquity V2 by leveraging decentralized infrastructure and providing financial incentives for participation. The setup is designed to maintain long-term protocol stability and sustainability while offering flexibility in deployment and strategy selection. The integration of tECDSA signatures further enhances security and decentralization, making the entire process robust and resistant to single points of failure.
 
-By combining cutting-edge cryptography with a decentralized approach, the BOLD IR Manager provides a secure, efficient, and automated solution for managing interest rates in DeFi, enabling the Liquity Protocol v2 to remain competitive and resilient in an ever-evolving financial landscape.
+By combining cutting-edge cryptography with a decentralized approach, the BOLD IR Manager provides a secure, efficient, and automated solution for managing interest rates in DeFi, enabling the Liquity V2 to remain competitive and resilient in an ever-evolving financial landscape.

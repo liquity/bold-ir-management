@@ -210,11 +210,11 @@ impl StrategyData {
         let maximum_redeemable_against_collateral = redemption_split * entire_system_debt;
 
         let exponent: f64 = (0.005 * SCALE) / (redemption_fee.to::<u64>() as f64);
-        let target_amount = self.target_min.powf(exponent) * SCALE;
+        let target_percentage = self.target_min.powf(exponent) * SCALE;
 
         print(format!(
-            "Target amount = {}, exponent = {}, redemption_fee as f64 = {}, self.target_min = {}",
-            target_amount,
+            "target_percentage = {}, exponent = {}, redemption_fee as f64 = {}, self.target_min = {}",
+            target_percentage,
             exponent,
             redemption_fee.to::<u64>() as f64,
             self.target_min
@@ -226,7 +226,7 @@ impl StrategyData {
                 time_since_last_update,
                 self.upfront_fee_period,
                 maximum_redeemable_against_collateral,
-                U256::from(target_amount),
+                U256::from(target_percentage),
                 &block_number,
             )
             .await?;
@@ -587,24 +587,24 @@ impl StrategyData {
         time_since_last_update: U256,
         upfront_fee_period: U256,
         maximum_redeemable_against_collateral: U256,
-        target_amount: U256,
+        target_percentage: U256,
         block_number: &str,
     ) -> Result<Option<(U256, U256)>, ManagerError> {
         if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
             // Check if decrease/increase is valid
-            let new_rate = self.calculate_new_rate(troves, target_amount).await?;
+            let new_rate = self.calculate_new_rate(troves, target_percentage, maximum_redeemable_against_collateral).await?;
             let upfront_fee = self.predict_upfront_fee(new_rate, block_number).await?;
             // return Ok(Some((new_rate, upfront_fee))); // You can uncomment this line to test the canister without waiting for an update condition to be satisfied.
             if self.increase_check(
                 current_debt_in_front,
                 maximum_redeemable_against_collateral,
-                target_amount,
+                target_percentage,
             ) {
                 return Ok(Some((new_rate, upfront_fee)));
             } else if self.first_decrease_check(
                 current_debt_in_front,
                 maximum_redeemable_against_collateral,
-                target_amount,
+                target_percentage,
             ) && self.second_decrease_check(
                 time_since_last_update,
                 upfront_fee_period,
@@ -621,12 +621,13 @@ impl StrategyData {
     async fn calculate_new_rate(
         &self,
         troves: Vec<DebtPerInterestRate>,
-        target_amount: U256,
+        target_percentage: U256,
+        maximum_redeemable_against_collateral: U256
     ) -> Result<U256, ManagerError> {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);
         for trove in troves.iter() {
-            if counted_debt > target_amount {
+            if counted_debt > target_percentage * maximum_redeemable_against_collateral {
                 new_rate = trove.interestRate + U256::from(100_000_000_000_000_u64); // 1 bps = 0.01%
                 break;
             }
@@ -639,14 +640,14 @@ impl StrategyData {
         &self,
         debt_in_front: U256,
         maximum_redeemable_against_collateral: U256,
-        target_amount: U256,
+        target_percentage: U256,
     ) -> bool {
         let tolerance_margin_down =
             TOLERANCE_MARGIN_DOWN.with(|tolerance_margin_down| tolerance_margin_down.get());
 
         if debt_in_front
             < (U256::from(1) - tolerance_margin_down)
-                * target_amount
+                * target_percentage
                 * maximum_redeemable_against_collateral
         {
             return true;
@@ -658,7 +659,7 @@ impl StrategyData {
         &self,
         debt_in_front: U256,
         maximum_redeemable_against_collateral: U256,
-        target_amount: U256,
+        target_percentage: U256,
     ) -> bool {
         let tolerance_margin_up =
             TOLERANCE_MARGIN_UP.with(|tolerance_margin_up| tolerance_margin_up.get());
@@ -666,7 +667,7 @@ impl StrategyData {
         if debt_in_front
             > (U256::from(1) + tolerance_margin_up)
                 * maximum_redeemable_against_collateral
-                * target_amount
+                * target_percentage
         {
             return true;
         }
