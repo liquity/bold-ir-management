@@ -12,6 +12,8 @@ use crate::strategy::StrategyData;
 pub const SCALE: f64 = 1e18;
 
 thread_local! {
+    /// Chain ID
+    pub static CHAIN_ID: Cell<u64> = Cell::from(1);
     /// HashMap containing all strategies' information
     pub static STRATEGY_DATA: RefCell<HashMap<u32, StrategyData>> = RefCell::new(HashMap::new());
     /// Vector of all manager addreses
@@ -23,9 +25,9 @@ thread_local! {
     /// Exchange rate canister's principal ID
     pub static EXCHANGE_RATE_CANISTER: Cell<Principal> = Cell::new(Principal::from_slice("uf6dk-hyaaa-aaaaq-qaaaq-cai".as_bytes()));
     /// Max number of retry attempts
-    pub static MAX_RETRY_ATTEMPTS: Cell<u8> = Cell::new(2);
+    pub static MAX_RETRY_ATTEMPTS: Cell<u8> = Cell::new(3);
     /// Max number of troves to fetch in one call
-    pub static MAX_NUMBER_OF_TROVES: Cell<u128> = Cell::new(500);
+    pub static MAX_NUMBER_OF_TROVES: Cell<u128> = Cell::new(100);
     /// Cycles balance threshold of the canister
     pub static CYCLES_THRESHOLD: Cell<u64> = Cell::new(50_000_000_000);
     /// A counter that tracks EOA turns for minting ckETH
@@ -44,5 +46,5 @@ thread_local! {
     /// ckETH balance threshold of the canister.
     /// The recharging cycle will mint more ckETH if the balance falls below this number
     pub static CKETH_THRESHOLD: RefCell<Nat> = RefCell::new(Nat::from(30_000_000_000_000_000 as u64)); // 0.03 ETH in WEI
-    pub static DEFAULT_MAX_RESPONSE_BYTES: Cell<u64> = Cell::new(1_000);
+    pub static DEFAULT_MAX_RESPONSE_BYTES: Cell<u64> = Cell::new(8_000);
 }

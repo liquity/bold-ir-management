@@ -395,7 +395,7 @@ impl StrategyData {
                     }
                 }
                 Err(ManagerError::Custom(
-                    "None of the RPC responses were OK.".to_string(),
+                    "None of the RPC responses were OK".to_string(),
                 ))
             }
         }
@@ -425,6 +425,12 @@ impl StrategyData {
                     &encoded_response, err
                 ))
             })?;
+
+        if decoded_response.result.len() <= 2 {
+            return Err(ManagerError::DecodingError(format!(
+                "The result field of the RPC's response is empty"
+            )));
+        }
 
         let hex_string = if decoded_response.result[2..].len() % 2 == 1 {
             format!("0{}", &decoded_response.result[2..])
@@ -592,7 +598,13 @@ impl StrategyData {
     ) -> Result<Option<(U256, U256)>, ManagerError> {
         if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
             // Check if decrease/increase is valid
-            let new_rate = self.calculate_new_rate(troves, target_percentage, maximum_redeemable_against_collateral).await?;
+            let new_rate = self
+                .calculate_new_rate(
+                    troves,
+                    target_percentage,
+                    maximum_redeemable_against_collateral,
+                )
+                .await?;
             let upfront_fee = self.predict_upfront_fee(new_rate, block_number).await?;
             // return Ok(Some((new_rate, upfront_fee))); // You can uncomment this line to test the canister without waiting for an update condition to be satisfied.
             if self.increase_check(
@@ -622,7 +634,7 @@ impl StrategyData {
         &self,
         troves: Vec<DebtPerInterestRate>,
         target_percentage: U256,
-        maximum_redeemable_against_collateral: U256
+        maximum_redeemable_against_collateral: U256,
     ) -> Result<U256, ManagerError> {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);

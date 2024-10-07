@@ -135,9 +135,9 @@ async fn fetch_balance(
 pub async fn transfer_cketh(receiver: Principal) -> Result<SwapResponse, ManagerError> {
     // todo: account for the fee
     let discount_percentage = CYCLES_DISCOUNT_PERCENTAGE.with(|percentage| percentage.get());
-    let rate = fetch_ether_cycles_rate().await? * discount_percentage;
+    let rate = fetch_ether_cycles_rate().await? * discount_percentage / 100;
     let attached_cycles = msg_cycles_available();
-    let maximum_returned_ether_amount = Nat::from(attached_cycles * rate);
+    let maximum_returned_ether_amount = Nat::from(attached_cycles * rate * 10_u64.pow(18)); // todo: double check this line
 
     // first check if the balance permits the max transfer amount
     let balance = fetch_cketh_balance().await?;
