@@ -1,14 +1,14 @@
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
+use evm_rpc_types::{GetTransactionCountArgs, RpcServices};
 use ic_exports::ic_cdk::api::time;
 use serde_json::json;
 
 use crate::{
     evm_rpc::{EthCallResponse, SendRawTransactionResult, Service},
     state::{
-        MANAGERS, MAX_NUMBER_OF_TROVES, SCALE, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN,
-        TOLERANCE_MARGIN_UP,
+        get_provider_set, MANAGERS, MAX_NUMBER_OF_TROVES, SCALE, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP
     },
     types::*,
     utils::{
@@ -376,49 +376,6 @@ impl StrategyData {
                 ))
             }
         }
-    }
-
-    pub async fn get_nonce(&self) -> Result<U256, ManagerError> {
-        let request_json = json!({
-            "id": 1,
-            "jsonrpc": "2.0",
-            "params": [
-            self.eoa_pk,
-            "latest"
-            ],
-            "method": "eth_getTransactionCount"
-        })
-        .to_string();
-
-        let rpc_canister_response =
-            request_with_dynamic_retries(&self.rpc_canister, request_json).await?;
-
-        let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
-
-        let decoded_response: EthCallResponse =
-            serde_json::from_str(&encoded_response).map_err(|err| {
-                ManagerError::DecodingError(format!(
-                    "Could not decode eth_getTransactionCount reponse: {} error: {}",
-                    &encoded_response, err
-                ))
-            })?;
-
-        if decoded_response.result.len() <= 2 {
-            return Err(ManagerError::DecodingError(format!(
-                "The result field of the RPC's response is empty"
-            )));
-        }
-
-        let hex_string = if decoded_response.result[2..].len() % 2 == 1 {
-            format!("0{}", &decoded_response.result[2..])
-        } else {
-            decoded_response.result[2..].to_string()
-        };
-
-        let hex_decoded_response = hex::decode(hex_string)
-            .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
-
-        Ok(U256::from_be_slice(&hex_decoded_response))
     }
 
     async fn predict_upfront_fee(

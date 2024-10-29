@@ -7,8 +7,7 @@ use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
 use candid::{Nat, Principal};
 use evm_rpc_types::{
-    BlockTag, CallArgs, Hex, Hex20, MultiRpcResult, RpcApi, RpcConfig, RpcResult, RpcService,
-    RpcServices, SendRawTransactionStatus, TransactionRequest,
+    BlockTag, CallArgs, GetTransactionCountArgs, Hex, Hex20, MultiRpcResult, Nat256, RpcApi, RpcConfig, RpcResult, RpcService, RpcServices, SendRawTransactionStatus, TransactionRequest
 };
 use ic_exports::ic_cdk::{
     self,
@@ -434,4 +433,29 @@ pub async fn request_with_dynamic_retries(
     Err(ManagerError::Custom(format!(
         "Request with dynamic retries reached its ceiling of 2 Megabytes."
     )))
+}
+
+/// On success, returns the nonce associated with the given address
+pub async fn get_nonce(rpc_canister: &Service, address: Address) -> U256 {
+    let account = Hex20(address.into_array());
+    let rpc: RpcServices = get_provider_set().into();
+    let args = GetTransactionCountArgs {
+        address: account,
+        block: evm_rpc_types::BlockTag::Latest,
+    };
+
+    let result = rpc_canister
+        .eth_get_transaction_count(rpc, None, args)
+        .await;
+    
+    let number = extract_call_result::<MultiRpcResult<Nat256>>(result)?;
+}
+
+/// Extracts the Ok or Err values of a canister call and returns them.
+pub fn extract_call_result<T>(result: CallResult<(T,)>) -> Result<T, ManagerError> {
+    result
+        .map(|(success_value,)| success_value)
+        .map_err(|(rejection_code, error_message)| {
+            ManagerError::CallResult(rejection_code, error_message)
+        })
 }

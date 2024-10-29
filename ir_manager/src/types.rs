@@ -3,11 +3,14 @@ use crate::{state::CHAIN_ID, strategy::StrategyData};
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
 use evm_rpc_types::{RpcApi, RpcError, RpcService, RpcServices};
+use ic_exports::ic_kit::RejectionCode;
 use serde::{Deserialize, Serialize};
 
 /// IR Manager Canister Errors
 #[derive(CandidType, Debug)]
 pub enum ManagerError {
+    /// `CallResult` error
+    CallResult(RejectionCode, String),
     /// Unauthorized access
     Unauthorized,
     /// A requested value does not exist
