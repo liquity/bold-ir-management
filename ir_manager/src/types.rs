@@ -6,6 +6,9 @@ use evm_rpc_types::{RpcApi, RpcError, RpcService, RpcServices};
 use ic_exports::ic_kit::RejectionCode;
 use serde::{Deserialize, Serialize};
 
+/// IR Manager Canister Result
+pub type ManagerResult<T> = Result<T>;
+
 /// IR Manager Canister Errors
 #[derive(CandidType, Debug)]
 pub enum ManagerError {

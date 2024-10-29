@@ -23,11 +23,11 @@ use crate::{
     evm_rpc::{RpcService, Service},
     state::*,
     strategy::StrategyData,
-    types::{depositCall, ManagerError, SwapResponse},
+    types::{depositCall, SwapResponse},
     utils::*,
 };
 
-pub async fn check_threshold() -> Result<(), ManagerError> {
+pub async fn check_threshold() -> ManagerResult<()> {
     let threshold = CYCLES_THRESHOLD.with(|threshold| threshold.get());
     if canister_balance() <= threshold {
         return Ok(());
@@ -35,7 +35,7 @@ pub async fn check_threshold() -> Result<(), ManagerError> {
     Err(ManagerError::CyclesBalanceAboveRechargingThreshold)
 }
 
-pub async fn recharge_cketh() -> Result<(), ManagerError> {
+pub async fn recharge_cketh() -> ManagerResult<()> {
     let current_balance = fetch_cketh_balance().await?;
     let cketh_threshold = CKETH_THRESHOLD.with(|threshold| threshold.borrow().clone());
     if current_balance < cketh_threshold {
@@ -45,7 +45,7 @@ pub async fn recharge_cketh() -> Result<(), ManagerError> {
     Ok(())
 }
 
-async fn ether_deposit() -> Result<(), ManagerError> {
+async fn ether_deposit() -> ManagerResult<()> {
     let ether_value = ETHER_RECHARGE_VALUE.with(|ether_value| ether_value.get());
     let cketh_helper: String = CKETH_HELPER.with(|cketh_helper| cketh_helper.borrow().clone());
     let mut strategies: Vec<StrategyData> = STRATEGY_DATA
@@ -110,7 +110,7 @@ async fn fetch_balance(
     rpc_canister: &Service,
     rpc_url: &str,
     pk: String,
-) -> Result<U256, ManagerError> {
+) -> ManagerResult<U256> {
     let rpc: RpcService = rpc_provider(rpc_url);
     let json_args = json!({
         "id": 1,
@@ -132,7 +132,7 @@ async fn fetch_balance(
     Ok(U256::from_be_bytes(padded))
 }
 
-pub async fn transfer_cketh(receiver: Principal) -> Result<SwapResponse, ManagerError> {
+pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> {
     // todo: account for the fee
     let discount_percentage = CYCLES_DISCOUNT_PERCENTAGE.with(|percentage| percentage.get());
     let rate = fetch_ether_cycles_rate().await? * discount_percentage / 100;

@@ -28,7 +28,7 @@ pub async fn fee_history(
     reward_percentiles: Option<Vec<u8>>,
     rpc_services: RpcServices,
     evm_rpc: &Service,
-) -> Result<FeeHistory, ManagerError> {
+) -> ManagerResult<FeeHistory> {
     let fee_history_args: FeeHistoryArgs = FeeHistoryArgs {
         blockCount: block_count,
         newestBlock: newest_block,
@@ -67,7 +67,7 @@ pub async fn estimate_transaction_fees(
     block_count: u8,
     rpc_services: RpcServices,
     evm_rpc: &Service,
-) -> Result<FeeEstimates, ManagerError> {
+) -> ManagerResult<FeeEstimates> {
     let fee_history = fee_history(
         Nat::from(block_count),
         BlockTag::Latest,
@@ -117,7 +117,7 @@ pub async fn get_estimate_gas(
     data: Vec<u8>,
     to: String,
     from: String,
-) -> Result<U256, ManagerError> {
+) -> ManagerResult<U256> {
     let args = json!({
         "id": 1,
         "jsonrpc": "2.0",

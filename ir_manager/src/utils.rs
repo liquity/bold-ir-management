@@ -7,7 +7,7 @@ use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
 use candid::{Nat, Principal};
 use evm_rpc_types::{
-    BlockTag, CallArgs, GetTransactionCountArgs, Hex, Hex20, MultiRpcResult, Nat256, RpcApi, RpcConfig, RpcResult, RpcService, RpcServices, SendRawTransactionStatus, TransactionRequest
+    BlockTag, CallArgs, GetTransactionCountArgs, Hex, Hex20, MultiRpcResult, Nat256, RpcApi, RpcConfig, RpcError, RpcResult, RpcService, RpcServices, SendRawTransactionStatus, TransactionRequest
 };
 use ic_exports::ic_cdk::{
     self,
@@ -29,7 +29,7 @@ use crate::{
         get_provider_set, CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES,
         EXCHANGE_RATE_CANISTER,
     },
-    types::{Account, DerivationPath, ManagerError, ProviderSet},
+    types::{Account, DerivationPath, ManagerResult, ProviderSet},
 };
 use num_traits::ToPrimitive;
 
@@ -39,7 +39,7 @@ pub async fn estimate_cycles(
     rpc: RpcService,
     json_data: String,
     max_response_bytes: u64,
-) -> Result<u128, ManagerError> {
+) -> ManagerResult<u128> {
     let canister_response = rpc_canister
         .request_cost(rpc, json_data, max_response_bytes)
         .await;
@@ -61,7 +61,7 @@ pub async fn estimate_cycles(
 }
 
 /// Returns Err if the `caller` is not a controller of the canister
-pub fn only_controller(caller: Principal) -> Result<(), ManagerError> {
+pub fn only_controller(caller: Principal) -> ManagerResult<()> {
     if !is_controller(&caller) {
         // only the controller should be able to call this function
         return Err(ManagerError::Unauthorized);
@@ -70,12 +70,12 @@ pub fn only_controller(caller: Principal) -> Result<(), ManagerError> {
 }
 
 /// Converts String to Address and returns ManagerError on failure
-pub fn string_to_address(input: String) -> Result<Address, ManagerError> {
+pub fn string_to_address(input: String) -> ManagerResult<Address> {
     Address::from_str(&input).map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))
 }
 
 /// Converts values of type `Nat` to `U256`
-pub fn nat_to_u256(n: &Nat) -> Result<U256, ManagerError> {
+pub fn nat_to_u256(n: &Nat) -> ManagerResult<U256> {
     let be_bytes = n.0.to_bytes_be();
     if be_bytes.len() > 32 {
         return Err(ManagerError::DecodingError(format!("The `Nat` input length exceedes 32 bytes when converted to big-endian bytes representation.")));
@@ -88,7 +88,7 @@ pub fn nat_to_u256(n: &Nat) -> Result<U256, ManagerError> {
     Ok(U256::from_be_bytes(padded_bytes))
 }
 
-pub async fn fetch_cketh_balance() -> Result<Nat, ManagerError> {
+pub async fn fetch_cketh_balance() -> ManagerResult<Nat> {
     let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.get());
     let args = Account {
         owner: id(),
@@ -104,7 +104,7 @@ pub async fn fetch_cketh_balance() -> Result<Nat, ManagerError> {
     }
 }
 
-pub async fn fetch_ether_cycles_rate() -> Result<u64, ManagerError> {
+pub async fn fetch_ether_cycles_rate() -> ManagerResult<u64> {
     let exchange_rate_canister = EXCHANGE_RATE_CANISTER.with(|principal_id| principal_id.get());
     let fetch_args = GetExchangeRateRequest {
         base_asset: Asset {
@@ -150,7 +150,7 @@ pub fn rpc_provider(rpc_url: &str) -> RpcService {
 /// Returns `T` from Solidity struct.
 pub fn decode_response<T, F: SolCall<Return = T>>(
     canister_response: CallResult<(RequestResult,)>,
-) -> Result<T, ManagerError> {
+) -> ManagerResult<T> {
     // Handles the inter-canister call errors
     match canister_response {
         Ok((rpc_response,)) => handle_rpc_response::<T, F>(rpc_response),
@@ -161,7 +161,7 @@ pub fn decode_response<T, F: SolCall<Return = T>>(
 /// Returns `T` from Solidity struct if RPC response is Ok
 pub fn handle_rpc_response<T, F: SolCall<Return = T>>(
     rpc_response: RequestResult,
-) -> Result<T, ManagerError> {
+) -> ManagerResult<T> {
     // Handle RPC response
     match rpc_response {
         RequestResult::Ok(hex_data) => {
@@ -195,7 +195,7 @@ pub fn handle_rpc_response<T, F: SolCall<Return = T>>(
 
 pub fn decode_request_response(
     canister_response: CallResult<(RequestResult,)>,
-) -> Result<Vec<u8>, ManagerError> {
+) -> ManagerResult<Vec<u8>> {
     match canister_response {
         Ok((rpc_response,)) => match rpc_response {
             RequestResult::Ok(hex_data) => {
@@ -211,7 +211,7 @@ pub fn decode_request_response(
 
 pub fn decode_request_response_encoded(
     canister_response: CallResult<(RequestResult,)>,
-) -> Result<String, ManagerError> {
+) -> ManagerResult<String> {
     match canister_response {
         Ok((rpc_response,)) => match rpc_response {
             RequestResult::Ok(hex_data) => Ok(hex_data),
@@ -236,7 +236,7 @@ pub fn eth_call_args(to: String, data: Vec<u8>, hex_block_number: &str) -> Strin
     .to_string()
 }
 
-pub async fn get_block_number(rpc_canister: &Service) -> Result<String, ManagerError> {
+pub async fn get_block_number(rpc_canister: &Service) -> ManagerResult<String> {
     let _rpc: RpcService = rpc_provider(rpc_url);
 
     let args = json!({
@@ -270,7 +270,7 @@ pub async fn send_raw_transaction(
     derivation_path: DerivationPath,
     rpc_canister: &Service,
     cycles: u128,
-) -> Result<MultiRpcResult<SendRawTransactionStatus>, ManagerError> {
+) -> ManagerResult<MultiRpcResult<SendRawTransactionStatus>> {
     let chain_id = CHAIN_ID.with(|id| id.get());
     let input = Bytes::from(data.clone());
     let rpc = get_provider_set().into();
@@ -337,7 +337,7 @@ pub async fn call_with_dynamic_retries(
     block: Option<BlockTag>,
     to: Address,
     data: Vec<u8>,
-) -> Result<CallResult<(MultiRpcResult<Hex>,)>, ManagerError> {
+) -> ManagerResult<CallResult<(MultiRpcResult<Hex>,)>> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
 
     // There is a 2 MB limit on the response size, an ICP limitation.
@@ -399,7 +399,7 @@ pub async fn request_with_dynamic_retries(
     rpc_canister: &Service,
     rpc_url: &str,
     json_data: String,
-) -> Result<CallResult<(RpcResult<String>,)>, ManagerError> {
+) -> ManagerResult<CallResult<(RpcResult<String>,)>> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
 
     while max_response_bytes < 2_000_000 {
@@ -436,8 +436,8 @@ pub async fn request_with_dynamic_retries(
 }
 
 /// On success, returns the nonce associated with the given address
-pub async fn get_nonce(rpc_canister: &Service, address: Address) -> U256 {
-    let account = Hex20(address.into_array());
+pub async fn get_nonce(rpc_canister: &Service, address: Address) -> ManagerResult<U256> {
+    let account = Hex20::from(address.into_array());
     let rpc: RpcServices = get_provider_set().into();
     let args = GetTransactionCountArgs {
         address: account,
@@ -448,11 +448,21 @@ pub async fn get_nonce(rpc_canister: &Service, address: Address) -> U256 {
         .eth_get_transaction_count(rpc, None, args)
         .await;
     
-    let number = extract_call_result::<MultiRpcResult<Nat256>>(result)?;
+    let wrapped_number = extract_call_result::<MultiRpcResult<Nat256>>(result)?;
+    let number = extract_multi_rpc_result(wrapped_number)?;
+    Ok(U256::from_be_bytes(number.into_be_bytes()))
+}
+
+/// Extracts result from `MultiRpcResult`, if the threshold is met.
+pub fn extract_multi_rpc_result<T>(result: MultiRpcResult<T>) -> ManagerResult<T> {
+    match result {
+        MultiRpcResult::Consistent(response) => response.map_err(|rpc_err| ManagerError::RpcResponseError(rpc_err)),
+        MultiRpcResult::Inconsistent(vec) => todo!(),
+    }
 }
 
 /// Extracts the Ok or Err values of a canister call and returns them.
-pub fn extract_call_result<T>(result: CallResult<(T,)>) -> Result<T, ManagerError> {
+pub fn extract_call_result<T>(result: CallResult<(T,)>) -> ManagerResult<T> {
     result
         .map(|(success_value,)| success_value)
         .map_err(|(rejection_code, error_message)| {

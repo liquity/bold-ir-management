@@ -5,7 +5,7 @@ use crate::{
     signer::{get_canister_public_key, pubkey_bytes_to_address},
     state::*,
     strategy::StrategyData,
-    types::{ManagerError, StrategyInput, StrategyQueryData, SwapResponse},
+    types::{ManagerError, ManagerResult, StrategyInput, StrategyQueryData, SwapResponse},
     utils::{nat_to_u256, only_controller},
 };
 use alloy_primitives::Address;
@@ -29,7 +29,7 @@ impl PreUpdate for IrManager {}
 
 impl IrManager {
     #[update]
-    pub async fn mint_strategy(&self, strategy: StrategyInput) -> Result<String, ManagerError> {
+    pub async fn mint_strategy(&self, strategy: StrategyInput) -> ManagerResult<String> {
         only_controller(caller())?;
 
         let strategies = STRATEGY_DATA.with(|strategies| strategies.borrow().clone());
@@ -78,7 +78,7 @@ impl IrManager {
         &self,
         key: u32,
         batch_manager: String,
-    ) -> Result<(), ManagerError> {
+    ) -> ManagerResult<()> {
         only_controller(caller())?;
         let address = Address::from_str(&batch_manager).unwrap();
         StrategyData::set_batch_manager(key, address)
@@ -87,7 +87,7 @@ impl IrManager {
     /// Starts timers for executing strategies and managing the canister's cycle balance.
     /// Each strategy executes on a 1-hour interval, and cycle balance checks happen every 24 hours.
     #[update]
-    pub async fn start_timers(&self) -> Result<(), ManagerError> {
+    pub async fn start_timers(&self) -> ManagerResult<()> {
         only_controller(caller())?;
         // Retrieve all strategies for setting up timers
         let strategies = STRATEGY_DATA.with(|vector_data| vector_data.borrow().clone());
@@ -203,7 +203,7 @@ impl IrManager {
 
     /// Swaps ckETH by first checking the cycle balance, then transferring ckETH to the caller.
     #[update]
-    pub async fn swap_cketh(&self) -> Result<SwapResponse, ManagerError> {
+    pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
         // Ensure the cycle balance is above a certain threshold before proceeding
         check_threshold().await?;
         transfer_cketh(caller()).await

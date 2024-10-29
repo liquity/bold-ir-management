@@ -12,8 +12,7 @@ use crate::{
     },
     types::*,
     utils::{
-        decode_request_response_encoded, decode_response, eth_call_args, get_block_number,
-        request_with_dynamic_retries, send_raw_transaction, string_to_address,
+        decode_request_response_encoded, decode_response, eth_call_args, get_block_number, get_nonce, request_with_dynamic_retries, send_raw_transaction, string_to_address
     },
 };
 
@@ -92,7 +91,7 @@ impl StrategyData {
         hint_helper: String,
         eoa_pk: Option<Address>,
         derivation_path: DerivationPath,
-    ) -> Result<Self, ManagerError> {
+    ) -> ManagerResult<Self> {
         let result = Self {
             key,
             batch_manager: Address::ZERO,
@@ -115,7 +114,7 @@ impl StrategyData {
     }
 
     /// Sets batch manager address for a certain strategy, if the address is not already set.
-    pub fn set_batch_manager(key: u32, batch_manager: Address) -> Result<(), ManagerError> {
+    pub fn set_batch_manager(key: u32, batch_manager: Address) -> ManagerResult<()> {
         STRATEGY_DATA.with(|strategies| {
             let mut binding = strategies.borrow_mut();
             let strategy = binding.get_mut(&key);
@@ -146,7 +145,7 @@ impl StrategyData {
 
     /// Locks the strategy.
     /// Mutably accesses the strategy data in the HashMap.
-    fn lock(&mut self) -> Result<(), ManagerError> {
+    fn lock(&mut self) -> ManagerResult<()> {
         if self.lock {
             // already processing
             return Err(ManagerError::Locked);
@@ -158,7 +157,7 @@ impl StrategyData {
 
     /// Unlocks the strategy.
     /// Mutably accesses the strategy data in the HashMap.
-    pub fn unlock(&mut self) -> Result<(), ManagerError> {
+    pub fn unlock(&mut self) -> ManagerResult<()> {
         if !self.lock {
             // already unlocked
             return Err(ManagerError::Locked);
@@ -170,7 +169,7 @@ impl StrategyData {
 
     /// The only public function for this struct implementation. It runs the strategy and returns `Err` in case of failure.
     /// Mutably accesses the strategy data in the HashMap.
-    pub async fn execute(&mut self) -> Result<(), ManagerError> {
+    pub async fn execute(&mut self) -> ManagerResult<()> {
         // Lock the strategy
         self.lock()?;
 
@@ -311,9 +310,10 @@ impl StrategyData {
         upper_hint: U256,
         lower_hint: U256,
         max_upfront_fee: U256,
-    ) -> Result<(), ManagerError> {
+    ) -> ManagerResult<()> {
         // fetch nonce
-        self.eoa_nonce = self.get_nonce().await?.to::<u64>();
+        let account = self.eoa_pk.ok_or(ManagerError::NonExistentValue)?;
+        self.eoa_nonce = get_nonce(&self.rpc_canister, account).await?.to::<u64>();
         self.apply_change();
 
         // send tx with new nonce
@@ -382,7 +382,7 @@ impl StrategyData {
         &self,
         new_rate: U256,
         block_number: &str,
-    ) -> Result<U256, ManagerError> {
+    ) -> ManagerResult<U256> {
         let arguments = predictAdjustBatchInterestRateUpfrontFeeCall {
             _collIndex: self.collateral_index,
             _batchAddress: self.batch_manager,
@@ -406,7 +406,7 @@ impl StrategyData {
     }
 
     /// Returns the debt of the entire system across all markets if successful.
-    async fn fetch_entire_system_debt(&self, block_number: &str) -> Result<U256, ManagerError> {
+    async fn fetch_entire_system_debt(&self, block_number: &str) -> ManagerResult<U256> {
         let json_data = eth_call_args(
             self.manager.to_string(),
             getEntireSystemDebtCall::SELECTOR.to_vec(),
@@ -420,7 +420,7 @@ impl StrategyData {
             .map(|data| Ok(data.entireSystemDebt))?
     }
 
-    async fn fetch_redemption_rate(&self, block_number: &str) -> Result<U256, ManagerError> {
+    async fn fetch_redemption_rate(&self, block_number: &str) -> ManagerResult<U256> {
         let json_data = eth_call_args(
             self.collateral_registry.to_string(),
             getRedemptionRateWithDecayCall::SELECTOR.to_vec(),
@@ -440,7 +440,7 @@ impl StrategyData {
         &self,
         manager: Option<String>,
         block_number: &str,
-    ) -> Result<getUnbackedPortionPriceAndRedeemabilityReturn, ManagerError> {
+    ) -> ManagerResult<getUnbackedPortionPriceAndRedeemabilityReturn> {
         let call_manager = match manager {
             Some(value) => value,
             None => self.manager.to_string(),
@@ -466,7 +466,7 @@ impl StrategyData {
         index: U256,
         count: U256,
         block_number: &str,
-    ) -> Result<Vec<DebtPerInterestRate>, ManagerError> {
+    ) -> ManagerResult<Vec<DebtPerInterestRate>> {
         let parameters = getDebtPerInterestRateAscendingCall {
             _collIndex: self.collateral_index,
             _startId: index,
@@ -493,7 +493,7 @@ impl StrategyData {
         &self,
         initial_value: U256,
         block_number: &str,
-    ) -> Result<U256, ManagerError> {
+    ) -> ManagerResult<U256> {
         let managers: Vec<String> =
             MANAGERS.with(|managers_vector| managers_vector.borrow().clone());
 
@@ -529,7 +529,7 @@ impl StrategyData {
         maximum_redeemable_against_collateral: U256,
         target_percentage: U256,
         block_number: &str,
-    ) -> Result<Option<(U256, U256)>, ManagerError> {
+    ) -> ManagerResult<Option<(U256, U256)>> {
         if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
             // Check if decrease/increase is valid
             let new_rate = self
@@ -569,7 +569,7 @@ impl StrategyData {
         troves: Vec<DebtPerInterestRate>,
         target_percentage: U256,
         maximum_redeemable_against_collateral: U256,
-    ) -> Result<U256, ManagerError> {
+    ) -> ManagerResult<U256> {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);
         for trove in troves.iter() {
