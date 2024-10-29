@@ -1,22 +1,31 @@
-use crate::strategy::StrategyData;
+use crate::{state::CHAIN_ID, strategy::StrategyData};
 
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
+use evm_rpc_types::{RpcApi, RpcError, RpcService, RpcServices};
 use serde::{Deserialize, Serialize};
 
-use crate::evm_rpc::RpcError;
-
+/// IR Manager Canister Errors
 #[derive(CandidType, Debug)]
 pub enum ManagerError {
+    /// Unauthorized access
     Unauthorized,
+    /// A requested value does not exist
     NonExistentValue,
+    /// Wrapper for the RPC errors returned by the EVM RPC canister
     RpcResponseError(RpcError),
+    /// Decoding issue
     DecodingError(String),
+    /// Strategy is locked
     Locked,
+    /// Unknown/Custom error
     Custom(String),
+    /// The cycle balance is above the threshold.
+    /// No arbitrage opportunity is available.
     CyclesBalanceAboveRechargingThreshold,
 }
 
+/// Derivation path for the tECDSA signatures
 pub type DerivationPath = Vec<Vec<u8>>;
 
 #[derive(CandidType, Deserialize)]
@@ -71,6 +80,31 @@ pub type Subaccount = [u8; 32];
 pub struct Account {
     pub owner: Principal,
     pub subaccount: Option<Subaccount>,
+}
+
+/// RPC type to use
+#[derive(Clone)]
+pub enum ProviderSet {
+    ManyProviders(RpcServices),
+    CustomProvider(String),
+}
+
+impl Default for ProviderSet {
+    fn default() -> Self {
+        Self::CustomProvider("".to_string())
+    }
+}
+
+impl Into<RpcServices> for ProviderSet {
+    fn into(self) -> RpcServices {
+        match self {
+            ProviderSet::ManyProviders(rpc_services) => rpc_services,
+            ProviderSet::CustomProvider(url) => RpcServices::Custom {
+                chain_id: CHAIN_ID.with(|id| id.get()),
+                services: vec![RpcApi { url, headers: None }],
+            },
+        }
+    }
 }
 
 sol!(

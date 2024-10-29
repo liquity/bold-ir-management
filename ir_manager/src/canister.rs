@@ -14,7 +14,7 @@ use ic_exports::{
     candid::Principal,
     ic_cdk::{
         api::management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
-        caller, print, spawn,
+        caller, spawn,
     },
     ic_cdk_timers::{set_timer, set_timer_interval},
 };
@@ -58,7 +58,6 @@ impl IrManager {
             strategy.multi_trove_getter,
             strategy.target_min,
             rpc_canister,
-            strategy.rpc_url,
             nat_to_u256(&strategy.upfront_fee_period)?,
             nat_to_u256(&strategy.collateral_index)?,
             strategy.hint_helper,
@@ -102,25 +101,16 @@ impl IrManager {
                 let mut strategy = strategy.clone();
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {
-                    print(format!(
-                        "[INIT] Running strategy {} with EOA address {:#?}",
-                        strategy.key, strategy.eoa_pk.unwrap()
-                    ));
                     for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
 
                         // Handle success or failure for each strategy execution attempt
                         match result {
                             Ok(()) => {
-                                print(format!("[FINISH] Strategy number {} ran successfully on attempt number {}.", strategy.key, turn));
                                 break;
-                            }, // Exit on success
+                            } // Exit on success
                             Err(err) => {
                                 let _ = strategy.unlock(); // Unlock on failure
-                                print(format!(
-                                    "[ERROR] Strategy number {}, attempt {} => {:#?}",
-                                    strategy.key, turn, err
-                                ));
                             }
                         }
                     }
@@ -136,25 +126,16 @@ impl IrManager {
                 let mut strategy = strategy.clone();
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {
-                    print(format!(
-                        "[INIT] Running strategy {} with EOA address {:#?}",
-                        strategy.key, strategy.eoa_pk.unwrap()
-                    ));
                     for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
 
                         // Handle success or failure for each strategy execution attempt
                         match result {
                             Ok(()) => {
-                                print(format!("[FINISH] Strategy number {} ran successfully on attempt number {}.", strategy.key, turn));
                                 break;
-                            }, // Exit on success
+                            } // Exit on success
                             Err(err) => {
                                 let _ = strategy.unlock(); // Unlock on failure
-                                print(format!(
-                                    "[ERROR] Strategy number {}, attempt {} => {:#?}",
-                                    strategy.key, turn, err
-                                ));
                             }
                         }
                     }
@@ -174,10 +155,6 @@ impl IrManager {
                     match result {
                         Ok(()) => break, // Exit on success
                         Err(err) => {
-                            print(format!(
-                                "[ERROR] Error running the daily ckETH recharge cycle, attempt {} => {:#?}",
-                                turn, err
-                            ));
                             if turn == *max_retry_attempts {
                                 break; // Stop retrying after max attempts
                             }

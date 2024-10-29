@@ -1,7 +1,7 @@
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
-use ic_exports::ic_cdk::{api::time, print};
+use ic_exports::ic_cdk::api::time;
 use serde_json::json;
 
 use crate::{
@@ -53,8 +53,6 @@ pub struct StrategyData {
     pub eoa_pk: Option<Address>,
     /// RPC canister service
     pub rpc_canister: Service,
-    /// RPC URL for the strategy.
-    pub rpc_url: String,
 }
 
 impl Default for StrategyData {
@@ -76,7 +74,6 @@ impl Default for StrategyData {
             eoa_nonce: 0,
             eoa_pk: None,
             rpc_canister: Service(Principal::anonymous()),
-            rpc_url: String::default(),
         }
     }
 }
@@ -90,7 +87,6 @@ impl StrategyData {
         multi_trove_getter: String,
         target_min: f64,
         rpc_canister: Service,
-        rpc_url: String,
         upfront_fee_period: U256,
         collateral_index: U256,
         hint_helper: String,
@@ -114,7 +110,6 @@ impl StrategyData {
             eoa_nonce: 0,
             eoa_pk,
             rpc_canister,
-            rpc_url,
         };
         Ok(result)
     }
@@ -179,7 +174,7 @@ impl StrategyData {
         // Lock the strategy
         self.lock()?;
 
-        let block_number = get_block_number(&self.rpc_canister, &self.rpc_url).await?;
+        let block_number = get_block_number(&self.rpc_canister).await?;
         let time_since_last_update = U256::from(time() - self.last_update);
 
         let entire_system_debt: U256 = self.fetch_entire_system_debt(&block_number).await?;
@@ -212,14 +207,6 @@ impl StrategyData {
         let exponent: f64 = (0.005 * SCALE) / (redemption_fee.to::<u64>() as f64);
         let target_percentage = self.target_min.powf(exponent) * SCALE;
 
-        print(format!(
-            "target_percentage = {}, exponent = {}, redemption_fee as f64 = {}, self.target_min = {}",
-            target_percentage,
-            exponent,
-            redemption_fee.to::<u64>() as f64,
-            self.target_min
-        ));
-
         let strategy_result = self
             .run_strategy(
                 troves,
@@ -246,11 +233,6 @@ impl StrategyData {
                 _maxUpfrontFee: max_upfront_fee + U256::from(1_000_000_000_000_000_u128), // + %0.001 ,
             };
 
-            print(format!(
-                "[TRANSACTION] Sending a new rate transaction with rate {} to batch manager {}...",
-                new_rate, self.batch_manager
-            ));
-
             let tx_response = send_raw_transaction(
                 self.batch_manager.to_string(),
                 self.eoa_pk.unwrap().to_string(),
@@ -259,7 +241,6 @@ impl StrategyData {
                 self.eoa_nonce,
                 self.derivation_path.clone(),
                 &self.rpc_canister,
-                &self.rpc_url,
                 1_000_000_000,
             )
             .await?;
@@ -273,7 +254,6 @@ impl StrategyData {
                                 self.last_update = time();
                                 self.latest_rate = new_rate;
                                 self.apply_change();
-                                print(format!("[TRANSACTION] Strategy number {}: New rate transaction was submitted successfully for batch manager {}.", self.key, self.batch_manager));
                                 self.unlock()?;
                                 Ok(())
                             }
@@ -301,7 +281,6 @@ impl StrategyData {
                 crate::evm_rpc::MultiSendRawTransactionResult::Inconsistent(
                     inconsistent_responses,
                 ) => {
-                    print(format!("[INCONSISTENCY DETECTED] Inconsistent RPC responses were received for strategy number {}. Investigating...", self.key));
                     for (_, response) in inconsistent_responses {
                         if let SendRawTransactionResult::Ok(
                             crate::evm_rpc::SendRawTransactionStatus::Ok(_),
@@ -311,7 +290,6 @@ impl StrategyData {
                             self.last_update = time();
                             self.latest_rate = new_rate;
                             self.apply_change();
-                            print(format!("[TRANSACTION] Inconsistency ignored for strategy {}, as at least one RPC response was ok. New rate transaction was submitted successfully for batch manager {}.", self.key, self.batch_manager));
                             self.unlock()?;
                             return Ok(());
                         }
@@ -322,7 +300,7 @@ impl StrategyData {
                 }
             }
         }
-        print(format!("[NO TRANSACTION] Strategy number {} finished its run successfully without submitting a transaction.", self.key));
+
         self.unlock()?;
         Ok(())
     }
@@ -354,7 +332,6 @@ impl StrategyData {
             self.eoa_nonce,
             self.derivation_path.clone(),
             &self.rpc_canister,
-            &self.rpc_url,
             1_000_000_000,
         )
         .await?;
@@ -414,7 +391,7 @@ impl StrategyData {
         .to_string();
 
         let rpc_canister_response =
-            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, request_json).await?;
+            request_with_dynamic_retries(&self.rpc_canister, request_json).await?;
 
         let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
 

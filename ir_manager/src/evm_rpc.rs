@@ -72,15 +72,15 @@ impl Service {
         )
         .await
     }
-    
+
     pub async fn get_providers(&self) -> Result<(Vec<Provider>,)> {
         ic_cdk::call(self.0, "getProviders", ()).await
     }
-    
+
     pub async fn get_service_provider_map(&self) -> Result<(Vec<(RpcService, u64)>,)> {
         ic_cdk::call(self.0, "getServiceProviderMap", ()).await
     }
-    
+
     pub async fn request(
         &self,
         arg0: RpcService,
@@ -90,7 +90,7 @@ impl Service {
     ) -> Result<(RpcResult<String>,)> {
         ic_cdk::api::call::call_with_payment128(self.0, "request", (arg0, arg1, arg2), cycles).await
     }
-    
+
     pub async fn request_cost(
         &self,
         arg0: RpcService,
@@ -100,7 +100,12 @@ impl Service {
         ic_cdk::call(self.0, "requestCost", (arg0, arg1, arg2)).await
     }
 
-    pub async fn eth_call(&self, source: RpcServices, config: Option<RpcConfig>, args: CallArgs) -> Result<(MultiRpcResult<Hex>,)> {
+    pub async fn eth_call(
+        &self,
+        source: RpcServices,
+        config: Option<RpcConfig>,
+        args: CallArgs,
+    ) -> Result<(MultiRpcResult<Hex>,)> {
         ic_cdk::call(self.0, "eth_call", (source, config, args)).await
     }
 }

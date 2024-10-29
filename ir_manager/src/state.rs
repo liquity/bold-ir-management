@@ -7,7 +7,7 @@ use alloy_primitives::U256;
 use candid::Nat;
 use ic_exports::candid::Principal;
 
-use crate::strategy::StrategyData;
+use crate::{strategy::StrategyData, types::ProviderSet};
 
 pub const SCALE: f64 = 1e18;
 
@@ -47,4 +47,11 @@ thread_local! {
     /// The recharging cycle will mint more ckETH if the balance falls below this number
     pub static CKETH_THRESHOLD: RefCell<Nat> = RefCell::new(Nat::from(30_000_000_000_000_000 as u64)); // 0.03 ETH in WEI
     pub static DEFAULT_MAX_RESPONSE_BYTES: Cell<u64> = Cell::new(8_000);
+    /// Providers used for the canister calls
+    pub static PROVIDER_SET: RefCell<ProviderSet> = RefCell::new(ProviderSet::default());
+}
+
+/// Returns the current provider set
+pub fn get_provider_set() -> ProviderSet {
+    PROVIDER_SET.with(|set| set.borrow().clone())
 }

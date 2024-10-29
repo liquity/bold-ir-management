@@ -1,11 +1,15 @@
 #![allow(dead_code)]
 
-use std::str::FromStr;
+use std::{io::Read, str::FromStr};
 
 use alloy::consensus::TxEip1559;
 use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
 use candid::{Nat, Principal};
+use evm_rpc_types::{
+    BlockTag, CallArgs, Hex, Hex20, MultiRpcResult, RpcApi, RpcConfig, RpcResult, RpcService,
+    RpcServices, SendRawTransactionStatus, TransactionRequest,
+};
 use ic_exports::ic_cdk::{
     self,
     api::{
@@ -13,20 +17,20 @@ use ic_exports::ic_cdk::{
         is_controller,
         management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     },
-    call, id, print,
+    call, id,
 };
 use serde_json::json;
 
 use crate::{
-    evm_rpc::{
-        EthCallResponse, HttpOutcallError, MultiSendRawTransactionResult, RejectionCode,
-        RequestCostResult, RequestResult, RpcApi, RpcError, RpcService, RpcServices, Service,
-    },
+    evm_rpc::Service,
     exchange::*,
     gas::{estimate_transaction_fees, get_estimate_gas, FeeEstimates},
     signer::sign_eip1559_transaction,
-    state::{CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER},
-    types::{Account, DerivationPath, ManagerError},
+    state::{
+        get_provider_set, CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES,
+        EXCHANGE_RATE_CANISTER,
+    },
+    types::{Account, DerivationPath, ManagerError, ProviderSet},
 };
 use num_traits::ToPrimitive;
 
@@ -233,10 +237,7 @@ pub fn eth_call_args(to: String, data: Vec<u8>, hex_block_number: &str) -> Strin
     .to_string()
 }
 
-pub async fn get_block_number(
-    rpc_canister: &Service,
-    rpc_url: &str,
-) -> Result<String, ManagerError> {
+pub async fn get_block_number(rpc_canister: &Service) -> Result<String, ManagerError> {
     let _rpc: RpcService = rpc_provider(rpc_url);
 
     let args = json!({
@@ -269,25 +270,18 @@ pub async fn send_raw_transaction(
     nonce: u64,
     derivation_path: DerivationPath,
     rpc_canister: &Service,
-    rpc_url: &str,
     cycles: u128,
-) -> Result<MultiSendRawTransactionResult, ManagerError> {
+) -> Result<MultiRpcResult<SendRawTransactionStatus>, ManagerError> {
     let chain_id = CHAIN_ID.with(|id| id.get());
     let input = Bytes::from(data.clone());
-    let rpc = RpcServices::Custom {
-        chainId: chain_id,
-        services: vec![RpcApi {
-            url: rpc_url.to_string(),
-            headers: None,
-        }],
-    };
+    let rpc = get_provider_set().into();
 
     let FeeEstimates {
         max_fee_per_gas,
         max_priority_fee_per_gas,
     } = estimate_transaction_fees(9, rpc.clone(), rpc_canister).await?;
 
-    let estimated_gas = get_estimate_gas(rpc_canister, rpc_url, data, to.clone(), from).await?;
+    let estimated_gas = get_estimate_gas(rpc_canister, data, to.clone(), from).await?;
 
     let key_id = EcdsaKeyId {
         curve: EcdsaCurve::Secp256k1,
@@ -333,11 +327,80 @@ fn is_response_size_error(err: &RequestResult) -> bool {
     }
 }
 
+/// Performs `eth_call` calls to the EVM RPC canister and doubles the max response bytes argument, if insufficient
+/// Exits the loop if either of the following are satisfied:
+/// A) The EVM RPC canister responds with Ok() or an error that is not related to the response size
+/// B) The limit of 2MB is reached.
+/// NOTE: Use the `request_with_dynamic_retries` to make requests
+pub async fn call_with_dynamic_retries(
+    rpc_canister: &Service,
+    provider_set: ProviderSet,
+    block: Option<BlockTag>,
+    to: Address,
+    data: Vec<u8>,
+) -> Result<CallResult<(MultiRpcResult<Hex>,)>, ManagerError> {
+    let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
+
+    // There is a 2 MB limit on the response size, an ICP limitation.
+    while max_response_bytes < 2_000_000 {
+        // Perform the request using the provided function
+        let args = CallArgs {
+            transaction: TransactionRequest {
+                tx_type: None,
+                nonce: None,
+                to: Some(Hex20::from(to.into_array())),
+                from: None,
+                gas: None,
+                value: None,
+                input: Some(Hex::from(data)),
+                gas_price: None,
+                max_priority_fee_per_gas: None,
+                max_fee_per_gas: None,
+                max_fee_per_blob_gas: None,
+                access_list: None,
+                blob_versioned_hashes: None,
+                blobs: None,
+                chain_id: None,
+            },
+            block,
+        };
+
+        let config = RpcConfig {
+            response_size_estimate: Some(max_response_bytes),
+            response_consensus: None,
+        };
+
+        let response = rpc_canister
+            .eth_call(
+                provider_set.into::<RpcServices>().clone(),
+                Some(config),
+                args,
+            )
+            .await;
+        if let Ok((returned_response,)) = &response {
+            if is_response_size_error(returned_response) {
+                max_response_bytes *= 2;
+                continue;
+            }
+        }
+        return Ok(response);
+    }
+
+    Err(ManagerError::Custom(format!(
+        "Request with dynamic retries reached its ceiling of 2 Megabytes."
+    )))
+}
+
+/// Performs `request` calls to the EVM RPC canister and doubles the max response bytes argument, if insufficient
+/// Exits the loop if either of the following are satisfied:
+/// A) The EVM RPC canister responds with Ok() or an error that is not related to the response size
+/// B) The limit of 2MB is reached.
+/// NOTE: Use the `call_with_dynamic_retries` for making `eth_call` queries
 pub async fn request_with_dynamic_retries(
     rpc_canister: &Service,
     rpc_url: &str,
     json_data: String,
-) -> Result<CallResult<(RequestResult,)>, ManagerError> {
+) -> Result<CallResult<(RpcResult<String>,)>, ManagerError> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
 
     while max_response_bytes < 2_000_000 {
@@ -362,10 +425,6 @@ pub async fn request_with_dynamic_retries(
         if let Ok((returned_response,)) = &response {
             if is_response_size_error(returned_response) {
                 max_response_bytes *= 2;
-                print(format!(
-                    "[MODIFICATION] Doubling the max response bytes to {}",
-                    max_response_bytes
-                ));
                 continue;
             }
         }

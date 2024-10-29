@@ -114,7 +114,6 @@ pub async fn estimate_transaction_fees(
 
 pub async fn get_estimate_gas(
     rpc_canister: &Service,
-    rpc_url: &str,
     data: Vec<u8>,
     to: String,
     from: String,
