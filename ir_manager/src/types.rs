@@ -7,7 +7,7 @@ use ic_exports::ic_kit::RejectionCode;
 use serde::{Deserialize, Serialize};
 
 /// IR Manager Canister Result
-pub type ManagerResult<T> = Result<T>;
+pub type ManagerResult<T> = Result<T, ManagerError>;
 
 /// IR Manager Canister Errors
 #[derive(CandidType, Debug)]

@@ -1,7 +1,7 @@
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
-use evm_rpc_types::{GetTransactionCountArgs, RpcServices};
+use evm_rpc_types::{GetTransactionCountArgs, RpcServices, SendRawTransactionStatus};
 use ic_exports::ic_cdk::api::time;
 use serde_json::json;
 
@@ -12,7 +12,7 @@ use crate::{
     },
     types::*,
     utils::{
-        decode_request_response_encoded, decode_response, eth_call_args, get_block_number, get_nonce, request_with_dynamic_retries, send_raw_transaction, string_to_address
+        decode_request_response_encoded, decode_response, eth_call_args, extract_multi_rpc_result, get_block_number, get_nonce, request_with_dynamic_retries, send_raw_transaction, string_to_address
     },
 };
 
@@ -232,70 +232,35 @@ impl StrategyData {
                 _maxUpfrontFee: max_upfront_fee + U256::from(1_000_000_000_000_000_u128), // + %0.001 ,
             };
 
-            let tx_response = send_raw_transaction(
-                self.batch_manager.to_string(),
-                self.eoa_pk.unwrap().to_string(),
-                payload.abi_encode(),
-                U256::ZERO,
-                self.eoa_nonce,
-                self.derivation_path.clone(),
-                &self.rpc_canister,
-                1_000_000_000,
-            )
-            .await?;
-
-            match tx_response {
-                crate::evm_rpc::MultiSendRawTransactionResult::Consistent(tx_result) => {
-                    return match tx_result {
-                        crate::evm_rpc::SendRawTransactionResult::Ok(status) => match status {
-                            crate::evm_rpc::SendRawTransactionStatus::Ok(_) => {
-                                self.eoa_nonce += 1;
-                                self.last_update = time();
-                                self.latest_rate = new_rate;
-                                self.apply_change();
-                                self.unlock()?;
-                                Ok(())
-                            }
-                            crate::evm_rpc::SendRawTransactionStatus::NonceTooLow
-                            | crate::evm_rpc::SendRawTransactionStatus::TooHigh => {
-                                self.update_rate_with_nonce(
-                                    new_rate,
-                                    upper_hint,
-                                    lower_hint,
-                                    max_upfront_fee + U256::from(1_000_000_000_000_000_u128), // + %0.001
-                                )
-                                .await
-                            }
-                            crate::evm_rpc::SendRawTransactionStatus::InsufficientFunds => {
-                                Err(ManagerError::Custom(
-                                    format!("[GAS] Strategy {}: Not enough Ether balance to cover the gas fee.", self.key)
-                                ))
-                            }
-                        },
-                        crate::evm_rpc::SendRawTransactionResult::Err(err) => {
-                            Err(ManagerError::RpcResponseError(err))
-                        }
-                    };
-                }
-                crate::evm_rpc::MultiSendRawTransactionResult::Inconsistent(
-                    inconsistent_responses,
-                ) => {
-                    for (_, response) in inconsistent_responses {
-                        if let SendRawTransactionResult::Ok(
-                            crate::evm_rpc::SendRawTransactionStatus::Ok(_),
-                        ) = response
-                        {
-                            self.eoa_nonce += 1;
-                            self.last_update = time();
-                            self.latest_rate = new_rate;
-                            self.apply_change();
-                            self.unlock()?;
-                            return Ok(());
-                        }
+            for _ in 0..2 {
+                let tx_response = send_raw_transaction(
+                    self.batch_manager.to_string(),
+                    self.eoa_pk.unwrap().to_string(),
+                    payload.abi_encode(),
+                    U256::ZERO,
+                    self.eoa_nonce,
+                    self.derivation_path.clone(),
+                    &self.rpc_canister,
+                    1_000_000_000,
+                )
+                .await?;
+    
+                let result = extract_multi_rpc_result(tx_response)?;
+    
+                match result {
+                    SendRawTransactionStatus::Ok(_) => {
+                        self.eoa_nonce += 1;
+                        self.last_update = time();
+                        self.latest_rate = new_rate;
+                        self.apply_change();
+                        self.unlock()?;
+                        return Ok(());
+                    },
+                    SendRawTransactionStatus::InsufficientFunds => return Err(ManagerError::Custom(format!("[GAS] Strategy {}: Not enough Ether balance to cover the gas fee.", self.key))),
+                    SendRawTransactionStatus::NonceTooLow | SendRawTransactionStatus::NonceTooHigh => {                        
+                        self.update_nonce()
+                        .await?;
                     }
-                    return Err(ManagerError::Custom(
-                        "None of the RPC responses were OK.".to_string(),
-                    ));
                 }
             }
         }
@@ -304,78 +269,14 @@ impl StrategyData {
         Ok(())
     }
 
-    async fn update_rate_with_nonce(
+    async fn update_nonce(
         &mut self,
-        rate: U256,
-        upper_hint: U256,
-        lower_hint: U256,
-        max_upfront_fee: U256,
     ) -> ManagerResult<()> {
         // fetch nonce
         let account = self.eoa_pk.ok_or(ManagerError::NonExistentValue)?;
         self.eoa_nonce = get_nonce(&self.rpc_canister, account).await?.to::<u64>();
         self.apply_change();
-
-        // send tx with new nonce
-        let payload = setNewRateCall {
-            _newAnnualInterestRate: rate.to::<u128>(),
-            _upperHint: upper_hint,
-            _lowerHint: lower_hint,
-            _maxUpfrontFee: max_upfront_fee,
-        };
-
-        let tx_response = send_raw_transaction(
-            self.batch_manager.to_string(),
-            self.eoa_pk.unwrap().to_string(),
-            payload.abi_encode(),
-            U256::ZERO,
-            self.eoa_nonce,
-            self.derivation_path.clone(),
-            &self.rpc_canister,
-            1_000_000_000,
-        )
-        .await?;
-
-        match tx_response {
-            crate::evm_rpc::MultiSendRawTransactionResult::Consistent(tx_result) => match tx_result
-            {
-                crate::evm_rpc::SendRawTransactionResult::Ok(status) => match status {
-                    crate::evm_rpc::SendRawTransactionStatus::Ok(_) => {
-                        self.eoa_nonce += 1;
-                        self.apply_change();
-                        self.unlock()?;
-                        Ok(())
-                    }
-                    crate::evm_rpc::SendRawTransactionStatus::NonceTooLow => Err(
-                        ManagerError::Custom("Could not detect the right nonce.".to_string()),
-                    ),
-                    crate::evm_rpc::SendRawTransactionStatus::TooHigh => Err(ManagerError::Custom(
-                        "Could not detect the right nonce.".to_string(),
-                    )),
-                    crate::evm_rpc::SendRawTransactionStatus::InsufficientFunds => {
-                        Err(ManagerError::Custom(
-                            "Not enough Ether balance to cover the gas fee.".to_string(),
-                        ))
-                    }
-                },
-                crate::evm_rpc::SendRawTransactionResult::Err(err) => {
-                    Err(ManagerError::RpcResponseError(err))
-                }
-            },
-            crate::evm_rpc::MultiSendRawTransactionResult::Inconsistent(inconsistent_responses) => {
-                for (_, response) in inconsistent_responses {
-                    if let SendRawTransactionResult::Ok(
-                        crate::evm_rpc::SendRawTransactionStatus::Ok(_),
-                    ) = response
-                    {
-                        return Ok(());
-                    }
-                }
-                Err(ManagerError::Custom(
-                    "None of the RPC responses were OK".to_string(),
-                ))
-            }
-        }
+        Ok(())
     }
 
     async fn predict_upfront_fee(

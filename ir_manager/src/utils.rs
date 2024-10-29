@@ -29,7 +29,7 @@ use crate::{
         get_provider_set, CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES,
         EXCHANGE_RATE_CANISTER,
     },
-    types::{Account, DerivationPath, ManagerResult, ProviderSet},
+    types::{Account, DerivationPath, ManagerError, ManagerResult, ProviderSet},
 };
 use num_traits::ToPrimitive;
 
