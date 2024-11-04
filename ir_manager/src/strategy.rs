@@ -1,18 +1,18 @@
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
-use evm_rpc_types::{GetTransactionCountArgs, RpcServices, SendRawTransactionStatus};
+use evm_rpc_types::{BlockTag, GetTransactionCountArgs, Nat256, RpcServices, SendRawTransactionStatus};
 use ic_exports::ic_cdk::api::time;
 use serde_json::json;
 
 use crate::{
-    evm_rpc::{EthCallResponse, SendRawTransactionResult, Service},
+    evm_rpc::Service,
     state::{
         get_provider_set, MANAGERS, MAX_NUMBER_OF_TROVES, SCALE, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP
     },
     types::*,
     utils::{
-        decode_request_response_encoded, decode_response, eth_call_args, extract_multi_rpc_result, get_block_number, get_nonce, request_with_dynamic_retries, send_raw_transaction, string_to_address
+        call_with_dynamic_retries, decode_response, eth_call_args, extract_multi_rpc_result, get_block_tag, get_nonce, request_with_dynamic_retries, send_raw_transaction, string_to_address
     },
 };
 
@@ -81,7 +81,7 @@ impl StrategyData {
     /// Generates a new strategy
     pub fn new(
         key: u32,
-        manager: String,
+        manager: Address,
         collateral_registry: String,
         multi_trove_getter: String,
         target_min: f64,
@@ -96,7 +96,7 @@ impl StrategyData {
             key,
             batch_manager: Address::ZERO,
             hint_helper: string_to_address(hint_helper)?,
-            manager: string_to_address(manager)?,
+            manager,
             collateral_registry: string_to_address(collateral_registry)?,
             multi_trove_getter: string_to_address(multi_trove_getter)?,
             collateral_index,
@@ -173,12 +173,13 @@ impl StrategyData {
         // Lock the strategy
         self.lock()?;
 
-        let block_number = get_block_number(&self.rpc_canister).await?;
+        let block_tag = get_block_tag(&self.rpc_canister).await?;
+    
         let time_since_last_update = U256::from(time() - self.last_update);
 
-        let entire_system_debt: U256 = self.fetch_entire_system_debt(&block_number).await?;
+        let entire_system_debt: U256 = self.fetch_entire_system_debt(block_tag.clone()).await?;
         let unbacked_portion_price_and_redeemability = self
-            .fetch_unbacked_portion_price_and_redeemablity(None, &block_number)
+            .fetch_unbacked_portion_price_and_redeemablity(None, block_tag.clone())
             .await?;
 
         let mut troves: Vec<DebtPerInterestRate> = vec![];
@@ -186,7 +187,7 @@ impl StrategyData {
         let max_count = U256::from(MAX_NUMBER_OF_TROVES.with(|number| number.get()));
         loop {
             let fetched_troves = self
-                .fetch_multiple_sorted_troves(troves_index, max_count, &block_number)
+                .fetch_multiple_sorted_troves(troves_index, max_count, block_tag.clone())
                 .await?;
             let last_trove = fetched_troves.last().unwrap().clone();
             troves.extend(fetched_troves);
@@ -196,9 +197,9 @@ impl StrategyData {
             troves_index += max_count;
         }
 
-        let redemption_fee = self.fetch_redemption_rate(&block_number).await?;
+        let redemption_fee = self.fetch_redemption_rate(block_tag.clone()).await?;
         let total_unbacked = self
-            .fetch_total_unbacked(unbacked_portion_price_and_redeemability._0, &block_number)
+            .fetch_total_unbacked(unbacked_portion_price_and_redeemability._0, block_tag.clone())
             .await?;
         let redemption_split = unbacked_portion_price_and_redeemability._0 / total_unbacked;
         let maximum_redeemable_against_collateral = redemption_split * entire_system_debt;
@@ -213,7 +214,7 @@ impl StrategyData {
                 self.upfront_fee_period,
                 maximum_redeemable_against_collateral,
                 U256::from(target_percentage),
-                &block_number,
+                block_tag.clone(),
             )
             .await?;
 
@@ -282,7 +283,7 @@ impl StrategyData {
     async fn predict_upfront_fee(
         &self,
         new_rate: U256,
-        block_number: &str,
+        block_tag: BlockTag,
     ) -> ManagerResult<U256> {
         let arguments = predictAdjustBatchInterestRateUpfrontFeeCall {
             _collIndex: self.collateral_index,
@@ -290,14 +291,10 @@ impl StrategyData {
             _newInterestRate: new_rate,
         };
 
-        let json_data = eth_call_args(
-            self.hint_helper.to_string(),
-            predictAdjustBatchInterestRateUpfrontFeeCall::abi_encode(&arguments),
-            block_number,
-        );
+        let data = predictAdjustBatchInterestRateUpfrontFeeCall::abi_encode(&arguments);
 
         let rpc_canister_response =
-            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, json_data).await?;
+            call_with_dynamic_retries(&self.rpc_canister, block_tag, self.hint_helper, data).await?;
 
         decode_response::<
             predictAdjustBatchInterestRateUpfrontFeeReturn,
@@ -307,29 +304,17 @@ impl StrategyData {
     }
 
     /// Returns the debt of the entire system across all markets if successful.
-    async fn fetch_entire_system_debt(&self, block_number: &str) -> ManagerResult<U256> {
-        let json_data = eth_call_args(
-            self.manager.to_string(),
-            getEntireSystemDebtCall::SELECTOR.to_vec(),
-            block_number,
-        );
-
+    async fn fetch_entire_system_debt(&self, block_tag: BlockTag) -> ManagerResult<U256> {
         let rpc_canister_response =
-            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, json_data).await?;
+            call_with_dynamic_retries(&self.rpc_canister, block_tag, self.manager, getEntireSystemDebtCall::SELECTOR.to_vec()).await?;
 
         decode_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(rpc_canister_response)
             .map(|data| Ok(data.entireSystemDebt))?
     }
 
-    async fn fetch_redemption_rate(&self, block_number: &str) -> ManagerResult<U256> {
-        let json_data = eth_call_args(
-            self.collateral_registry.to_string(),
-            getRedemptionRateWithDecayCall::SELECTOR.to_vec(),
-            block_number,
-        );
-
+    async fn fetch_redemption_rate(&self, block_tag: BlockTag) -> ManagerResult<U256> {
         let rpc_canister_response =
-            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, json_data).await?;
+            call_with_dynamic_retries(&self.rpc_canister, block_tag, self.collateral_registry, getRedemptionRateWithDecayCall::SELECTOR.to_vec()).await?;
 
         decode_response::<getRedemptionRateWithDecayReturn, getRedemptionRateWithDecayCall>(
             rpc_canister_response,
@@ -339,22 +324,16 @@ impl StrategyData {
 
     async fn fetch_unbacked_portion_price_and_redeemablity(
         &self,
-        manager: Option<String>,
-        block_number: &str,
+        manager: Option<Address>,
+        block_tag: BlockTag,
     ) -> ManagerResult<getUnbackedPortionPriceAndRedeemabilityReturn> {
         let call_manager = match manager {
             Some(value) => value,
-            None => self.manager.to_string(),
+            None => self.manager,
         };
-
-        let json_data = eth_call_args(
-            call_manager,
-            getUnbackedPortionPriceAndRedeemabilityCall::SELECTOR.to_vec(),
-            block_number,
-        );
-
+    
         let rpc_canister_response =
-            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, json_data).await?;
+            call_with_dynamic_retries(&self.rpc_canister, block_tag, call_manager, getUnbackedPortionPriceAndRedeemabilityCall::SELECTOR.to_vec()).await?;
 
         decode_response::<
             getUnbackedPortionPriceAndRedeemabilityReturn,
@@ -366,7 +345,7 @@ impl StrategyData {
         &self,
         index: U256,
         count: U256,
-        block_number: &str,
+        block_tag: BlockTag,
     ) -> ManagerResult<Vec<DebtPerInterestRate>> {
         let parameters = getDebtPerInterestRateAscendingCall {
             _collIndex: self.collateral_index,
@@ -374,14 +353,9 @@ impl StrategyData {
             _maxIterations: count,
         };
 
-        let json_data = eth_call_args(
-            self.multi_trove_getter.to_string(),
-            getDebtPerInterestRateAscendingCall::abi_encode(&parameters),
-            block_number,
-        );
-
+        let data = getDebtPerInterestRateAscendingCall::abi_encode(&parameters);
         let rpc_canister_response =
-            request_with_dynamic_retries(&self.rpc_canister, &self.rpc_url, json_data).await?;
+            call_with_dynamic_retries(&self.rpc_canister, block_tag, self.multi_trove_getter, data).await?;
 
         decode_response::<getDebtPerInterestRateAscendingReturn, getDebtPerInterestRateAscendingCall>(
             rpc_canister_response,
@@ -393,16 +367,16 @@ impl StrategyData {
     async fn fetch_total_unbacked(
         &self,
         initial_value: U256,
-        block_number: &str,
+        block_tag: BlockTag,
     ) -> ManagerResult<U256> {
-        let managers: Vec<String> =
+        let managers: Vec<Address> =
             MANAGERS.with(|managers_vector| managers_vector.borrow().clone());
 
         let mut total_unbacked = initial_value;
 
         for manager in managers {
             total_unbacked += self
-                .fetch_unbacked_portion_price_and_redeemablity(Some(manager), block_number)
+                .fetch_unbacked_portion_price_and_redeemablity(Some(manager), block_tag.clone())
                 .await?
                 ._0;
         }
@@ -429,7 +403,7 @@ impl StrategyData {
         upfront_fee_period: U256,
         maximum_redeemable_against_collateral: U256,
         target_percentage: U256,
-        block_number: &str,
+        block_tag: BlockTag,
     ) -> ManagerResult<Option<(U256, U256)>> {
         if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
             // Check if decrease/increase is valid
@@ -440,7 +414,7 @@ impl StrategyData {
                     maximum_redeemable_against_collateral,
                 )
                 .await?;
-            let upfront_fee = self.predict_upfront_fee(new_rate, block_number).await?;
+            let upfront_fee = self.predict_upfront_fee(new_rate, block_tag).await?;
             // return Ok(Some((new_rate, upfront_fee))); // You can uncomment this line to test the canister without waiting for an update condition to be satisfied.
             if self.increase_check(
                 current_debt_in_front,
