@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub type ManagerResult<T> = Result<T, ManagerError>;
 
 /// IR Manager Canister Errors
-#[derive(CandidType, Debug)]
+#[derive(Clone, CandidType, Debug)]
 pub enum ManagerError {
     /// `CallResult` error
     CallResult(RejectionCode, String),
@@ -111,6 +111,39 @@ impl Into<RpcServices> for ProviderSet {
             },
         }
     }
+}
+
+impl TryInto<RpcService> for ProviderSet {
+    fn try_into(self) -> Result<RpcService, ManagerError> {
+        match self {
+            ProviderSet::ManyProviders(rpc_services) => {
+                match rpc_services {
+                    RpcServices::Custom { chain_id, services } => {
+                        if services.is_empty() {
+                            return Err(ManagerError::NonExistentValue);
+                        }
+                        Ok(RpcService::Custom(services[0]))
+                    },
+                    RpcServices::EthMainnet(vec) => todo!(),
+                    RpcServices::EthSepolia(vec) => todo!(),
+                    RpcServices::ArbitrumOne(vec) => todo!(),
+                    RpcServices::BaseMainnet(vec) => todo!(),
+                    RpcServices::OptimismMainnet(vec) => todo!(),
+                }
+            },
+            ProviderSet::CustomProvider(url) => RpcService::Custom(RpcApi { url, headers: None })
+        }
+    }
+    
+    type Error = ManagerError;
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EthCallResponse {
+    pub id: u64,
+    pub jsonrpc: String,
+    pub result: String,
 }
 
 sol!(

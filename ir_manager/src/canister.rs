@@ -6,7 +6,7 @@ use crate::{
     state::*,
     strategy::StrategyData,
     types::{ManagerError, ManagerResult, StrategyInput, StrategyQueryData, SwapResponse},
-    utils::{nat_to_u256, only_controller},
+    utils::{nat_to_u256, only_controller, string_to_address},
 };
 use alloy_primitives::Address;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
@@ -40,7 +40,8 @@ impl IrManager {
             ));
         }
 
-        MANAGERS.with(|managers| managers.borrow_mut().push(strategy.manager.clone()));
+        let manager = string_to_address(strategy.manager)?;
+        MANAGERS.with(|managers| managers.borrow_mut().push(manager));
 
         let derivation_path = vec![strategy.key.to_be_bytes().to_vec()];
         let key_id = EcdsaKeyId {
@@ -53,7 +54,7 @@ impl IrManager {
         let rpc_canister = crate::evm_rpc::Service(strategy.rpc_principal);
         let strategy_data = StrategyData::new(
             strategy.key,
-            strategy.manager,
+            manager,
             strategy.collateral_registry,
             strategy.multi_trove_getter,
             strategy.target_min,

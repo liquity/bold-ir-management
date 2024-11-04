@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
 };
 
-use alloy_primitives::U256;
+use alloy_primitives::{Address, U256};
 use candid::Nat;
 use ic_exports::candid::Principal;
 
@@ -17,7 +17,7 @@ thread_local! {
     /// HashMap containing all strategies' information
     pub static STRATEGY_DATA: RefCell<HashMap<u32, StrategyData>> = RefCell::new(HashMap::new());
     /// Vector of all manager addreses
-    pub static MANAGERS: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    pub static MANAGERS: RefCell<Vec<Address>> = RefCell::new(Vec::new());
     /// Tolerance margin up formula constant
     pub static TOLERANCE_MARGIN_UP: Cell<U256> = Cell::new(U256::from(5));
     /// Tolerance margin down formula constant
