@@ -7,9 +7,9 @@ use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
 use candid::{Nat, Principal};
 use evm_rpc_types::{
-    BlockTag, CallArgs, GetTransactionCountArgs, Hex, Hex20, MultiRpcResult, Nat256, RpcApi, RpcConfig, RpcError, RpcResult, RpcService, RpcServices, SendRawTransactionStatus, TransactionRequest
+    BlockTag, CallArgs, GetTransactionCountArgs, Hex, Hex20, HttpOutcallError, MultiRpcResult, Nat256, RpcApi, RpcConfig, RpcError, RpcResult, RpcService, RpcServices, SendRawTransactionStatus, TransactionRequest
 };
-use ic_exports::ic_cdk::{
+use ic_exports::{ic_cdk::{
     self,
     api::{
         call::CallResult,
@@ -17,7 +17,7 @@ use ic_exports::ic_cdk::{
         management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     },
     call, id,
-};
+}, ic_kit::RejectionCode};
 use serde_json::json;
 
 use crate::{
@@ -29,7 +29,7 @@ use crate::{
         get_provider_set, CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES,
         EXCHANGE_RATE_CANISTER,
     },
-    types::{Account, DerivationPath, ManagerError, ManagerResult, ProviderSet},
+    types::{Account, DerivationPath, EthCallResponse, ManagerError, ManagerResult, ProviderSet},
 };
 use num_traits::ToPrimitive;
 
@@ -209,18 +209,6 @@ pub fn decode_request_response(
     }
 }
 
-pub fn decode_request_response_encoded(
-    canister_response: CallResult<(RequestResult,)>,
-) -> ManagerResult<String> {
-    match canister_response {
-        Ok((rpc_response,)) => match rpc_response {
-            RequestResult::Ok(hex_data) => Ok(hex_data),
-            RequestResult::Err(e) => Err(ManagerError::RpcResponseError(e)),
-        },
-        Err(e) => Err(ManagerError::Custom(e.1)),
-    }
-}
-
 pub fn eth_call_args(to: String, data: Vec<u8>, hex_block_number: &str) -> String {
     json!({
         "id": 1,
@@ -236,9 +224,7 @@ pub fn eth_call_args(to: String, data: Vec<u8>, hex_block_number: &str) -> Strin
     .to_string()
 }
 
-pub async fn get_block_number(rpc_canister: &Service) -> ManagerResult<String> {
-    let _rpc: RpcService = rpc_provider(rpc_url);
-
+pub async fn get_block_tag(rpc_canister: &Service) -> ManagerResult<BlockTag> {
     let args = json!({
       "id": 1,
       "jsonrpc": "2.0",
@@ -246,19 +232,30 @@ pub async fn get_block_number(rpc_canister: &Service) -> ManagerResult<String> {
     })
     .to_string();
 
-    let rpc_canister_response = request_with_dynamic_retries(rpc_canister, rpc_url, args).await?;
+    let rpc_canister_response = request_with_dynamic_retries(rpc_canister, args).await?;
 
-    let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
-    let decoded_response: EthCallResponse = serde_json::from_str(&encoded_response)
+    let decoded_response: EthCallResponse = serde_json::from_str(&rpc_canister_response)
         .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
-    let current_block = U256::from_str(&decoded_response.result).map_err(|err| {
+    
+    let result = &decoded_response.result;
+    let block_number = result.parse::<Nat>().map_err(|err| {
         ManagerError::DecodingError(format!(
-            "Could not convert current block number to a U256: {:#?}",
+            "Could not convert current block number to a Nat256: {:#?}", 
             err
         ))
     })?;
-    let block_number = current_block - U256::from(32);
-    Ok(block_number.to_string())
+
+    let safe_block = block_number - Nat::from(32);
+
+    let safe_block_converted = Nat256::try_from(block_number).map_err(|err| {
+        ManagerError::DecodingError(format!(
+            "Could not convert current block number to a Nat256: {:#?}", 
+            err
+        ))
+    })?;
+
+
+    Ok(BlockTag::Number(safe_block_converted))
 }
 
 pub async fn send_raw_transaction(
@@ -313,13 +310,13 @@ pub async fn send_raw_transaction(
     }
 }
 
-fn is_response_size_error(err: &RequestResult) -> bool {
-    if let RequestResult::Err(RpcError::HttpOutcallError(HttpOutcallError::IcError {
+fn is_response_size_error(err: &RpcError) -> bool {
+    if let RpcError::HttpOutcallError(HttpOutcallError::IcError {
         code,
         message,
-    })) = err
+    }) = err
     {
-        *code == RejectionCode::SysFatal
+        *code == ic_cdk::api::call::RejectionCode::SysFatal
             && (message.contains("size limit") || message.contains("length limit"))
     } else {
         false
@@ -333,35 +330,22 @@ fn is_response_size_error(err: &RequestResult) -> bool {
 /// NOTE: Use the `request_with_dynamic_retries` to make requests
 pub async fn call_with_dynamic_retries(
     rpc_canister: &Service,
-    provider_set: ProviderSet,
-    block: Option<BlockTag>,
+    block: BlockTag,
     to: Address,
     data: Vec<u8>,
-) -> ManagerResult<CallResult<(MultiRpcResult<Hex>,)>> {
+) -> ManagerResult<Hex> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
-
+    let provider_set : RpcServices = get_provider_set().into();
     // There is a 2 MB limit on the response size, an ICP limitation.
     while max_response_bytes < 2_000_000 {
         // Perform the request using the provided function
+        let mut transaction = TransactionRequest::default();
+        transaction.to = Some(Hex20::from(to.into_array()));
+        transaction.input = Some(Hex::from(data.clone()));
+
         let args = CallArgs {
-            transaction: TransactionRequest {
-                tx_type: None,
-                nonce: None,
-                to: Some(Hex20::from(to.into_array())),
-                from: None,
-                gas: None,
-                value: None,
-                input: Some(Hex::from(data)),
-                gas_price: None,
-                max_priority_fee_per_gas: None,
-                max_fee_per_gas: None,
-                max_fee_per_blob_gas: None,
-                access_list: None,
-                blob_versioned_hashes: None,
-                blobs: None,
-                chain_id: None,
-            },
-            block,
+            transaction,
+            block: Some(block.clone()),
         };
 
         let config = RpcConfig {
@@ -371,18 +355,24 @@ pub async fn call_with_dynamic_retries(
 
         let response = rpc_canister
             .eth_call(
-                provider_set.into::<RpcServices>().clone(),
+                provider_set.clone(),
                 Some(config),
                 args,
             )
             .await;
-        if let Ok((returned_response,)) = &response {
-            if is_response_size_error(returned_response) {
+
+        let extracted_response = extract_call_result(response)?;
+        let extracted_rpc_result = extract_multi_rpc_result(extracted_response);
+
+        if let Err(ManagerError::RpcResponseError(err)) = extracted_rpc_result.clone() {
+            if is_response_size_error(&err) {
                 max_response_bytes *= 2;
                 continue;
             }
         }
-        return Ok(response);
+
+        // note: if the code has reached this line, it means that a response unrelated to the size was received.
+        return extracted_rpc_result;
     }
 
     Err(ManagerError::Custom(format!(
@@ -397,16 +387,15 @@ pub async fn call_with_dynamic_retries(
 /// NOTE: Use the `call_with_dynamic_retries` for making `eth_call` queries
 pub async fn request_with_dynamic_retries(
     rpc_canister: &Service,
-    rpc_url: &str,
     json_data: String,
-) -> ManagerResult<CallResult<(RpcResult<String>,)>> {
+) -> ManagerResult<String> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
-
+    let rpc : RpcService = get_provider_set();
     while max_response_bytes < 2_000_000 {
         // Estimate the cycles based on the current max response bytes
         let cycles = estimate_cycles(
             rpc_canister,
-            rpc_provider(rpc_url),
+            ,
             json_data.clone(),
             max_response_bytes,
         )
@@ -421,13 +410,17 @@ pub async fn request_with_dynamic_retries(
                 cycles,
             )
             .await;
-        if let Ok((returned_response,)) = &response {
-            if is_response_size_error(returned_response) {
-                max_response_bytes *= 2;
-                continue;
+
+            let extracted_response = extract_call_result(response)?;
+            let extracted_rpc_result = extract_multi_rpc_result(extracted_response);
+    
+            if let Err(ManagerError::RpcResponseError(err)) = extracted_rpc_result.clone() {
+                if is_response_size_error(&err) {
+                    max_response_bytes *= 2;
+                    continue;
+                }
             }
-        }
-        return Ok(response);
+        return extracted_rpc_result;
     }
 
     Err(ManagerError::Custom(format!(
