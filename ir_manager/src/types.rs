@@ -131,7 +131,7 @@ impl TryInto<RpcService> for ProviderSet {
                     RpcServices::OptimismMainnet(vec) => todo!(),
                 }
             },
-            ProviderSet::CustomProvider(url) => RpcService::Custom(RpcApi { url, headers: None })
+            ProviderSet::CustomProvider(url) => todo!() //RpcService::Custom(RpcApi { url, headers: None })
         }
     }
     

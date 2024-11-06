@@ -1,20 +1,13 @@
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
-use evm_rpc_types::{BlockTag, GetTransactionCountArgs, Nat256, RpcServices, SendRawTransactionStatus};
+use evm_rpc_types::{BlockTag, SendRawTransactionStatus};
 use ic_exports::ic_cdk::api::time;
-use serde_json::json;
 
-use crate::{
-    evm_rpc::Service,
-    state::{
-        get_provider_set, MANAGERS, MAX_NUMBER_OF_TROVES, SCALE, STRATEGY_DATA, TOLERANCE_MARGIN_DOWN, TOLERANCE_MARGIN_UP
-    },
-    types::*,
-    utils::{
-        call_with_dynamic_retries, decode_response, eth_call_args, extract_multi_rpc_result, get_block_tag, get_nonce, request_with_dynamic_retries, send_raw_transaction, string_to_address
-    },
-};
+use crate::evm_rpc::Service;
+use crate::types::*;
+use crate::state::*;
+use crate::utils::*;
 
 /// Struct containing all information necessary to execute a strategy
 #[derive(Clone)]
@@ -174,7 +167,7 @@ impl StrategyData {
         self.lock()?;
 
         let block_tag = get_block_tag(&self.rpc_canister).await?;
-    
+
         let time_since_last_update = U256::from(time() - self.last_update);
 
         let entire_system_debt: U256 = self.fetch_entire_system_debt(block_tag.clone()).await?;
@@ -199,7 +192,10 @@ impl StrategyData {
 
         let redemption_fee = self.fetch_redemption_rate(block_tag.clone()).await?;
         let total_unbacked = self
-            .fetch_total_unbacked(unbacked_portion_price_and_redeemability._0, block_tag.clone())
+            .fetch_total_unbacked(
+                unbacked_portion_price_and_redeemability._0,
+                block_tag.clone(),
+            )
             .await?;
         let redemption_split = unbacked_portion_price_and_redeemability._0 / total_unbacked;
         let maximum_redeemable_against_collateral = redemption_split * entire_system_debt;
@@ -245,9 +241,9 @@ impl StrategyData {
                     1_000_000_000,
                 )
                 .await?;
-    
+
                 let result = extract_multi_rpc_result(tx_response)?;
-    
+
                 match result {
                     SendRawTransactionStatus::Ok(_) => {
                         self.eoa_nonce += 1;
@@ -256,11 +252,16 @@ impl StrategyData {
                         self.apply_change();
                         self.unlock()?;
                         return Ok(());
-                    },
-                    SendRawTransactionStatus::InsufficientFunds => return Err(ManagerError::Custom(format!("[GAS] Strategy {}: Not enough Ether balance to cover the gas fee.", self.key))),
-                    SendRawTransactionStatus::NonceTooLow | SendRawTransactionStatus::NonceTooHigh => {                        
-                        self.update_nonce()
-                        .await?;
+                    }
+                    SendRawTransactionStatus::InsufficientFunds => {
+                        return Err(ManagerError::Custom(format!(
+                            "[GAS] Strategy {}: Not enough Ether balance to cover the gas fee.",
+                            self.key
+                        )))
+                    }
+                    SendRawTransactionStatus::NonceTooLow
+                    | SendRawTransactionStatus::NonceTooHigh => {
+                        self.update_nonce().await?;
                     }
                 }
             }
@@ -270,9 +271,7 @@ impl StrategyData {
         Ok(())
     }
 
-    async fn update_nonce(
-        &mut self,
-    ) -> ManagerResult<()> {
+    async fn update_nonce(&mut self) -> ManagerResult<()> {
         // fetch nonce
         let account = self.eoa_pk.ok_or(ManagerError::NonExistentValue)?;
         self.eoa_nonce = get_nonce(&self.rpc_canister, account).await?.to::<u64>();
@@ -294,9 +293,10 @@ impl StrategyData {
         let data = predictAdjustBatchInterestRateUpfrontFeeCall::abi_encode(&arguments);
 
         let rpc_canister_response =
-            call_with_dynamic_retries(&self.rpc_canister, block_tag, self.hint_helper, data).await?;
+            call_with_dynamic_retries(&self.rpc_canister, block_tag, self.hint_helper, data)
+                .await?;
 
-        decode_response::<
+        decode_abi_response::<
             predictAdjustBatchInterestRateUpfrontFeeReturn,
             predictAdjustBatchInterestRateUpfrontFeeCall,
         >(rpc_canister_response)
@@ -305,18 +305,28 @@ impl StrategyData {
 
     /// Returns the debt of the entire system across all markets if successful.
     async fn fetch_entire_system_debt(&self, block_tag: BlockTag) -> ManagerResult<U256> {
-        let rpc_canister_response =
-            call_with_dynamic_retries(&self.rpc_canister, block_tag, self.manager, getEntireSystemDebtCall::SELECTOR.to_vec()).await?;
+        let rpc_canister_response = call_with_dynamic_retries(
+            &self.rpc_canister,
+            block_tag,
+            self.manager,
+            getEntireSystemDebtCall::SELECTOR.to_vec(),
+        )
+        .await?;
 
-        decode_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(rpc_canister_response)
+        decode_abi_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(rpc_canister_response)
             .map(|data| Ok(data.entireSystemDebt))?
     }
 
     async fn fetch_redemption_rate(&self, block_tag: BlockTag) -> ManagerResult<U256> {
-        let rpc_canister_response =
-            call_with_dynamic_retries(&self.rpc_canister, block_tag, self.collateral_registry, getRedemptionRateWithDecayCall::SELECTOR.to_vec()).await?;
+        let rpc_canister_response = call_with_dynamic_retries(
+            &self.rpc_canister,
+            block_tag,
+            self.collateral_registry,
+            getRedemptionRateWithDecayCall::SELECTOR.to_vec(),
+        )
+        .await?;
 
-        decode_response::<getRedemptionRateWithDecayReturn, getRedemptionRateWithDecayCall>(
+        decode_abi_response::<getRedemptionRateWithDecayReturn, getRedemptionRateWithDecayCall>(
             rpc_canister_response,
         )
         .map(|data| Ok(data._0))?
@@ -331,11 +341,16 @@ impl StrategyData {
             Some(value) => value,
             None => self.manager,
         };
-    
-        let rpc_canister_response =
-            call_with_dynamic_retries(&self.rpc_canister, block_tag, call_manager, getUnbackedPortionPriceAndRedeemabilityCall::SELECTOR.to_vec()).await?;
 
-        decode_response::<
+        let rpc_canister_response = call_with_dynamic_retries(
+            &self.rpc_canister,
+            block_tag,
+            call_manager,
+            getUnbackedPortionPriceAndRedeemabilityCall::SELECTOR.to_vec(),
+        )
+        .await?;
+
+        decode_abi_response::<
             getUnbackedPortionPriceAndRedeemabilityReturn,
             getUnbackedPortionPriceAndRedeemabilityCall,
         >(rpc_canister_response)
@@ -355,9 +370,10 @@ impl StrategyData {
 
         let data = getDebtPerInterestRateAscendingCall::abi_encode(&parameters);
         let rpc_canister_response =
-            call_with_dynamic_retries(&self.rpc_canister, block_tag, self.multi_trove_getter, data).await?;
+            call_with_dynamic_retries(&self.rpc_canister, block_tag, self.multi_trove_getter, data)
+                .await?;
 
-        decode_response::<getDebtPerInterestRateAscendingReturn, getDebtPerInterestRateAscendingCall>(
+        decode_abi_response::<getDebtPerInterestRateAscendingReturn, getDebtPerInterestRateAscendingCall>(
             rpc_canister_response,
         )
         .map(|data| Ok(data._0))?

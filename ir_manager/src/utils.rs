@@ -148,65 +148,12 @@ pub fn rpc_provider(rpc_url: &str) -> RpcService {
 }
 
 /// Returns `T` from Solidity struct.
-pub fn decode_response<T, F: SolCall<Return = T>>(
-    canister_response: CallResult<(RequestResult,)>,
+pub fn decode_abi_response<T, F: SolCall<Return = T>>(
+    hex_data: Hex,
 ) -> ManagerResult<T> {
-    // Handles the inter-canister call errors
-    match canister_response {
-        Ok((rpc_response,)) => handle_rpc_response::<T, F>(rpc_response),
-        Err(e) => Err(ManagerError::Custom(e.1)),
-    }
-}
-
-/// Returns `T` from Solidity struct if RPC response is Ok
-pub fn handle_rpc_response<T, F: SolCall<Return = T>>(
-    rpc_response: RequestResult,
-) -> ManagerResult<T> {
-    // Handle RPC response
-    match rpc_response {
-        RequestResult::Ok(hex_data) => {
-            let decoded_response: EthCallResponse =
-                serde_json::from_str(&hex_data).map_err(|err| {
-                    ManagerError::DecodingError(format!(
-                        "Could not decode request result: {} error: {}",
-                        hex_data, err
-                    ))
-                })?;
-
-            if decoded_response.result.len() <= 2 {
-                return Err(ManagerError::DecodingError(format!(
-                    "The result field of the RPC's response is empty"
-                )));
-            }
-
-            let decoded_hex = hex::decode(&decoded_response.result[2..]).map_err(|err| {
-                ManagerError::DecodingError(format!(
-                    "Could not decode hex: {} error: {}",
-                    &decoded_response.result[2..],
-                    err.to_string()
-                ))
-            })?;
-            F::abi_decode_returns(&decoded_hex, false)
+    let data = hex_data.as_ref();
+    F::abi_decode_returns(data, false)
                 .map_err(|err| ManagerError::DecodingError(err.to_string()))
-        }
-        RequestResult::Err(e) => Err(ManagerError::RpcResponseError(e)),
-    }
-}
-
-pub fn decode_request_response(
-    canister_response: CallResult<(RequestResult,)>,
-) -> ManagerResult<Vec<u8>> {
-    match canister_response {
-        Ok((rpc_response,)) => match rpc_response {
-            RequestResult::Ok(hex_data) => {
-                let decoded_hex = hex::decode(hex_data)
-                    .map_err(|err| ManagerError::DecodingError(err.to_string()))?;
-                Ok(decoded_hex)
-            }
-            RequestResult::Err(e) => Err(ManagerError::RpcResponseError(e)),
-        },
-        Err(e) => Err(ManagerError::Custom(e.1)),
-    }
 }
 
 pub fn eth_call_args(to: String, data: Vec<u8>, hex_block_number: &str) -> String {
@@ -245,15 +192,14 @@ pub async fn get_block_tag(rpc_canister: &Service) -> ManagerResult<BlockTag> {
         ))
     })?;
 
-    let safe_block = block_number - Nat::from(32);
+    let safe_block = block_number - Nat::from(32_u8);
 
-    let safe_block_converted = Nat256::try_from(block_number).map_err(|err| {
+    let safe_block_converted = Nat256::try_from(safe_block).map_err(|err| {
         ManagerError::DecodingError(format!(
             "Could not convert current block number to a Nat256: {:#?}", 
             err
         ))
     })?;
-
 
     Ok(BlockTag::Number(safe_block_converted))
 }
