@@ -36,28 +36,16 @@ use num_traits::ToPrimitive;
 /// Returns the estimated cycles cost of performing the RPC call if successful
 pub async fn estimate_cycles(
     rpc_canister: &Service,
-    rpc: RpcService,
     json_data: String,
     max_response_bytes: u64,
 ) -> ManagerResult<u128> {
-    let canister_response = rpc_canister
+    let rpc = todo!();
+    let call_result = rpc_canister
         .request_cost(rpc, json_data, max_response_bytes)
         .await;
-    match canister_response {
-        Ok((request_cost_result,)) => match request_cost_result {
-            RequestCostResult::Ok(amount) => {
-                let cycles = amount.0.to_u128();
-                if let Some(cycles_u128) = cycles {
-                    return Ok(cycles_u128);
-                }
-                Err(ManagerError::DecodingError(String::from(
-                    "Could not convert Nat response of request_cost to u128.",
-                )))
-            }
-            RequestCostResult::Err(rpc_err) => Err(ManagerError::RpcResponseError(rpc_err)),
-        },
-        Err((_, err)) => Err(ManagerError::Custom(err)),
-    }
+
+    let extracted_call_result = extract_call_result(call_result)?;
+    extracted_call_result.map_err(|rpc_err| ManagerError::RpcResponseError(rpc_err))
 }
 
 /// Returns Err if the `caller` is not a controller of the canister
@@ -336,12 +324,12 @@ pub async fn request_with_dynamic_retries(
     json_data: String,
 ) -> ManagerResult<String> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
-    let rpc : RpcService = get_provider_set();
+    let rpc = todo!();
+
     while max_response_bytes < 2_000_000 {
         // Estimate the cycles based on the current max response bytes
         let cycles = estimate_cycles(
             rpc_canister,
-            ,
             json_data.clone(),
             max_response_bytes,
         )
@@ -350,23 +338,22 @@ pub async fn request_with_dynamic_retries(
         // Perform the request using the provided function
         let response = rpc_canister
             .request(
-                rpc_provider(rpc_url),
+                rpc,
                 json_data.clone(),
                 max_response_bytes,
                 cycles,
             )
             .await;
 
-            let extracted_response = extract_call_result(response)?;
-            let extracted_rpc_result = extract_multi_rpc_result(extracted_response);
-    
-            if let Err(ManagerError::RpcResponseError(err)) = extracted_rpc_result.clone() {
+            let extracted_response = extract_call_result(response)?.map_err(|rpc_err| ManagerError::RpcResponseError(rpc_err));
+
+            if let Err(ManagerError::RpcResponseError(err)) = extracted_response.clone() {
                 if is_response_size_error(&err) {
                     max_response_bytes *= 2;
                     continue;
                 }
             }
-        return extracted_rpc_result;
+        return extracted_response;
     }
 
     Err(ManagerError::Custom(format!(

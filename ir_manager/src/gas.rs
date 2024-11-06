@@ -7,7 +7,7 @@ use serde_json::json;
 use std::{ops::Add, str::FromStr};
 
 use crate::{
-    evm_rpc::Service, types::{ManagerError, ManagerResult}, utils::{extract_call_result, extract_multi_rpc_result, nat_to_u256, request_with_dynamic_retries}
+    evm_rpc::Service, types::{EthCallResponse, ManagerError, ManagerResult}, utils::{extract_call_result, extract_multi_rpc_result, nat_to_u256, request_with_dynamic_retries}
 };
 
 /// The minimum suggested maximum priority fee per gas.
@@ -122,13 +122,11 @@ pub async fn get_estimate_gas(
 
     let rpc_canister_response = request_with_dynamic_retries(rpc_canister, args).await?;
 
-    let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
-
     let decoded_response: EthCallResponse =
-        serde_json::from_str(&encoded_response).map_err(|err| {
+        serde_json::from_str(&rpc_canister_response).map_err(|err| {
             ManagerError::DecodingError(format!(
                 "Could not decode eth_estimateGas response: {} error: {}",
-                &encoded_response, err
+                &rpc_canister_response, err
             ))
         })?;
 
