@@ -1,16 +1,19 @@
+use std::borrow::Cow;
+
 use crate::{state::CHAIN_ID, strategy::StrategyData};
 
 use alloy_sol_types::sol;
-use candid::{CandidType, Nat, Principal};
+use candid::{CandidType, Decode, Encode, Nat, Principal};
 use evm_rpc_types::{RpcApi, RpcError, RpcService, RpcServices};
 use ic_exports::ic_kit::RejectionCode;
+use ic_stable_structures::{storable::Bound, Storable};
 use serde::{Deserialize, Serialize};
 
 /// IR Manager Canister Result
 pub type ManagerResult<T> = Result<T, ManagerError>;
 
 /// IR Manager Canister Errors
-#[derive(Clone, CandidType, Debug)]
+#[derive(Clone, CandidType, Debug, Deserialize)]
 pub enum ManagerError {
     /// `CallResult` error
     CallResult(RejectionCode, String),

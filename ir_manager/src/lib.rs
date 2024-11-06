@@ -9,3 +9,4 @@ mod strategy;
 mod types;
 mod utils;
 mod providers;
+mod journal;
