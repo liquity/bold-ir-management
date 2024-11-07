@@ -5,8 +5,8 @@ use evm_rpc_types::{BlockTag, SendRawTransactionStatus};
 use ic_exports::ic_cdk::api::time;
 
 use crate::evm_rpc::Service;
-use crate::types::*;
 use crate::state::*;
+use crate::types::*;
 use crate::utils::*;
 
 /// Struct containing all information necessary to execute a strategy
@@ -71,6 +71,21 @@ impl Default for StrategyData {
 }
 
 impl StrategyData {
+    /// Mint the strategy by adding it to the state
+    pub fn mint(self) -> ManagerResult<()> {
+        STRATEGY_DATA.with(|strategies| {
+            let mut binding = strategies.borrow_mut();
+            // we do not want this function to overwrite an existing key.
+            if binding.get(&self.key).is_some() {
+                return Err(ManagerError::Custom(
+                    "This strategy key is already mined.".to_string(),
+                ));
+            }
+            binding.insert(self.key, self);
+            Ok(())
+        })
+    }
+
     /// Generates a new strategy
     pub fn new(
         key: u32,
@@ -313,8 +328,10 @@ impl StrategyData {
         )
         .await?;
 
-        decode_abi_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(rpc_canister_response)
-            .map(|data| Ok(data.entireSystemDebt))?
+        decode_abi_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(
+            rpc_canister_response,
+        )
+        .map(|data| Ok(data.entireSystemDebt))?
     }
 
     async fn fetch_redemption_rate(&self, block_tag: BlockTag) -> ManagerResult<U256> {
@@ -373,9 +390,10 @@ impl StrategyData {
             call_with_dynamic_retries(&self.rpc_canister, block_tag, self.multi_trove_getter, data)
                 .await?;
 
-        decode_abi_response::<getDebtPerInterestRateAscendingReturn, getDebtPerInterestRateAscendingCall>(
-            rpc_canister_response,
-        )
+        decode_abi_response::<
+            getDebtPerInterestRateAscendingReturn,
+            getDebtPerInterestRateAscendingCall,
+        >(rpc_canister_response)
         .map(|data| Ok(data._0))?
     }
 
@@ -527,5 +545,53 @@ impl StrategyData {
             return true;
         }
         false
+    }
+}
+
+impl Drop for StrategyData {
+    fn drop(&mut self) {
+        self.lock = false;
+    }
+}
+
+mod test {
+    use super::*;
+
+    #[test]
+    fn should_obtain_lock_for_different_strategies() {
+        let strategy_one = StrategyData::default().mint().lock();
+        let mut strategy_two = StrategyData::default();
+        strategy_two.key = 1;
+        strategy_two.mint().lock();
+        assert!(strategy_one.is_ok());
+        assert!(strategy_two.is_ok());
+    }
+
+    #[test]
+    fn should_not_obtain_lock_for_the_same_strategy_again() {
+        let mut strategy = StrategyData::default().lock();
+        assert_ne!(strategy, ManagerError::Locked);
+        strategy.lock();
+        assert_eq!(strategy, ManagerError::Locked);
+    }
+
+    #[test]
+    fn should_release_lock_on_drop() {
+        let _ = StrategyData::default().mint(); // A strategy with key zero has been added to the state.
+        {
+            // a new strategy is created (but the data is the same)
+            // it is locked successfully
+            let strategy = StrategyData::default().lock();
+            assert!(strategy.is_ok());
+            assert_eq!(strategy.lock, true);
+        } // the strategy goes out of the scope here and Drop is called
+        
+        // it is possible to lock it again.
+        // note: while these are technically two or three different instances, they all point to the same strategy in the thread.
+        let mut strategy = StrategyData::default();
+        assert_eq!(strategy.lock, false);
+        let lock_result = strategy.lock();
+        assert!(lock_result.is_ok());
+        assert_eq!(strategy.lock, true);
     }
 }
