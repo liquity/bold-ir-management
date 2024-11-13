@@ -1,5 +1,6 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
+use crate::journal::JournalEntry;
 use crate::{
     charger::{check_threshold, recharge_cketh, transfer_cketh},
     signer::{get_canister_public_key, pubkey_bytes_to_address},
@@ -75,11 +76,7 @@ impl IrManager {
     }
 
     #[update]
-    pub async fn set_batch_manager(
-        &self,
-        key: u32,
-        batch_manager: String,
-    ) -> ManagerResult<()> {
+    pub async fn set_batch_manager(&self, key: u32, batch_manager: String) -> ManagerResult<()> {
         only_controller(caller())?;
         let address = Address::from_str(&batch_manager).unwrap();
         StrategyData::set_batch_manager(key, address)
@@ -94,8 +91,8 @@ impl IrManager {
         let strategies = STRATEGY_DATA.with(|vector_data| vector_data.borrow().clone());
         let max_retry_attempts = Arc::new(MAX_RETRY_ATTEMPTS.with(|attempts| attempts.get()));
 
-        // Set timers for each strategy
-        strategies.clone().into_iter().for_each(|(_, strategy)| {
+        // Start all strategies immediately
+        strategies.clone().into_iter().for_each(|(id, strategy)| {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
 
             set_timer(Duration::ZERO, move || {
@@ -104,12 +101,14 @@ impl IrManager {
                 spawn(async move {
                     for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
+                        // log the result
+                        let log = JournalEntry::new(result).strategy(id).turn(turn).commit();
 
                         // Handle success or failure for each strategy execution attempt
                         match result {
                             Ok(()) => {
                                 break;
-                            } // Exit on success
+                            }
                             Err(err) => {
                                 let _ = strategy.unlock(); // Unlock on failure
                             }
@@ -120,7 +119,7 @@ impl IrManager {
         });
 
         // Set timers for each strategy (execute every 1 hour)
-        strategies.into_iter().for_each(|(_, strategy)| {
+        strategies.into_iter().for_each(|(id, strategy)| {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
 
             set_timer_interval(Duration::from_secs(3_600), move || {
@@ -129,6 +128,8 @@ impl IrManager {
                 spawn(async move {
                     for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
+                        // log the result
+                        let log = JournalEntry::new(result).strategy(id).turn(turn).commit();
 
                         // Handle success or failure for each strategy execution attempt
                         match result {
@@ -152,7 +153,8 @@ impl IrManager {
 
                 while turn <= *max_retry_attempts {
                     let result = recharge_cketh().await;
-
+                    // log the result
+                    let log = JournalEntry::new(result).turn(turn).note("ckETH recharging cycle").commit();
                     match result {
                         Ok(()) => break, // Exit on success
                         Err(err) => {
