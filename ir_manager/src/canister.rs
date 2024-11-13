@@ -5,8 +5,8 @@ use crate::{
     signer::{get_canister_public_key, pubkey_bytes_to_address},
     state::*,
     strategy::StrategyData,
-    types::{ManagerError, StrategyInput, StrategyQueryData, SwapResponse},
-    utils::{nat_to_u256, only_controller},
+    types::{ManagerError, ManagerResult, StrategyInput, StrategyQueryData, SwapResponse},
+    utils::{nat_to_u256, only_controller, string_to_address},
 };
 use alloy_primitives::Address;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
@@ -14,7 +14,7 @@ use ic_exports::{
     candid::Principal,
     ic_cdk::{
         api::management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
-        caller, print, spawn,
+        caller, spawn,
     },
     ic_cdk_timers::{set_timer, set_timer_interval},
 };
@@ -29,7 +29,7 @@ impl PreUpdate for IrManager {}
 
 impl IrManager {
     #[update]
-    pub async fn mint_strategy(&self, strategy: StrategyInput) -> Result<String, ManagerError> {
+    pub async fn mint_strategy(&self, strategy: StrategyInput) -> ManagerResult<String> {
         only_controller(caller())?;
 
         let strategies = STRATEGY_DATA.with(|strategies| strategies.borrow().clone());
@@ -40,7 +40,8 @@ impl IrManager {
             ));
         }
 
-        MANAGERS.with(|managers| managers.borrow_mut().push(strategy.manager.clone()));
+        let manager = string_to_address(strategy.manager)?;
+        MANAGERS.with(|managers| managers.borrow_mut().push(manager));
 
         let derivation_path = vec![strategy.key.to_be_bytes().to_vec()];
         let key_id = EcdsaKeyId {
@@ -53,12 +54,11 @@ impl IrManager {
         let rpc_canister = crate::evm_rpc::Service(strategy.rpc_principal);
         let strategy_data = StrategyData::new(
             strategy.key,
-            strategy.manager,
+            manager,
             strategy.collateral_registry,
             strategy.multi_trove_getter,
             strategy.target_min,
             rpc_canister,
-            strategy.rpc_url,
             nat_to_u256(&strategy.upfront_fee_period)?,
             nat_to_u256(&strategy.collateral_index)?,
             strategy.hint_helper,
@@ -79,7 +79,7 @@ impl IrManager {
         &self,
         key: u32,
         batch_manager: String,
-    ) -> Result<(), ManagerError> {
+    ) -> ManagerResult<()> {
         only_controller(caller())?;
         let address = Address::from_str(&batch_manager).unwrap();
         StrategyData::set_batch_manager(key, address)
@@ -88,7 +88,7 @@ impl IrManager {
     /// Starts timers for executing strategies and managing the canister's cycle balance.
     /// Each strategy executes on a 1-hour interval, and cycle balance checks happen every 24 hours.
     #[update]
-    pub async fn start_timers(&self) -> Result<(), ManagerError> {
+    pub async fn start_timers(&self) -> ManagerResult<()> {
         only_controller(caller())?;
         // Retrieve all strategies for setting up timers
         let strategies = STRATEGY_DATA.with(|vector_data| vector_data.borrow().clone());
@@ -102,25 +102,16 @@ impl IrManager {
                 let mut strategy = strategy.clone();
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {
-                    print(format!(
-                        "[INIT] Running strategy {} with EOA address {:#?}",
-                        strategy.key, strategy.eoa_pk.unwrap()
-                    ));
                     for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
 
                         // Handle success or failure for each strategy execution attempt
                         match result {
                             Ok(()) => {
-                                print(format!("[FINISH] Strategy number {} ran successfully on attempt number {}.", strategy.key, turn));
                                 break;
-                            }, // Exit on success
+                            } // Exit on success
                             Err(err) => {
                                 let _ = strategy.unlock(); // Unlock on failure
-                                print(format!(
-                                    "[ERROR] Strategy number {}, attempt {} => {:#?}",
-                                    strategy.key, turn, err
-                                ));
                             }
                         }
                     }
@@ -136,25 +127,16 @@ impl IrManager {
                 let mut strategy = strategy.clone();
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {
-                    print(format!(
-                        "[INIT] Running strategy {} with EOA address {:#?}",
-                        strategy.key, strategy.eoa_pk.unwrap()
-                    ));
                     for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
 
                         // Handle success or failure for each strategy execution attempt
                         match result {
                             Ok(()) => {
-                                print(format!("[FINISH] Strategy number {} ran successfully on attempt number {}.", strategy.key, turn));
                                 break;
-                            }, // Exit on success
+                            } // Exit on success
                             Err(err) => {
                                 let _ = strategy.unlock(); // Unlock on failure
-                                print(format!(
-                                    "[ERROR] Strategy number {}, attempt {} => {:#?}",
-                                    strategy.key, turn, err
-                                ));
                             }
                         }
                     }
@@ -174,10 +156,6 @@ impl IrManager {
                     match result {
                         Ok(()) => break, // Exit on success
                         Err(err) => {
-                            print(format!(
-                                "[ERROR] Error running the daily ckETH recharge cycle, attempt {} => {:#?}",
-                                turn, err
-                            ));
                             if turn == *max_retry_attempts {
                                 break; // Stop retrying after max attempts
                             }
@@ -226,7 +204,7 @@ impl IrManager {
 
     /// Swaps ckETH by first checking the cycle balance, then transferring ckETH to the caller.
     #[update]
-    pub async fn swap_cketh(&self) -> Result<SwapResponse, ManagerError> {
+    pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
         // Ensure the cycle balance is above a certain threshold before proceeding
         check_threshold().await?;
         transfer_cketh(caller()).await

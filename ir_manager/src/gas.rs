@@ -1,17 +1,13 @@
 use alloy_primitives::U256;
 use candid::Nat;
 
+use evm_rpc_types::{BlockTag, FeeHistory, FeeHistoryArgs, Nat256, RpcServices};
 use serde_bytes::ByteBuf;
 use serde_json::json;
 use std::{ops::Add, str::FromStr};
 
 use crate::{
-    evm_rpc::{
-        BlockTag, EthCallResponse, FeeHistory, FeeHistoryArgs, FeeHistoryResult,
-        MultiFeeHistoryResult, RpcServices, Service,
-    },
-    types::ManagerError,
-    utils::{decode_request_response_encoded, nat_to_u256, request_with_dynamic_retries},
+    evm_rpc::Service, types::{EthCallResponse, ManagerError, ManagerResult}, utils::{extract_call_result, extract_multi_rpc_result, nat_to_u256, request_with_dynamic_retries}
 };
 
 /// The minimum suggested maximum priority fee per gas.
@@ -28,32 +24,22 @@ pub async fn fee_history(
     reward_percentiles: Option<Vec<u8>>,
     rpc_services: RpcServices,
     evm_rpc: &Service,
-) -> Result<FeeHistory, ManagerError> {
+) -> ManagerResult<FeeHistory> {
     let fee_history_args: FeeHistoryArgs = FeeHistoryArgs {
-        blockCount: block_count,
-        newestBlock: newest_block,
-        rewardPercentiles: reward_percentiles.map(ByteBuf::from),
+        block_count: Nat256::try_from(block_count).map_err(|err| ManagerError::Custom(err))?,
+        newest_block: newest_block,
+        reward_percentiles: reward_percentiles,
     };
 
     let cycles = 25_000_000_000;
 
-    match evm_rpc
+    let call_result = evm_rpc
         .eth_fee_history(rpc_services, None, fee_history_args, cycles)
-        .await
-    {
-        Ok((res,)) => match res {
-            MultiFeeHistoryResult::Consistent(fee_history) => match fee_history {
-                FeeHistoryResult::Ok(fee_history) => {
-                    fee_history.ok_or(ManagerError::NonExistentValue)
-                }
-                FeeHistoryResult::Err(e) => Err(ManagerError::RpcResponseError(e)),
-            },
-            MultiFeeHistoryResult::Inconsistent(_) => Err(ManagerError::Custom(
-                "Fee history is inconsistent".to_string(),
-            )),
-        },
-        Err(e) => Err(ManagerError::Custom(e.1)),
-    }
+        .await;
+
+    let canister_response = extract_call_result(call_result)?;
+
+    extract_multi_rpc_result(canister_response)
 }
 
 fn median_index(length: usize) -> usize {
@@ -67,7 +53,7 @@ pub async fn estimate_transaction_fees(
     block_count: u8,
     rpc_services: RpcServices,
     evm_rpc: &Service,
-) -> Result<FeeEstimates, ManagerError> {
+) -> ManagerResult<FeeEstimates> {
     let fee_history = fee_history(
         Nat::from(block_count),
         BlockTag::Latest,
@@ -81,7 +67,7 @@ pub async fn estimate_transaction_fees(
 
     // baseFeePerGas
     let base_fee_per_gas = fee_history
-        .baseFeePerGas
+        .base_fee_per_gas
         .last()
         .ok_or(ManagerError::NonExistentValue)?
         .clone();
@@ -92,8 +78,10 @@ pub async fn estimate_transaction_fees(
         .into_iter()
         .flat_map(|x| x.into_iter())
         .collect();
+
     // sort the tips in ascending order
     percentile_95.sort_unstable();
+    
     // get the median by accessing the element in the middle
     // set tip to 0 if there are not enough blocks in case of a local testnet
     let median_reward = percentile_95
@@ -114,11 +102,10 @@ pub async fn estimate_transaction_fees(
 
 pub async fn get_estimate_gas(
     rpc_canister: &Service,
-    rpc_url: &str,
     data: Vec<u8>,
     to: String,
     from: String,
-) -> Result<U256, ManagerError> {
+) -> ManagerResult<U256> {
     let args = json!({
         "id": 1,
         "jsonrpc": "2.0",
@@ -133,15 +120,13 @@ pub async fn get_estimate_gas(
     })
     .to_string();
 
-    let rpc_canister_response = request_with_dynamic_retries(rpc_canister, rpc_url, args).await?;
-
-    let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
+    let rpc_canister_response = request_with_dynamic_retries(rpc_canister, args).await?;
 
     let decoded_response: EthCallResponse =
-        serde_json::from_str(&encoded_response).map_err(|err| {
+        serde_json::from_str(&rpc_canister_response).map_err(|err| {
             ManagerError::DecodingError(format!(
                 "Could not decode eth_estimateGas response: {} error: {}",
-                &encoded_response, err
+                &rpc_canister_response, err
             ))
         })?;
 

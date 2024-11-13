@@ -1,22 +1,37 @@
-use crate::strategy::StrategyData;
+use crate::{state::CHAIN_ID, strategy::StrategyData};
 
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
+use evm_rpc_types::{RpcApi, RpcError, RpcService, RpcServices};
+use ic_exports::ic_kit::RejectionCode;
 use serde::{Deserialize, Serialize};
 
-use crate::evm_rpc::RpcError;
+/// IR Manager Canister Result
+pub type ManagerResult<T> = Result<T, ManagerError>;
 
-#[derive(CandidType, Debug)]
+/// IR Manager Canister Errors
+#[derive(Clone, CandidType, Debug)]
 pub enum ManagerError {
+    /// `CallResult` error
+    CallResult(RejectionCode, String),
+    /// Unauthorized access
     Unauthorized,
+    /// A requested value does not exist
     NonExistentValue,
+    /// Wrapper for the RPC errors returned by the EVM RPC canister
     RpcResponseError(RpcError),
+    /// Decoding issue
     DecodingError(String),
+    /// Strategy is locked
     Locked,
+    /// Unknown/Custom error
     Custom(String),
+    /// The cycle balance is above the threshold.
+    /// No arbitrage opportunity is available.
     CyclesBalanceAboveRechargingThreshold,
 }
 
+/// Derivation path for the tECDSA signatures
 pub type DerivationPath = Vec<Vec<u8>>;
 
 #[derive(CandidType, Deserialize)]
@@ -71,6 +86,64 @@ pub type Subaccount = [u8; 32];
 pub struct Account {
     pub owner: Principal,
     pub subaccount: Option<Subaccount>,
+}
+
+/// RPC type to use
+#[derive(Clone)]
+pub enum ProviderSet {
+    ManyProviders(RpcServices),
+    CustomProvider(String),
+}
+
+impl Default for ProviderSet {
+    fn default() -> Self {
+        Self::CustomProvider("".to_string())
+    }
+}
+
+impl Into<RpcServices> for ProviderSet {
+    fn into(self) -> RpcServices {
+        match self {
+            ProviderSet::ManyProviders(rpc_services) => rpc_services,
+            ProviderSet::CustomProvider(url) => RpcServices::Custom {
+                chain_id: CHAIN_ID.with(|id| id.get()),
+                services: vec![RpcApi { url, headers: None }],
+            },
+        }
+    }
+}
+
+impl TryInto<RpcService> for ProviderSet {
+    fn try_into(self) -> Result<RpcService, ManagerError> {
+        match self {
+            ProviderSet::ManyProviders(rpc_services) => {
+                match rpc_services {
+                    RpcServices::Custom { chain_id, services } => {
+                        if services.is_empty() {
+                            return Err(ManagerError::NonExistentValue);
+                        }
+                        Ok(RpcService::Custom(services[0]))
+                    },
+                    RpcServices::EthMainnet(vec) => todo!(),
+                    RpcServices::EthSepolia(vec) => todo!(),
+                    RpcServices::ArbitrumOne(vec) => todo!(),
+                    RpcServices::BaseMainnet(vec) => todo!(),
+                    RpcServices::OptimismMainnet(vec) => todo!(),
+                }
+            },
+            ProviderSet::CustomProvider(url) => todo!() //RpcService::Custom(RpcApi { url, headers: None })
+        }
+    }
+    
+    type Error = ManagerError;
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EthCallResponse {
+    pub id: u64,
+    pub jsonrpc: String,
+    pub result: String,
 }
 
 sol!(

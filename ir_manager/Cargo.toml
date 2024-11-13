@@ -8,9 +8,9 @@ default = []
 export-api = []
 
 [dependencies]
-ic-exports = { git = "https://github.com/infinity-swap/canister-sdk", package = "ic-exports", tag = "v0.15.x" }
-ic-storage = { git = "https://github.com/infinity-swap/canister-sdk", package = "ic-storage", tag = "v0.15.x" }
-ic-canister = { git = "https://github.com/infinity-swap/canister-sdk", package = "ic-canister", tag = "v0.15.x" }
+ic-exports = { git = "https://github.com/bitfinity-network/canister-sdk", package = "ic-exports" }
+ic-storage = { git = "https://github.com/bitfinity-network/canister-sdk", package = "ic-storage" }
+ic-canister = { git = "https://github.com/bitfinity-network/canister-sdk", package = "ic-canister" }
 candid = "0.10"
 serde = "1.0.199"
 serde_bytes = "0.11.12"
@@ -26,3 +26,4 @@ alloy = { git = "https://github.com/alloy-rs/alloy", rev = "c3ccf7e", features =
 alloy-sol-types = "0.7.7"
 alloy-primitives = "0.7.7"
 icrc-ledger-types = "0.1.5"
+evm_rpc_types = "1.2.0"
