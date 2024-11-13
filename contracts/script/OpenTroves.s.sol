@@ -80,7 +80,7 @@ contract OpenTroves is Script {
         ERC20Faucet weth = ERC20Faucet(address(collateralRegistry.getToken(0))); // branch #0 is WETH
         uint256 numBranches = collateralRegistry.totalCollaterals();
 
-        for (uint256 branch = 0; branch < 1; ++branch) {
+        for (uint256 branch = 1; branch < 2; ++branch) {
             BranchContracts memory c;
             c.collateral = ERC20Faucet(address(collateralRegistry.getToken(branch)));
             vm.label(address(c.collateral), "ERC20Faucet");

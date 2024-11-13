@@ -36,7 +36,7 @@ impl IrManager {
 
         if strategies.get(&strategy.key).is_some() {
             return Err(ManagerError::Custom(
-                "This strategy key is already being used.".to_string(),
+                "This key is already being used.".to_string(),
             ));
         }
 
@@ -59,8 +59,8 @@ impl IrManager {
             strategy.target_min,
             rpc_canister,
             strategy.rpc_url,
-            nat_to_u256(&strategy.upfront_fee_period),
-            nat_to_u256(&strategy.collateral_index),
+            nat_to_u256(&strategy.upfront_fee_period)?,
+            nat_to_u256(&strategy.collateral_index)?,
             strategy.hint_helper,
             Some(eoa_pk),
             derivation_path,
@@ -94,11 +94,45 @@ impl IrManager {
         let strategies = STRATEGY_DATA.with(|vector_data| vector_data.borrow().clone());
         let max_retry_attempts = Arc::new(MAX_RETRY_ATTEMPTS.with(|attempts| attempts.get()));
 
+        // Set timers for each strategy
+        strategies.clone().into_iter().for_each(|(_, strategy)| {
+            let max_retry_attempts = Arc::clone(&max_retry_attempts);
+
+            set_timer(Duration::ZERO, move || {
+                let mut strategy = strategy.clone();
+                let max_retry_attempts = Arc::clone(&max_retry_attempts);
+                spawn(async move {
+                    print(format!(
+                        "[INIT] Running strategy {} with EOA address {:#?}",
+                        strategy.key, strategy.eoa_pk.unwrap()
+                    ));
+                    for turn in 1..=*max_retry_attempts {
+                        let result = strategy.execute().await;
+
+                        // Handle success or failure for each strategy execution attempt
+                        match result {
+                            Ok(()) => {
+                                print(format!("[FINISH] Strategy number {} ran successfully on attempt number {}.", strategy.key, turn));
+                                break;
+                            }, // Exit on success
+                            Err(err) => {
+                                let _ = strategy.unlock(); // Unlock on failure
+                                print(format!(
+                                    "[ERROR] Strategy number {}, attempt {} => {:#?}",
+                                    strategy.key, turn, err
+                                ));
+                            }
+                        }
+                    }
+                });
+            });
+        });
+
         // Set timers for each strategy (execute every 1 hour)
         strategies.into_iter().for_each(|(_, strategy)| {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
 
-            set_timer(Duration::from_secs(3_600), move || {
+            set_timer_interval(Duration::from_secs(3_600), move || {
                 let mut strategy = strategy.clone();
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {
@@ -159,7 +193,7 @@ impl IrManager {
     }
 
     /// Retrieves a list of strategies currently stored in the state.
-    #[query]
+    #[update]
     pub fn get_strategies(&self) -> Vec<StrategyQueryData> {
         STRATEGY_DATA.with(|vector_data| {
             let binding = vector_data.borrow();
@@ -174,7 +208,7 @@ impl IrManager {
     }
 
     /// Returns the strategy EOA
-    #[query]
+    #[update]
     pub fn get_strategy_address(&self, index: u32) -> Option<String> {
         STRATEGY_DATA.with(|data| {
             let binding = data.borrow();

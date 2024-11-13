@@ -25,7 +25,7 @@ use crate::{
     exchange::*,
     gas::{estimate_transaction_fees, get_estimate_gas, FeeEstimates},
     signer::sign_eip1559_transaction,
-    state::{CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER},
+    state::{CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER},
     types::{Account, DerivationPath, ManagerError},
 };
 use num_traits::ToPrimitive;
@@ -72,14 +72,17 @@ pub fn string_to_address(input: String) -> Result<Address, ManagerError> {
 }
 
 /// Converts values of type `Nat` to `U256`
-pub fn nat_to_u256(n: &Nat) -> U256 {
+pub fn nat_to_u256(n: &Nat) -> Result<U256, ManagerError> {
     let be_bytes = n.0.to_bytes_be();
+    if be_bytes.len() > 32 {
+        return Err(ManagerError::DecodingError(format!("The `Nat` input length exceedes 32 bytes when converted to big-endian bytes representation.")));
+    }
     // Ensure the byte array is exactly 32 bytes long
     let mut padded_bytes = [0u8; 32];
     let start_pos = 32 - be_bytes.len();
     padded_bytes[start_pos..].copy_from_slice(&be_bytes);
 
-    U256::from_be_bytes(padded_bytes)
+    Ok(U256::from_be_bytes(padded_bytes))
 }
 
 pub async fn fetch_cketh_balance() -> Result<Nat, ManagerError> {
@@ -93,7 +96,7 @@ pub async fn fetch_cketh_balance() -> Result<Nat, ManagerError> {
         call(ledger_principal, "icrc1_balance_of", (args,)).await;
 
     match call_response {
-        Ok(response) => Ok(response.0),
+        Ok(response) => Ok(response.0 / 10_u64.pow(18)),
         Err(err) => Err(ManagerError::Custom(err.1)),
     }
 }
@@ -122,7 +125,7 @@ pub async fn fetch_ether_cycles_rate() -> Result<u64, ManagerError> {
         .await;
     match fetch_result {
         Ok(result) => match result {
-            (Ok(response),) => Ok(response.rate),
+            (Ok(response),) => Ok(response.rate / response.metadata.decimals as u64),
             (Err(err),) => Err(ManagerError::Custom(format!(
                 "Error from the exchange rate canister: {:#?}",
                 err
@@ -166,6 +169,13 @@ pub fn handle_rpc_response<T, F: SolCall<Return = T>>(
                         hex_data, err
                     ))
                 })?;
+
+            if decoded_response.result.len() <= 2 {
+                return Err(ManagerError::DecodingError(format!(
+                    "The result field of the RPC's response is empty"
+                )));
+            }
+
             let decoded_hex = hex::decode(&decoded_response.result[2..]).map_err(|err| {
                 ManagerError::DecodingError(format!(
                     "Could not decode hex: {} error: {}",
@@ -241,7 +251,14 @@ pub async fn get_block_number(
     let encoded_response = decode_request_response_encoded(rpc_canister_response)?;
     let decoded_response: EthCallResponse = serde_json::from_str(&encoded_response)
         .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
-    Ok(decoded_response.result)
+    let current_block = U256::from_str(&decoded_response.result).map_err(|err| {
+        ManagerError::DecodingError(format!(
+            "Could not convert current block number to a U256: {:#?}",
+            err
+        ))
+    })?;
+    let block_number = current_block - U256::from(32);
+    Ok(block_number.to_string())
 }
 
 pub async fn send_raw_transaction(
@@ -255,9 +272,10 @@ pub async fn send_raw_transaction(
     rpc_url: &str,
     cycles: u128,
 ) -> Result<MultiSendRawTransactionResult, ManagerError> {
+    let chain_id = CHAIN_ID.with(|id| id.get());
     let input = Bytes::from(data.clone());
     let rpc = RpcServices::Custom {
-        chainId: 1,
+        chainId: chain_id,
         services: vec![RpcApi {
             url: rpc_url.to_string(),
             headers: None,
@@ -277,8 +295,7 @@ pub async fn send_raw_transaction(
     };
 
     let request = TxEip1559 {
-        chain_id: 11155111, // Sepolia test-net
-        // chain_id: 1, // Ethereum main-net
+        chain_id,
         to: TxKind::Call(
             Address::from_str(&to)
                 .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?,
@@ -309,7 +326,8 @@ fn is_response_size_error(err: &RequestResult) -> bool {
         message,
     })) = err
     {
-        *code == RejectionCode::SysFatal && message.contains("Http body exceeds size limit")
+        *code == RejectionCode::SysFatal
+            && (message.contains("size limit") || message.contains("length limit"))
     } else {
         false
     }
@@ -322,7 +340,7 @@ pub async fn request_with_dynamic_retries(
 ) -> Result<CallResult<(RequestResult,)>, ManagerError> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
 
-    loop {
+    while max_response_bytes < 2_000_000 {
         // Estimate the cycles based on the current max response bytes
         let cycles = estimate_cycles(
             rpc_canister,
@@ -353,4 +371,8 @@ pub async fn request_with_dynamic_retries(
         }
         return Ok(response);
     }
+
+    Err(ManagerError::Custom(format!(
+        "Request with dynamic retries reached its ceiling of 2 Megabytes."
+    )))
 }

@@ -11,7 +11,7 @@ use crate::{
         MultiFeeHistoryResult, RpcServices, Service,
     },
     types::ManagerError,
-    utils::{decode_request_response_encoded, request_with_dynamic_retries},
+    utils::{decode_request_response_encoded, nat_to_u256, request_with_dynamic_retries},
 };
 
 /// The minimum suggested maximum priority fee per gas.
@@ -112,11 +112,6 @@ pub async fn estimate_transaction_fees(
     })
 }
 
-pub fn nat_to_u256(n: &Nat) -> Result<U256, ManagerError> {
-    let string_value = n.to_string();
-    U256::from_str(&string_value).map_err(|err| ManagerError::Custom(format!("{:#?}", err)))
-}
-
 pub async fn get_estimate_gas(
     rpc_canister: &Service,
     rpc_url: &str,
@@ -149,6 +144,12 @@ pub async fn get_estimate_gas(
                 &encoded_response, err
             ))
         })?;
+
+    if decoded_response.result.len() <= 2 {
+        return Err(ManagerError::DecodingError(format!(
+            "The result field of the RPC's response is empty"
+        )));
+    }
 
     let hex_string = if decoded_response.result[2..].len() % 2 == 1 {
         format!("0{}", &decoded_response.result[2..])
