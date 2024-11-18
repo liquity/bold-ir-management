@@ -1,7 +1,5 @@
 use candid::{self, CandidType, Deserialize, Nat, Principal};
-use evm_rpc_types::{
-    MultiRpcResult, Provider, RpcConfig, RpcResult, RpcService, RpcServices,
-};
+use evm_rpc_types::{MultiRpcResult, Provider, RpcConfig, RpcResult, RpcService, RpcServices};
 use ic_exports::ic_cdk::{self, api::call::CallResult as Result};
 use serde::Serialize;
 
@@ -150,6 +148,91 @@ pub struct AccessListEntry {
     pub storage_keys: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, CandidType)]
+pub struct Block {
+    /// Base fee per gas
+    /// Only included for blocks after the London Upgrade / EIP-1559.
+    #[serde(rename = "baseFeePerGas")]
+    pub base_fee_per_gas: Option<Nat>,
+
+    /// Block number
+    pub number: Nat,
+
+    /// Difficulty
+    pub difficulty: Option<Nat>,
+
+    /// Extra data
+    #[serde(rename = "extraData")]
+    pub extra_data: String,
+
+    /// Maximum gas allowed in this block
+    #[serde(rename = "gasLimit")]
+    pub gas_limit: Nat,
+
+    /// Gas used by all transactions in this block
+    #[serde(rename = "gasUsed")]
+    pub gas_used: Nat,
+
+    /// Block hash
+    pub hash: String,
+
+    /// Bloom filter for the logs.
+    #[serde(rename = "logsBloom")]
+    pub logs_bloom: String,
+
+    /// Miner
+    pub miner: String,
+
+    /// Mix hash
+    #[serde(rename = "mixHash")]
+    pub mix_hash: String,
+
+    /// Nonce
+    pub nonce: Nat,
+
+    /// Parent block hash
+    #[serde(rename = "parentHash")]
+    pub parent_hash: String,
+
+    /// Receipts root
+    #[serde(rename = "receiptsRoot")]
+    pub receipts_root: String,
+
+    /// Ommers hash
+    #[serde(rename = "sha3Uncles")]
+    pub sha3_uncles: String,
+
+    /// Block size
+    pub size: Nat,
+
+    /// State root
+    #[serde(rename = "stateRoot")]
+    pub state_root: String,
+
+    /// Timestamp
+    #[serde(rename = "timestamp")]
+    pub timestamp: Nat,
+
+    /// Total difficulty is the sum of all difficulty values up to and including this block.
+    ///
+    /// Note: this field was removed from the official JSON-RPC specification in
+    /// https://github.com/ethereum/execution-apis/pull/570 and may no longer be served by providers.
+    #[serde(rename = "totalDifficulty")]
+    pub total_difficulty: Option<Nat>,
+
+    /// Transaction hashes
+    #[serde(default)]
+    pub transactions: Vec<String>,
+
+    /// Transactions root
+    #[serde(rename = "transactionsRoot")]
+    pub transactions_root: Option<String>,
+
+    /// Uncles
+    #[serde(default)]
+    pub uncles: Vec<String>,
+}
+
 #[derive(Copy, Clone)]
 pub struct Service(pub Principal);
 
@@ -201,12 +284,19 @@ impl Service {
         .await
     }
 
-    pub async fn get_providers(&self) -> Result<(Vec<Provider>,)> {
-        ic_cdk::call(self.0, "getProviders", ()).await
-    }
-
-    pub async fn get_service_provider_map(&self) -> Result<(Vec<(RpcService, u64)>,)> {
-        ic_cdk::call(self.0, "getServiceProviderMap", ()).await
+    pub async fn get_block_by_number(
+        &self,
+        arg0: RpcServices,
+        arg1: Option<RpcConfig>,
+        arg2: BlockTag,
+    ) -> Result<(MultiRpcResult<Block>,)> {
+        ic_cdk::api::call::call_with_payment128(
+            self.0,
+            "eth_getBlockByNumber",
+            (arg0, arg1, arg2),
+            1_000_000_000_u128,
+        )
+        .await
     }
 
     pub async fn request(

@@ -91,54 +91,6 @@ pub struct Account {
     pub subaccount: Option<Subaccount>,
 }
 
-/// RPC type to use
-#[derive(Clone)]
-pub enum ProviderSet {
-    ManyProviders(RpcServices),
-    CustomProvider(String),
-}
-
-impl Default for ProviderSet {
-    fn default() -> Self {
-        Self::CustomProvider("".to_string())
-    }
-}
-
-impl Into<RpcServices> for ProviderSet {
-    fn into(self) -> RpcServices {
-        match self {
-            ProviderSet::ManyProviders(rpc_services) => rpc_services,
-            ProviderSet::CustomProvider(url) => RpcServices::Custom {
-                chain_id: CHAIN_ID.with(|id| id.get()),
-                services: vec![RpcApi { url, headers: None }],
-            },
-        }
-    }
-}
-
-impl TryInto<RpcService> for ProviderSet {
-    fn try_into(self) -> Result<RpcService, ManagerError> {
-        match self {
-            ProviderSet::ManyProviders(rpc_services) => match rpc_services {
-                RpcServices::Custom { chain_id, services } => {
-                    if services.is_empty() {
-                        return Err(ManagerError::NonExistentValue);
-                    }
-                    Ok(RpcService::Custom(services[0]))
-                }
-                RpcServices::EthMainnet(vec) => todo!(),
-                RpcServices::EthSepolia(vec) => todo!(),
-                RpcServices::ArbitrumOne(vec) => todo!(),
-                RpcServices::BaseMainnet(vec) => todo!(),
-                RpcServices::OptimismMainnet(vec) => todo!(),
-            },
-            ProviderSet::CustomProvider(url) => todo!(), //RpcService::Custom(RpcApi { url, headers: None })
-        }
-    }
-
-    type Error = ManagerError;
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EthCallResponse {

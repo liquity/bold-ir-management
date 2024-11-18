@@ -20,7 +20,7 @@ use num_traits::cast::ToPrimitive;
 use serde_json::json;
 
 use crate::{
-    evm_rpc::{Service},
+    evm_rpc::Service,
     state::*,
     strategy::StrategyData,
     types::{depositCall, ManagerError, ManagerResult, SwapResponse},
@@ -61,11 +61,10 @@ async fn ether_deposit() -> ManagerResult<()> {
             None => continue, // Skip if eoa_pk is None
         };
 
-        let balance =
-            match fetch_balance(&strategy.rpc_canister, eoa.to_string()).await {
-                Ok(balance) => balance,
-                Err(_) => continue, // Skip on error
-            };
+        let balance = match fetch_balance(&strategy.rpc_canister, eoa.to_string()).await {
+            Ok(balance) => balance,
+            Err(_) => continue, // Skip on error
+        };
 
         if balance > ether_value {
             let encoded_canister_id: FixedBytes<32> =

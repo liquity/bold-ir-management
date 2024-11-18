@@ -1,6 +1,6 @@
 use alloy_primitives::U256;
 use candid::Nat;
-use evm_rpc_types::{RpcServices, Nat256};
+use evm_rpc_types::{Nat256, RpcServices};
 use serde_bytes::ByteBuf;
 use serde_json::json;
 use std::{ops::Add, str::FromStr};
@@ -99,7 +99,8 @@ pub async fn estimate_transaction_fees(
         .base_fee_per_gas
         .last()
         .ok_or(ManagerError::NonExistentValue)?;
-    let base_fee_per_gas_u128 = u128::try_from(base_fee_per_gas.0.clone()).map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
+    let base_fee_per_gas_u128 = u128::try_from(base_fee_per_gas.0.clone())
+        .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
 
     // obtain the 95th percentile of the tips for the past blocks
     let mut percentiles: Vec<Nat> = fee_history
@@ -112,8 +113,9 @@ pub async fn estimate_transaction_fees(
     percentiles.sort_unstable();
     let zero_nat = Nat::from(0_u32);
     let median_reward = percentiles.get(median_index).unwrap_or(&zero_nat);
-    let median_reward_u128 = u128::try_from(median_reward.0.clone()).map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
-    
+    let median_reward_u128 = u128::try_from(median_reward.0.clone())
+        .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
+
     let max_priority_fee_per_gas = median_reward_u128
         .saturating_add(base_fee_per_gas_u128)
         .max(MIN_SUGGEST_MAX_PRIORITY_FEE_PER_GAS as u128);

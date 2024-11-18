@@ -7,8 +7,8 @@ use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
 use candid::{Nat, Principal};
 use evm_rpc_types::{
-    HttpOutcallError, MultiRpcResult, RpcApi, RpcConfig, RpcError,
-    RpcResult, RpcService, RpcServices,
+    HttpOutcallError, MultiRpcResult, RpcApi, RpcConfig, RpcError, RpcResult, RpcService,
+    RpcServices,
 };
 use ic_exports::{
     ic_cdk::{
@@ -30,10 +30,9 @@ use crate::{
     gas::{estimate_transaction_fees, get_estimate_gas, FeeEstimates},
     signer::sign_eip1559_transaction,
     state::{
-        get_provider_set, CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES,
-        EXCHANGE_RATE_CANISTER,
+        CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER, RPC_SERVICE,
     },
-    types::{Account, DerivationPath, EthCallResponse, ManagerError, ManagerResult, ProviderSet},
+    types::{Account, DerivationPath, EthCallResponse, ManagerError, ManagerResult},
 };
 use num_traits::ToPrimitive;
 
@@ -170,27 +169,16 @@ pub fn eth_call_args(to: String, data: Vec<u8>, hex_block_number: &str) -> Strin
 }
 
 pub async fn get_block_tag(rpc_canister: &Service) -> ManagerResult<BlockTag> {
-    let args = json!({
-      "id": 1,
-      "jsonrpc": "2.0",
-      "method": "eth_blockNumber"
-    })
-    .to_string();
+    let rpc = get_rpc_services();
+    let rpc_config = get_rpc_config(Some(2_000));
 
-    let rpc_canister_response = request_with_dynamic_retries(rpc_canister, args).await?;
+    let call_result = rpc_canister
+        .get_block_by_number(rpc, Some(rpc_config), BlockTag::Latest)
+        .await;
+    let rpc_result = extract_call_result(call_result)?;
+    let result = extract_multi_rpc_result(rpc_result)?;
 
-    let decoded_response: EthCallResponse = serde_json::from_str(&rpc_canister_response)
-        .map_err(|err| ManagerError::DecodingError(format!("{}", err)))?;
-
-    let result = &decoded_response.result;
-    let block_number = result.parse::<Nat>().map_err(|err| {
-        ManagerError::DecodingError(format!(
-            "Could not convert current block number to a Nat256: {:#?}",
-            err
-        ))
-    })?;
-
-    let safe_block = block_number - Nat::from(32_u8);
+    let safe_block = result.number - Nat::from(32_u8);
 
     // let safe_block_converted = Nat256::try_from(safe_block).map_err(|err| {
     //     ManagerError::DecodingError(format!(
@@ -214,7 +202,7 @@ pub async fn send_raw_transaction(
 ) -> ManagerResult<MultiRpcResult<SendRawTransactionStatus>> {
     let chain_id = CHAIN_ID.with(|id| id.get());
     let input = Bytes::from(data.clone());
-    let rpc: RpcServices = get_provider_set().into();
+    let rpc: RpcServices = get_rpc_services();
 
     let FeeEstimates {
         max_fee_per_gas,
@@ -263,6 +251,20 @@ fn is_response_size_error(err: &RpcError) -> bool {
     }
 }
 
+pub fn get_rpc_services() -> RpcServices {
+    RpcServices::EthMainnet(None)
+}
+
+pub fn get_rpc_config(max_response_bytes: Option<u64>) -> RpcConfig {
+    RpcConfig {
+        response_size_estimate: max_response_bytes,
+        response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
+            total: Some(3),
+            min: 2,
+        }),
+    }
+}
+
 /// Performs `eth_call` calls to the EVM RPC canister and doubles the max response bytes argument, if insufficient
 /// Exits the loop if either of the following are satisfied:
 /// A) The EVM RPC canister responds with Ok() or an error that is not related to the response size
@@ -275,7 +277,8 @@ pub async fn call_with_dynamic_retries(
     data: Vec<u8>,
 ) -> ManagerResult<String> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
-    let provider_set: RpcServices = get_provider_set().into();
+    let provider_set: RpcServices = get_rpc_services();
+
     // There is a 2 MB limit on the response size, an ICP limitation.
     while max_response_bytes < 2_000_000 {
         // Perform the request using the provided function
@@ -288,10 +291,7 @@ pub async fn call_with_dynamic_retries(
             block: Some(block.clone()),
         };
 
-        let config = RpcConfig {
-            response_size_estimate: Some(max_response_bytes),
-            response_consensus: None,
-        };
+        let config = get_rpc_config(Some(max_response_bytes));
 
         let response = rpc_canister
             .eth_call(provider_set.clone(), Some(config), args)
@@ -316,6 +316,16 @@ pub async fn call_with_dynamic_retries(
     )))
 }
 
+pub fn get_rpc_service() -> RpcService {
+    RPC_SERVICE.with(|rpc| {
+        let mut state = rpc.borrow_mut();
+        // we can safely unwrap, because the RPC services are never deleted, just rotated.
+        let rpc = state.front().unwrap().clone();
+        state.rotate_left(1);
+        rpc
+    })
+}
+
 /// Performs `request` calls to the EVM RPC canister and doubles the max response bytes argument, if insufficient
 /// Exits the loop if either of the following are satisfied:
 /// A) The EVM RPC canister responds with Ok() or an error that is not related to the response size
@@ -326,18 +336,20 @@ pub async fn request_with_dynamic_retries(
     json_data: String,
 ) -> ManagerResult<String> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
-    let rpc = todo!();
+    let mut rpc = get_rpc_service();
+    let mut rpc_changes = 0;
 
-    while max_response_bytes < 2_000_000 {
+    // There is a 2 MB limit on the response size, an ICP limitation.
+    while max_response_bytes < 2_000_000 && rpc_changes < 3 {
         // Estimate the cycles based on the current max response bytes
         let cycles = estimate_cycles(rpc_canister, json_data.clone(), max_response_bytes).await?;
 
         // Perform the request using the provided function
-        let response = rpc_canister
-            .request(rpc, json_data.clone(), max_response_bytes, cycles)
+        let call_result = rpc_canister
+            .request(rpc.clone(), json_data.clone(), max_response_bytes, cycles)
             .await;
 
-        let extracted_response = extract_call_result(response)?
+        let extracted_response = extract_call_result(call_result)?
             .map_err(|rpc_err| ManagerError::RpcResponseError(rpc_err));
 
         if let Err(ManagerError::RpcResponseError(err)) = extracted_response.clone() {
@@ -345,6 +357,9 @@ pub async fn request_with_dynamic_retries(
                 max_response_bytes *= 2;
                 continue;
             }
+            rpc = get_rpc_service();
+            rpc_changes += 1;
+            continue;
         }
         return extracted_response;
     }
@@ -357,14 +372,22 @@ pub async fn request_with_dynamic_retries(
 /// On success, returns the nonce associated with the given address
 pub async fn get_nonce(rpc_canister: &Service, address: Address) -> ManagerResult<U256> {
     let account = address.to_string();
-    let rpc: RpcServices = get_provider_set().into();
+    let rpc: RpcServices = get_rpc_services();
     let args = GetTransactionCountArgs {
         address: account,
         block: BlockTag::Latest,
     };
 
+    let config = RpcConfig {
+        response_size_estimate: Some(10_000),
+        response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
+            total: Some(3),
+            min: 2,
+        }),
+    };
+
     let result = rpc_canister
-        .eth_get_transaction_count(rpc, None, args)
+        .eth_get_transaction_count(rpc, Some(config), args)
         .await;
 
     let wrapped_number = extract_call_result::<MultiRpcResult<Nat>>(result)?;

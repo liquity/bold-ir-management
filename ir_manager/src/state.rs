@@ -1,16 +1,16 @@
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
 };
 
 use alloy_primitives::{Address, U256};
 use candid::Nat;
+use evm_rpc_types::RpcService;
 use ic_exports::candid::Principal;
 use ic_stable_structures::{DefaultMemoryImpl, Memory, Vec as StableVec};
 
-use crate::{
-    journal::JournalEntry, strategy::StrategyData, types::{ManagerResult, ProviderSet}
-};
+use crate::journal::JournalEntry;
+use crate::strategy::StrategyData;
 
 pub const SCALE: f64 = 1e18;
 
@@ -52,15 +52,17 @@ thread_local! {
     pub static MANAGERS: RefCell<Vec<Address>> = RefCell::new(Vec::new());
     /// A counter that tracks EOA turns for minting ckETH
     pub static CKETH_EOA_TURN_COUNTER: Cell<u8> = Cell::new(0);
-    /// Providers used for the canister calls
-    pub static PROVIDER_SET: RefCell<ProviderSet> = RefCell::new(ProviderSet::default());
     /// Journal
     pub static JOURNAL: RefCell<StableVec<JournalEntry, DefaultMemoryImpl>> = RefCell::new(StableVec::init(DefaultMemoryImpl::default()).expect("Failed to create default memory."));
-}
-
-/// Returns the current provider set
-pub fn get_provider_set() -> ProviderSet {
-    PROVIDER_SET.with(|set| set.borrow().clone())
+    /// RPC Service Vec Deque
+    pub static RPC_SERVICE: RefCell<VecDeque<RpcService>> = RefCell::new(VecDeque::from([
+        RpcService::EthMainnet(evm_rpc_types::EthMainnetService::Alchemy),
+        RpcService::EthMainnet(evm_rpc_types::EthMainnetService::Ankr),
+        RpcService::EthMainnet(evm_rpc_types::EthMainnetService::BlockPi),
+        RpcService::EthMainnet(evm_rpc_types::EthMainnetService::Cloudflare),
+        RpcService::EthMainnet(evm_rpc_types::EthMainnetService::Llama),
+        RpcService::EthMainnet(evm_rpc_types::EthMainnetService::PublicNode)
+    ]));
 }
 
 /// Inserts a new journal entry
