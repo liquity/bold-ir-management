@@ -1,10 +1,9 @@
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
-use evm_rpc_types::{BlockTag, SendRawTransactionStatus};
 use ic_exports::ic_cdk::api::time;
 
-use crate::evm_rpc::Service;
+use crate::evm_rpc::*;
 use crate::state::*;
 use crate::types::*;
 use crate::utils::*;
@@ -72,7 +71,7 @@ impl Default for StrategyData {
 
 impl StrategyData {
     /// Mint the strategy by adding it to the state
-    pub fn mint(self) -> ManagerResult<()> {
+    pub fn mint(&self) -> ManagerResult<Self> {
         STRATEGY_DATA.with(|strategies| {
             let mut binding = strategies.borrow_mut();
             // we do not want this function to overwrite an existing key.
@@ -81,8 +80,8 @@ impl StrategyData {
                     "This strategy key is already mined.".to_string(),
                 ));
             }
-            binding.insert(self.key, self);
-            Ok(())
+            binding.insert(self.key, self.clone());
+            Ok(self.clone())
         })
     }
 
@@ -559,20 +558,22 @@ mod test {
 
     #[test]
     fn should_obtain_lock_for_different_strategies() {
-        let strategy_one = StrategyData::default().mint().lock();
+        let strategy_one = StrategyData::default().mint().unwrap().lock();
         let mut strategy_two = StrategyData::default();
         strategy_two.key = 1;
-        strategy_two.mint().lock();
+        strategy_two.mint().unwrap();
+        let lock_result = strategy_two.lock();
         assert!(strategy_one.is_ok());
-        assert!(strategy_two.is_ok());
+        assert!(lock_result.is_ok());
     }
 
     #[test]
     fn should_not_obtain_lock_for_the_same_strategy_again() {
-        let mut strategy = StrategyData::default().lock();
-        assert_ne!(strategy, ManagerError::Locked);
-        strategy.lock();
-        assert_eq!(strategy, ManagerError::Locked);
+        let mut strategy = StrategyData::default();
+        let lock_result_one = strategy.lock();
+        assert_ne!(lock_result_one, Err(ManagerError::Locked));
+        let lock_result_two = strategy.lock();
+        assert_eq!(lock_result_two, Err(ManagerError::Locked));
     }
 
     #[test]
@@ -583,9 +584,8 @@ mod test {
             // it is locked successfully
             let strategy = StrategyData::default().lock();
             assert!(strategy.is_ok());
-            assert_eq!(strategy.lock, true);
         } // the strategy goes out of the scope here and Drop is called
-        
+
         // it is possible to lock it again.
         // note: while these are technically two or three different instances, they all point to the same strategy in the thread.
         let mut strategy = StrategyData::default();

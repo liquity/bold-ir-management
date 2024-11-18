@@ -67,10 +67,7 @@ impl IrManager {
             derivation_path,
         )?;
 
-        STRATEGY_DATA.with(|strategies| {
-            let mut binding = strategies.borrow_mut();
-            binding.insert(strategy.key, strategy_data);
-        });
+        strategy_data.mint();
 
         Ok(eoa_pk.to_string())
     }
@@ -102,14 +99,15 @@ impl IrManager {
                     for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
                         // log the result
-                        let log = JournalEntry::new(result).strategy(id).turn(turn).commit();
+                        JournalEntry::new(result.clone())
+                            .strategy(id)
+                            .turn(turn)
+                            .commit();
 
                         // Handle success or failure for each strategy execution attempt
                         match result {
-                            Ok(()) => {
-                                break;
-                            }
-                            Err(err) => {
+                            Ok(()) => break,
+                            Err(_) => {
                                 let _ = strategy.unlock(); // Unlock on failure
                             }
                         }
@@ -129,16 +127,17 @@ impl IrManager {
                     for turn in 1..=*max_retry_attempts {
                         let result = strategy.execute().await;
                         // log the result
-                        let log = JournalEntry::new(result).strategy(id).turn(turn).commit();
+                        JournalEntry::new(result.clone())
+                            .strategy(id)
+                            .turn(turn)
+                            .commit();
 
                         // Handle success or failure for each strategy execution attempt
                         match result {
-                            Ok(()) => {
-                                break;
-                            } // Exit on success
-                            Err(err) => {
-                                let _ = strategy.unlock(); // Unlock on failure
-                            }
+                            Ok(()) => break, // Exit on success
+                            Err(_) => {
+                                let _ = strategy.unlock();
+                            } // Unlock on failure
                         }
                     }
                 });
@@ -149,22 +148,17 @@ impl IrManager {
         set_timer_interval(Duration::from_secs(86_400), move || {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
             spawn(async move {
-                let mut turn = 0;
-
-                while turn <= *max_retry_attempts {
+                for turn in 1..=*max_retry_attempts {
                     let result = recharge_cketh().await;
                     // log the result
-                    let log = JournalEntry::new(result).turn(turn).note("ckETH recharging cycle").commit();
-                    match result {
-                        Ok(()) => break, // Exit on success
-                        Err(err) => {
-                            if turn == *max_retry_attempts {
-                                break; // Stop retrying after max attempts
-                            }
-                        }
-                    }
+                    JournalEntry::new(result.clone())
+                        .turn(turn)
+                        .note("ckETH recharging cycle")
+                        .commit();
 
-                    turn += 1;
+                    if result.is_ok() {
+                        break;
+                    }
                 }
             });
         });

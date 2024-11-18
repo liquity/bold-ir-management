@@ -20,10 +20,10 @@ use num_traits::cast::ToPrimitive;
 use serde_json::json;
 
 use crate::{
-    evm_rpc::{RpcService, Service},
+    evm_rpc::{Service},
     state::*,
     strategy::StrategyData,
-    types::{depositCall, SwapResponse},
+    types::{depositCall, ManagerError, ManagerResult, SwapResponse},
     utils::*,
 };
 
@@ -62,7 +62,7 @@ async fn ether_deposit() -> ManagerResult<()> {
         };
 
         let balance =
-            match fetch_balance(&strategy.rpc_canister, &strategy.rpc_url, eoa.to_string()).await {
+            match fetch_balance(&strategy.rpc_canister, eoa.to_string()).await {
                 Ok(balance) => balance,
                 Err(_) => continue, // Skip on error
             };
@@ -93,7 +93,6 @@ async fn ether_deposit() -> ManagerResult<()> {
                 strategy.eoa_nonce,
                 strategy.derivation_path.clone(),
                 &strategy.rpc_canister,
-                &strategy.rpc_url,
                 100000000,
             )
             .await
@@ -106,12 +105,8 @@ async fn ether_deposit() -> ManagerResult<()> {
     ))
 }
 
-async fn fetch_balance(
-    rpc_canister: &Service,
-    rpc_url: &str,
-    pk: String,
-) -> ManagerResult<U256> {
-    let rpc: RpcService = rpc_provider(rpc_url);
+async fn fetch_balance(rpc_canister: &Service, pk: String) -> ManagerResult<U256> {
+    let rpc = todo!();
     let json_args = json!({
         "id": 1,
         "jsonrpc": "2.0",
@@ -122,12 +117,12 @@ async fn fetch_balance(
         "method": "eth_getBalance"
     })
     .to_string();
-    let request_response = rpc_canister.request(rpc, json_args, 50000, 10000000).await;
-
-    let decoded_hex = decode_request_response(request_response)?;
+    let call_result = rpc_canister.request(rpc, json_args, 50000, 10000000).await;
+    let canister_response = extract_call_result(call_result)?;
+    let hex = canister_response.map_err(|err| ManagerError::RpcResponseError(err))?;
     let mut padded = [0u8; 32];
-    let start = 32 - decoded_hex.len();
-    padded[start..].copy_from_slice(&decoded_hex);
+    let start = 32 - hex.len();
+    padded[start..].copy_from_slice(&hex.as_bytes());
 
     Ok(U256::from_be_bytes(padded))
 }
