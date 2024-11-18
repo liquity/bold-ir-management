@@ -6,18 +6,29 @@ type HttpOutcallError = variant {
     parsingError : opt text;
   };
 };
+type JournalEntry = record {
+  note : opt text;
+  turn : opt nat8;
+  entry : Result;
+  strategy_id : opt nat32;
+  timestamp : nat64;
+};
 type JsonRpcError = record { code : int64; message : text };
 type ManagerError = variant {
+  CallResult : record { RejectionCode; text };
   Custom : text;
   Locked;
   Unauthorized;
   DecodingError : text;
+  Arithmetic : text;
   RpcResponseError : RpcError;
   CyclesBalanceAboveRechargingThreshold;
+  NoConsensus;
   NonExistentValue;
 };
 type ProviderError = variant {
   TooFewCycles : record { expected : nat; received : nat };
+  InvalidRpcConfig : text;
   MissingRequiredProvider;
   ProviderNotFound;
   NoPermission;
@@ -31,9 +42,10 @@ type RejectionCode = variant {
   SysFatal;
   CanisterReject;
 };
-type Result = variant { Ok : text; Err : ManagerError };
-type Result_1 = variant { Ok; Err : ManagerError };
-type Result_2 = variant { Ok : SwapResponse; Err : ManagerError };
+type Result = variant { Ok; Err : ManagerError };
+type Result_1 = variant { Ok : vec JournalEntry; Err : ManagerError };
+type Result_2 = variant { Ok : text; Err : ManagerError };
+type Result_3 = variant { Ok : SwapResponse; Err : ManagerError };
 type RpcError = variant {
   JsonRpcError : JsonRpcError;
   ProviderError : ProviderError;
@@ -49,7 +61,7 @@ type StrategyInput = record {
   multi_trove_getter : text;
   upfront_fee_period : nat;
   rpc_url : text;
-  target_min : float64;
+  target_min : nat;
   collateral_registry : text;
 };
 type StrategyQueryData = record {
@@ -62,19 +74,13 @@ type StrategyQueryData = record {
   trove_manager : text;
 };
 type SwapResponse = record { returning_ether : nat; accepted_cycles : nat };
-type ValidationError = variant {
-  CredentialPathNotAllowed;
-  HostNotAllowed : text;
-  CredentialHeaderNotAllowed;
-  UrlParseError : text;
-  Custom : text;
-  InvalidHex : text;
-};
+type ValidationError = variant { Custom : text; InvalidHex : text };
 service : {
-  get_strategies : () -> (vec StrategyQueryData) query;
-  get_strategy_address : (nat32) -> (opt text) query;
-  mint_strategy : (StrategyInput) -> (Result);
-  set_batch_manager : (nat32, text) -> (Result_1);
-  start_timers : () -> (Result_1);
-  swap_cketh : () -> (Result_2);
+  get_logs : (nat64) -> (Result_1) query;
+  get_strategies : () -> (vec StrategyQueryData);
+  get_strategy_address : (nat32) -> (opt text);
+  mint_strategy : (StrategyInput) -> (Result_2);
+  set_batch_manager : (nat32, text) -> (Result);
+  start_timers : () -> (Result);
+  swap_cketh : () -> (Result_3);
 }
