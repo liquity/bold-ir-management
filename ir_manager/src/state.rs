@@ -9,8 +9,7 @@ use ic_exports::candid::Principal;
 use ic_stable_structures::{DefaultMemoryImpl, Memory, Vec as StableVec};
 
 use crate::{
-    strategy::StrategyData,
-    types::{JournalEntry, ManagerResult, ProviderSet},
+    journal::JournalEntry, strategy::StrategyData, types::{ManagerResult, ProviderSet}
 };
 
 pub const SCALE: f64 = 1e18;
@@ -65,6 +64,6 @@ pub fn get_provider_set() -> ProviderSet {
 }
 
 /// Inserts a new journal entry
-pub fn insert_journal_entry(entry: JournalEntry) {
-    JOURNAL.with_borrow_mut(|vec| vec.push(&entry));
+pub fn insert_journal_entry(entry: &mut JournalEntry) {
+    JOURNAL.with_borrow_mut(|vec| vec.push(entry));
 }

@@ -14,7 +14,7 @@ pub struct JournalEntry {
     pub entry: ManagerResult<()>,
     pub strategy_id: Option<u32>,
     pub turn: Option<u8>,
-    pub note: Option<String>
+    pub note: Option<String>,
 }
 
 /// Builder for journal entries
@@ -27,30 +27,30 @@ impl JournalEntry {
             entry,
             strategy_id: None,
             turn: None,
-            note: None
+            note: None,
         }
     }
 
     /// Fills the `strategy_id` field of the entry
-    pub fn strategy(&mut self, id: u32) -> Self {
+    pub fn strategy(&mut self, id: u32) -> &mut Self {
         self.strategy_id = Some(id);
         self
     }
 
     /// Fills the `turn` field of the entry
-    pub fn turn(&mut self, turn: u8) -> Self {
+    pub fn turn(&mut self, turn: u8) -> &mut Self {
         self.turn = Some(turn);
         self
     }
 
     /// Fills the `note` field of the entry
-    pub fn note<S: AsRef<str>>(&mut self, text: S) -> Self {
+    pub fn note<S: AsRef<str>>(&mut self, text: S) -> &mut Self {
         self.note = Some(text.as_ref().to_string());
         self
     }
 
     /// Commits the entry to the stable storage vector
-    pub fn commit(self) {
+    pub fn commit(&mut self) {
         insert_journal_entry(self);
     }
 }

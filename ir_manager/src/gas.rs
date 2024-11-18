@@ -1,22 +1,51 @@
 use alloy_primitives::U256;
 use candid::Nat;
-
-use evm_rpc_types::{BlockTag, FeeHistory, FeeHistoryArgs, Nat256, RpcServices};
+use evm_rpc_types::{RpcServices, Nat256};
 use serde_bytes::ByteBuf;
 use serde_json::json;
 use std::{ops::Add, str::FromStr};
 
 use crate::{
-    evm_rpc::Service, types::{EthCallResponse, ManagerError, ManagerResult}, utils::{extract_call_result, extract_multi_rpc_result, nat_to_u256, request_with_dynamic_retries}
+    evm_rpc::*,
+    types::{EthCallResponse, ManagerError, ManagerResult},
+    utils::{
+        extract_call_result, extract_multi_rpc_result, nat_to_u256, request_with_dynamic_retries,
+    },
 };
 
 /// The minimum suggested maximum priority fee per gas.
-const MIN_SUGGEST_MAX_PRIORITY_FEE_PER_GAS: u32 = 1_500_000_000;
+const MIN_SUGGEST_MAX_PRIORITY_FEE_PER_GAS: u64 = 1_500_000_000;
 
 pub struct FeeEstimates {
-    pub max_fee_per_gas: U256,
-    pub max_priority_fee_per_gas: U256,
+    pub max_fee_per_gas: u128,
+    pub max_priority_fee_per_gas: u128,
 }
+
+/// Converts a `Nat256` to a `u128` by extracting the lower 128 bits.
+// fn nat256_to_u128(value: &Nat256) -> ManagerResult<u128> {
+//     // Convert Nat256 to a byte vector in big-endian order
+//     let bytes = value.into_be_bytes();
+
+//     // Ensure the byte vector has at least 16 bytes
+//     let padded_bytes = if bytes.len() < 16 {
+//         // Pad with leading zeros if less than 16 bytes
+//         let mut padded = vec![0u8; 16 - bytes.len()];
+//         padded.extend_from_slice(&bytes);
+//         padded
+//     } else {
+//         // Use the last 16 bytes if more than 16 bytes
+//         bytes[bytes.len() - 16..].to_vec()
+//     };
+
+//     // Convert the 16 bytes to a u128
+//     Ok(u128::from_be_bytes(padded_bytes.try_into().map_err(
+//         |_| {
+//             ManagerError::DecodingError(format!(
+//                 "Failed at converting Nat256 to u128: Slice with incorrect length"
+//             ))
+//         },
+//     )?))
+// }
 
 pub async fn fee_history(
     block_count: Nat,
@@ -25,10 +54,10 @@ pub async fn fee_history(
     rpc_services: RpcServices,
     evm_rpc: &Service,
 ) -> ManagerResult<FeeHistory> {
-    let fee_history_args: FeeHistoryArgs = FeeHistoryArgs {
-        block_count: Nat256::try_from(block_count).map_err(|err| ManagerError::Custom(err))?,
-        newest_block: newest_block,
-        reward_percentiles: reward_percentiles,
+    let fee_history_args = FeeHistoryArgs {
+        block_count,
+        newest_block,
+        reward_percentiles,
     };
 
     let cycles = 25_000_000_000;
@@ -65,38 +94,33 @@ pub async fn estimate_transaction_fees(
 
     let median_index = median_index(block_count.into());
 
-    // baseFeePerGas
+    // Convert baseFeePerGas to u128
     let base_fee_per_gas = fee_history
         .base_fee_per_gas
         .last()
-        .ok_or(ManagerError::NonExistentValue)?
-        .clone();
+        .ok_or(ManagerError::NonExistentValue)?;
+    let base_fee_per_gas_u128 = u128::try_from(base_fee_per_gas.0.clone()).map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
 
-    // obtain the 95th percentile of the tips for the past 9 blocks
-    let mut percentile_95: Vec<Nat> = fee_history
+    // obtain the 95th percentile of the tips for the past blocks
+    let mut percentiles: Vec<Nat> = fee_history
         .reward
         .into_iter()
-        .flat_map(|x| x.into_iter())
+        .flat_map(|rewards| rewards.into_iter())
         .collect();
 
-    // sort the tips in ascending order
-    percentile_95.sort_unstable();
+    // sort and retrieve the median reward
+    percentiles.sort_unstable();
+    let zero_nat = Nat::from(0_u32);
+    let median_reward = percentiles.get(median_index).unwrap_or(&zero_nat);
+    let median_reward_u128 = u128::try_from(median_reward.0.clone()).map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
     
-    // get the median by accessing the element in the middle
-    // set tip to 0 if there are not enough blocks in case of a local testnet
-    let median_reward = percentile_95
-        .get(median_index)
-        .unwrap_or(&Nat::from(0_u8))
-        .clone();
-
-    let max_priority_fee_per_gas = median_reward
-        .clone()
-        .add(base_fee_per_gas)
-        .max(Nat::from(MIN_SUGGEST_MAX_PRIORITY_FEE_PER_GAS));
+    let max_priority_fee_per_gas = median_reward_u128
+        .saturating_add(base_fee_per_gas_u128)
+        .max(MIN_SUGGEST_MAX_PRIORITY_FEE_PER_GAS as u128);
 
     Ok(FeeEstimates {
-        max_fee_per_gas: nat_to_u256(&max_priority_fee_per_gas)?,
-        max_priority_fee_per_gas: nat_to_u256(&median_reward)?,
+        max_fee_per_gas: max_priority_fee_per_gas,
+        max_priority_fee_per_gas: median_reward_u128,
     })
 }
 
@@ -109,13 +133,12 @@ pub async fn get_estimate_gas(
     let args = json!({
         "id": 1,
         "jsonrpc": "2.0",
-        "params": [ {
+        "params": [{
             "from": from,
             "to": to,
             "data": format!("0x{}", hex::encode(data))
         },
-        "latest"
-        ],
+        "latest"],
         "method": "eth_estimateGas"
     })
     .to_string();
@@ -131,9 +154,9 @@ pub async fn get_estimate_gas(
         })?;
 
     if decoded_response.result.len() <= 2 {
-        return Err(ManagerError::DecodingError(format!(
-            "The result field of the RPC's response is empty"
-        )));
+        return Err(ManagerError::DecodingError(
+            "The result field of the RPC's response is empty".to_string(),
+        ));
     }
 
     let hex_string = if decoded_response.result[2..].len() % 2 == 1 {

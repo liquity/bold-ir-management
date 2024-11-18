@@ -1,17 +1,154 @@
-// This is an experimental feature to generate Rust binding from Candid.
-// You may want to manually adjust some of the types.
-#![allow(
-    dead_code,
-    unused_imports,
-    non_snake_case,
-    clippy::large_enum_variant,
-    clippy::enum_variant_names
-)]
-use std::str::FromStr;
-
-use candid::{self, CandidType, Decode, Deserialize, Encode, Principal};
-use evm_rpc_types::*;
+use candid::{self, CandidType, Deserialize, Nat, Principal};
+use evm_rpc_types::{
+    MultiRpcResult, Provider, RpcConfig, RpcResult, RpcService, RpcServices,
+};
 use ic_exports::ic_cdk::{self, api::call::CallResult as Result};
+use serde::Serialize;
+
+#[derive(Clone, Debug, PartialEq, Eq, CandidType, Deserialize)]
+pub struct GetTransactionCountArgs {
+    pub address: String,
+    pub block: BlockTag,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, CandidType, Deserialize, Default)]
+pub enum BlockTag {
+    #[default]
+    Latest,
+    Finalized,
+    Safe,
+    Earliest,
+    Pending,
+    Number(Nat),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, CandidType, Deserialize)]
+pub struct FeeHistoryArgs {
+    /// Number of blocks in the requested range.
+    /// Typically, providers request this to be between 1 and 1024.
+    #[serde(rename = "blockCount")]
+    pub block_count: Nat,
+
+    /// Highest block of the requested range.
+    /// Integer block number, or "latest" for the last mined block or "pending", "earliest" for not yet mined transactions.
+    #[serde(rename = "newestBlock")]
+    pub newest_block: BlockTag,
+
+    /// A monotonically increasing list of percentile values between 0 and 100.
+    /// For each block in the requested range, the transactions will be sorted in ascending order
+    /// by effective tip per gas and the corresponding effective tip for the percentile
+    /// will be determined, accounting for gas consumed.
+    #[serde(rename = "rewardPercentiles")]
+    pub reward_percentiles: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, CandidType)]
+pub struct FeeHistory {
+    /// Lowest number block of the returned range.
+    #[serde(rename = "oldestBlock")]
+    pub oldest_block: Nat,
+
+    /// An array of block base fees per gas.
+    /// This includes the next block after the newest of the returned range,
+    /// because this value can be derived from the newest block.
+    /// Zeroes are returned for pre-EIP-1559 blocks.
+    #[serde(rename = "baseFeePerGas")]
+    pub base_fee_per_gas: Vec<Nat>,
+
+    /// An array of block gas used ratios (gasUsed / gasLimit).
+    #[serde(rename = "gasUsedRatio")]
+    pub gas_used_ratio: Vec<f64>,
+
+    /// A two-dimensional array of effective priority fees per gas at the requested block percentiles.
+    #[serde(rename = "reward")]
+    pub reward: Vec<Vec<Nat>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, CandidType)]
+pub enum SendRawTransactionStatus {
+    Ok(Option<String>),
+    InsufficientFunds,
+    NonceTooLow,
+    NonceTooHigh,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, CandidType, Deserialize)]
+pub struct CallArgs {
+    pub transaction: TransactionRequest,
+    /// Integer block number, or "latest" for the last mined block or "pending", "earliest" for not yet mined transactions.
+    /// Default to "latest" if unspecified, see https://github.com/ethereum/execution-apis/issues/461.
+    pub block: Option<BlockTag>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, CandidType, Deserialize)]
+pub struct TransactionRequest {
+    /// The type of the transaction:
+    /// - "0x0" for legacy transactions (pre- EIP-2718)
+    /// - "0x1" for access list transactions (EIP-2930)
+    /// - "0x2" for EIP-1559 transactions
+    #[serde(rename = "type")]
+    pub tx_type: Option<String>,
+
+    /// Transaction nonce
+    pub nonce: Option<Nat>,
+
+    /// Address of the receiver or `None` in a contract creation transaction.
+    pub to: Option<String>,
+
+    /// The address of the sender.
+    pub from: Option<String>,
+
+    /// Gas limit for the transaction.
+    pub gas: Option<Nat>,
+
+    /// Amount of ETH sent with this transaction.
+    pub value: Option<Nat>,
+
+    /// Transaction input data
+    pub input: Option<String>,
+
+    /// The legacy gas price willing to be paid by the sender in wei.
+    #[serde(rename = "gasPrice")]
+    pub gas_price: Option<Nat>,
+
+    /// Maximum fee per gas the sender is willing to pay to miners in wei.
+    #[serde(rename = "maxPriorityFeePerGas")]
+    pub max_priority_fee_per_gas: Option<Nat>,
+
+    /// The maximum total fee per gas the sender is willing to pay (includes the network / base fee and miner / priority fee) in wei.
+    #[serde(rename = "maxFeePerGas")]
+    pub max_fee_per_gas: Option<Nat>,
+
+    /// The maximum total fee per gas the sender is willing to pay for blob gas in wei.
+    #[serde(rename = "maxFeePerBlobGas")]
+    pub max_fee_per_blob_gas: Option<Nat>,
+
+    /// EIP-2930 access list
+    #[serde(rename = "accessList")]
+    pub access_list: Option<AccessList>,
+
+    /// List of versioned blob hashes associated with the transaction's EIP-4844 data blobs.
+    #[serde(rename = "blobVersionedHashes")]
+    pub blob_versioned_hashes: Option<Vec<String>>,
+
+    /// Raw blob data.
+    pub blobs: Option<Vec<String>>,
+
+    /// Chain ID that this transaction is valid on.
+    #[serde(rename = "chainId")]
+    pub chain_id: Option<Nat>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, CandidType, Deserialize)]
+#[serde(transparent)]
+pub struct AccessList(pub Vec<AccessListEntry>);
+
+#[derive(Clone, Debug, PartialEq, Eq, CandidType, Deserialize)]
+pub struct AccessListEntry {
+    pub address: String,
+    #[serde(rename = "storageKeys")]
+    pub storage_keys: Vec<String>,
+}
 
 #[derive(Copy, Clone)]
 pub struct Service(pub Principal);
@@ -44,17 +181,8 @@ impl Service {
         arg0: RpcServices,
         arg1: Option<RpcConfig>,
         arg2: GetTransactionCountArgs,
-    ) -> Result<(MultiRpcResult<Nat256>,)> {
+    ) -> Result<(MultiRpcResult<Nat>,)> {
         ic_cdk::call(self.0, "eth_getTransactionCount", (arg0, arg1, arg2)).await
-    }
-
-    pub async fn eth_get_transaction_receipt(
-        &self,
-        arg0: RpcServices,
-        arg1: Option<RpcConfig>,
-        arg2: Hex32,
-    ) -> Result<(MultiRpcResult<Option<TransactionReceipt>>,)> {
-        ic_cdk::call(self.0, "eth_getTransactionReceipt", (arg0, arg1, arg2)).await
     }
 
     pub async fn eth_send_raw_transaction(
@@ -96,7 +224,7 @@ impl Service {
         arg0: RpcService,
         arg1: String,
         arg2: u64,
-    ) -> Result<(RpcResult<u128>,)> {
+    ) -> Result<(RpcResult<Nat>,)> {
         ic_cdk::call(self.0, "requestCost", (arg0, arg1, arg2)).await
     }
 
@@ -105,7 +233,7 @@ impl Service {
         source: RpcServices,
         config: Option<RpcConfig>,
         args: CallArgs,
-    ) -> Result<(MultiRpcResult<Hex>,)> {
+    ) -> Result<(MultiRpcResult<String>,)> {
         ic_cdk::call(self.0, "eth_call", (source, config, args)).await
     }
 }
