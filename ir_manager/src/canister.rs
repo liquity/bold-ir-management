@@ -6,8 +6,9 @@ use crate::{
     signer::{get_canister_public_key, pubkey_bytes_to_address},
     state::*,
     strategy::StrategyData,
-    types::{ManagerError, ManagerResult, StrategyInput, StrategyQueryData, SwapResponse},
+    types::{StrategyInput, StrategyQueryData, SwapResponse},
     utils::{nat_to_u256, only_controller, string_to_address},
+    error::*
 };
 use alloy_primitives::Address;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
@@ -58,7 +59,7 @@ impl IrManager {
             manager,
             strategy.collateral_registry,
             strategy.multi_trove_getter,
-            strategy.target_min,
+            nat_to_u256(&strategy.target_min)?,
             rpc_canister,
             nat_to_u256(&strategy.upfront_fee_period)?,
             nat_to_u256(&strategy.collateral_index)?,

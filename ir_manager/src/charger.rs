@@ -23,8 +23,9 @@ use crate::{
     evm_rpc::Service,
     state::*,
     strategy::StrategyData,
-    types::{depositCall, ManagerError, ManagerResult, SwapResponse},
+    types::{depositCall, SwapResponse},
     utils::*,
+    error::*
 };
 
 pub async fn check_threshold() -> ManagerResult<()> {
@@ -105,7 +106,7 @@ async fn ether_deposit() -> ManagerResult<()> {
 }
 
 async fn fetch_balance(rpc_canister: &Service, pk: String) -> ManagerResult<U256> {
-    let rpc = todo!();
+    let rpc = get_rpc_service();
     let json_args = json!({
         "id": 1,
         "jsonrpc": "2.0",
@@ -116,9 +117,11 @@ async fn fetch_balance(rpc_canister: &Service, pk: String) -> ManagerResult<U256
         "method": "eth_getBalance"
     })
     .to_string();
+
     let call_result = rpc_canister.request(rpc, json_args, 50000, 10000000).await;
     let canister_response = extract_call_result(call_result)?;
     let hex = canister_response.map_err(|err| ManagerError::RpcResponseError(err))?;
+
     let mut padded = [0u8; 32];
     let start = 32 - hex.len();
     padded[start..].copy_from_slice(&hex.as_bytes());
@@ -127,26 +130,25 @@ async fn fetch_balance(rpc_canister: &Service, pk: String) -> ManagerResult<U256
 }
 
 pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> {
-    // todo: account for the fee
     let discount_percentage = CYCLES_DISCOUNT_PERCENTAGE.with(|percentage| percentage.get());
     let rate = fetch_ether_cycles_rate().await? * discount_percentage / 100;
-    let attached_cycles = msg_cycles_available();
-    let maximum_returned_ether_amount = Nat::from(attached_cycles * rate * 10_u64.pow(18)); // todo: double check this line
+    let attached_cycles = msg_cycles_available() as u128;
+    let maximum_returned_ether_amount = Nat::from(attached_cycles.saturating_mul(rate as u128).saturating_mul(SCALE)); // SCALE here is the decimals ckETH tokens have (10^18)
 
     // first check if the balance permits the max transfer amount
-    let balance = fetch_cketh_balance().await?;
+    let cketh_balance = fetch_cketh_balance().await?;
     // second calculate the amount to transfer and accept cycles first
-    let (transfer_amount, cycles_to_accept) = if balance > maximum_returned_ether_amount {
+    let (transfer_amount, cycles_to_accept) = if cketh_balance > maximum_returned_ether_amount {
         (maximum_returned_ether_amount, attached_cycles)
     } else {
-        let cycles_to_accept = (balance.clone() / rate).0.to_u64().ok_or_else(|| {
+        let cycles_to_accept = (cketh_balance.clone() / SCALE / rate).0.to_u64().ok_or_else(|| {
             ManagerError::DecodingError(
                 "Error while decoding the amount of cycles to accept to u64".to_string(),
             )
         })?;
-        (balance, cycles_to_accept)
+        (cketh_balance, cycles_to_accept as u128)
     };
-    msg_cycles_accept(cycles_to_accept);
+    msg_cycles_accept(cycles_to_accept as u64); // we are not worried about casting like this as `msg_cycles_available()` had returned a u64 before
     // third send the cketh to the user
     let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.get());
 

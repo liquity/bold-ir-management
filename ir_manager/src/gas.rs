@@ -5,7 +5,8 @@ use serde_json::json;
 
 use crate::{
     evm_rpc::*,
-    types::{EthCallResponse, ManagerError, ManagerResult},
+    types::EthCallResponse,
+    error::*,
     utils::{extract_call_result, extract_multi_rpc_result, request_with_dynamic_retries},
 };
 

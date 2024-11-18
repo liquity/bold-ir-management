@@ -10,5 +10,6 @@ mod state;
 mod strategy;
 mod types;
 mod utils;
+mod error;
 
 pub use canister::IrManager;

@@ -21,14 +21,15 @@ use ic_exports::ic_cdk::{
 use serde_json::json;
 
 use crate::{
+    error::*,
     evm_rpc::*,
     exchange::*,
     gas::{estimate_transaction_fees, get_estimate_gas, FeeEstimates},
     signer::sign_eip1559_transaction,
     state::{
-        CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER, RPC_SERVICE,
+        CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER, RPC_SERVICE, SCALE,
     },
-    types::{Account, DerivationPath, ManagerError, ManagerResult},
+    types::{Account, DerivationPath},
 };
 use num_traits::ToPrimitive;
 
@@ -95,7 +96,8 @@ pub async fn fetch_cketh_balance() -> ManagerResult<Nat> {
         call(ledger_principal, "icrc1_balance_of", (args,)).await;
 
     match call_response {
-        Ok(response) => Ok(response.0 / 10_u64.pow(18)),
+        // We are hardcoding 18 decimals points for ckETH, as it will always reflect the original Ether token's metadata (and that is immutable).
+        Ok(response) => Ok(response.0 / SCALE),
         Err(err) => Err(ManagerError::Custom(err.1)),
     }
 }
@@ -114,7 +116,7 @@ pub async fn fetch_ether_cycles_rate() -> ManagerResult<u64> {
         timestamp: None,
     };
 
-    let fetch_result: CallResult<(GetExchangeRateResult,)> =
+    let call_result: CallResult<(GetExchangeRateResult,)> =
         ic_cdk::api::call::call_with_payment128(
             exchange_rate_canister,
             "get_exchange_rate",
@@ -122,25 +124,17 @@ pub async fn fetch_ether_cycles_rate() -> ManagerResult<u64> {
             1_000_000_000,
         )
         .await;
-    match fetch_result {
-        Ok(result) => match result {
-            (Ok(response),) => Ok(response.rate / response.metadata.decimals as u64),
-            (Err(err),) => Err(ManagerError::Custom(format!(
-                "Error from the exchange rate canister: {:#?}",
-                err
-            ))),
-        },
-        Err(err) => Err(ManagerError::Custom(err.1)),
+    let canister_response = extract_call_result(call_result)?;
+    match canister_response {
+        Ok(response) => Ok(response
+            .rate
+            .checked_div(response.metadata.decimals as u64)
+            .ok_or(arithmetic_err("ETH/CXDR decimals value was zero."))?),
+        Err(err) => Err(ManagerError::Custom(format!(
+            "Error from the exchange rate canister: {:#?}",
+            err
+        ))),
     }
-}
-
-pub fn rpc_provider(rpc_url: &str) -> RpcService {
-    RpcService::Custom({
-        RpcApi {
-            url: rpc_url.to_string(),
-            headers: None,
-        }
-    })
 }
 
 /// Returns `T` from Solidity struct.
@@ -397,7 +391,7 @@ pub fn extract_multi_rpc_result<T>(result: MultiRpcResult<T>) -> ManagerResult<T
         MultiRpcResult::Consistent(response) => {
             response.map_err(|rpc_err| ManagerError::RpcResponseError(rpc_err))
         }
-        MultiRpcResult::Inconsistent(vec) => todo!(),
+        MultiRpcResult::Inconsistent(_) => Err(ManagerError::NoConsensus),
     }
 }
 

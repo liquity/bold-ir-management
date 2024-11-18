@@ -7,6 +7,7 @@ use crate::evm_rpc::*;
 use crate::state::*;
 use crate::types::*;
 use crate::utils::*;
+use crate::error::*;
 
 /// Struct containing all information necessary to execute a strategy
 #[derive(Clone)]
@@ -30,7 +31,7 @@ pub struct StrategyData {
     /// Derivation path of the ECDSA signature
     pub derivation_path: DerivationPath,
     /// Minimum target for this strategy
-    pub target_min: f64,
+    pub target_min: U256,
     /// Upfront fee period constant denominated in seconds
     pub upfront_fee_period: U256,
     /// Timestamp of the last time the strategy had updated the batch's interest rate.
@@ -58,7 +59,7 @@ impl Default for StrategyData {
             collateral_index: U256::ZERO,
             latest_rate: U256::ZERO,
             derivation_path: vec![],
-            target_min: 0.0,
+            target_min: U256::ZERO,
             upfront_fee_period: U256::ZERO,
             last_update: 0,
             lock: false,
@@ -91,7 +92,7 @@ impl StrategyData {
         manager: Address,
         collateral_registry: String,
         multi_trove_getter: String,
-        target_min: f64,
+        target_min: U256,
         rpc_canister: Service,
         upfront_fee_period: U256,
         collateral_index: U256,
@@ -211,11 +212,11 @@ impl StrategyData {
                 block_tag.clone(),
             )
             .await?;
-        let redemption_split = unbacked_portion_price_and_redeemability._0 / total_unbacked;
-        let maximum_redeemable_against_collateral = redemption_split * entire_system_debt;
+        let redemption_split = unbacked_portion_price_and_redeemability._0.checked_div(total_unbacked).ok_or(arithmetic_err("Total unbacked was 0."))?;
+        let maximum_redeemable_against_collateral = redemption_split.saturating_mul(entire_system_debt);
 
-        let exponent: f64 = (0.005 * SCALE) / (redemption_fee.to::<u64>() as f64);
-        let target_percentage = self.target_min.powf(exponent) * SCALE;
+        let exponent: U256 = U256::from(5 * 1_000_000_000_000_000_u128).checked_div(redemption_fee).ok_or(arithmetic_err("redemption fee was 0."))?;
+        let target_percentage = self.target_min.pow(exponent);
 
         let strategy_result = self
             .run_strategy(
@@ -240,7 +241,7 @@ impl StrategyData {
                 _newAnnualInterestRate: new_rate.to::<u128>(),
                 _upperHint: upper_hint,
                 _lowerHint: lower_hint,
-                _maxUpfrontFee: max_upfront_fee + U256::from(1_000_000_000_000_000_u128), // + %0.001 ,
+                _maxUpfrontFee: max_upfront_fee.saturating_add(U256::from(1_000_000_000_000_000_u128)), // + %0.001 ,
             };
 
             for _ in 0..2 {
@@ -424,7 +425,7 @@ impl StrategyData {
             if trove.interestBatchManager == self.batch_manager {
                 return Some(trove.debt);
             }
-            counted_debt += trove.debt;
+            counted_debt = counted_debt.saturating_add(trove.debt);
         }
         None
     }
@@ -464,7 +465,7 @@ impl StrategyData {
                 upfront_fee_period,
                 new_rate,
                 upfront_fee,
-            ) {
+            )? {
                 return Ok(Some((new_rate, upfront_fee)));
             }
         }
@@ -482,7 +483,7 @@ impl StrategyData {
         let mut new_rate = U256::from(0);
         for trove in troves.iter() {
             if counted_debt > target_percentage * maximum_redeemable_against_collateral {
-                new_rate = trove.interestRate + U256::from(100_000_000_000_000_u64); // 1 bps = 0.01%
+                new_rate = trove.interestRate.saturating_add(U256::from(100_000_000_000_000_u128)); // 1 bps = 0.01%
                 break;
             }
             counted_debt += trove.debt;
@@ -500,7 +501,7 @@ impl StrategyData {
             TOLERANCE_MARGIN_DOWN.with(|tolerance_margin_down| tolerance_margin_down.get());
 
         if debt_in_front
-            < (U256::from(1) - tolerance_margin_down)
+            < (U256::from(SCALE) - tolerance_margin_down)
                 * target_percentage
                 * maximum_redeemable_against_collateral
         {
@@ -519,7 +520,7 @@ impl StrategyData {
             TOLERANCE_MARGIN_UP.with(|tolerance_margin_up| tolerance_margin_up.get());
 
         if debt_in_front
-            > (U256::from(1) + tolerance_margin_up)
+            > (U256::from(SCALE) + tolerance_margin_up)
                 * maximum_redeemable_against_collateral
                 * target_percentage
         {
@@ -534,16 +535,17 @@ impl StrategyData {
         upfront_fee_period: U256,
         new_rate: U256,
         average_rate: U256,
-    ) -> bool {
-        if (U256::from(1) - time_since_last_update / upfront_fee_period)
+    ) -> ManagerResult<bool> {
+        let r = time_since_last_update.checked_div(upfront_fee_period).ok_or(arithmetic_err("Upfront fee period was 0."))?;
+        if (U256::from(1) - r)
             * (self.latest_rate - new_rate)
             > average_rate
         {
-            return true;
+            return Ok(true);
         } else if time_since_last_update > upfront_fee_period {
-            return true;
+            return Ok(true);
         }
-        false
+        Ok(false)
     }
 }
 

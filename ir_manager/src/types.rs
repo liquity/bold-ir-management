@@ -1,38 +1,8 @@
-use std::borrow::Cow;
-
-use crate::{state::CHAIN_ID, strategy::StrategyData};
+use crate::strategy::StrategyData;
 
 use alloy_sol_types::sol;
-use candid::{CandidType, Decode, Encode, Nat, Principal};
-use evm_rpc_types::{RpcApi, RpcError, RpcService, RpcServices};
-use ic_exports::ic_kit::RejectionCode;
-use ic_stable_structures::{storable::Bound, Storable};
+use candid::{CandidType, Nat, Principal};
 use serde::{Deserialize, Serialize};
-
-/// IR Manager Canister Result
-pub type ManagerResult<T> = Result<T, ManagerError>;
-
-/// IR Manager Canister Errors
-#[derive(Clone, CandidType, Debug, Deserialize, PartialEq)]
-pub enum ManagerError {
-    /// `CallResult` error
-    CallResult(RejectionCode, String),
-    /// Unauthorized access
-    Unauthorized,
-    /// A requested value does not exist
-    NonExistentValue,
-    /// Wrapper for the RPC errors returned by the EVM RPC canister
-    RpcResponseError(RpcError),
-    /// Decoding issue
-    DecodingError(String),
-    /// Strategy is locked
-    Locked,
-    /// Unknown/Custom error
-    Custom(String),
-    /// The cycle balance is above the threshold.
-    /// No arbitrage opportunity is available.
-    CyclesBalanceAboveRechargingThreshold,
-}
 
 /// Derivation path for the tECDSA signatures
 pub type DerivationPath = Vec<Vec<u8>>;
@@ -40,7 +10,7 @@ pub type DerivationPath = Vec<Vec<u8>>;
 #[derive(CandidType, Deserialize)]
 pub struct StrategyInput {
     pub key: u32,
-    pub target_min: f64,
+    pub target_min: Nat,
     pub manager: String,
     pub multi_trove_getter: String,
     pub collateral_index: Nat,

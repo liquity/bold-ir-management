@@ -12,7 +12,7 @@ use ic_stable_structures::{DefaultMemoryImpl, Vec as StableVec};
 use crate::journal::JournalEntry;
 use crate::strategy::StrategyData;
 
-pub const SCALE: f64 = 1e18;
+pub const SCALE: u128 = 1_000_000_000_000_000_000; // e18
 
 thread_local! {
     /// Chain ID
