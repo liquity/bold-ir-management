@@ -4,9 +4,9 @@ use evm_rpc_types::RpcServices;
 use serde_json::json;
 
 use crate::{
+    error::*,
     evm_rpc::*,
     types::EthCallResponse,
-    error::*,
     utils::{extract_call_result, extract_multi_rpc_result, request_with_dynamic_retries},
 };
 

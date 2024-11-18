@@ -7,7 +7,7 @@ use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
 use candid::{Nat, Principal};
 use evm_rpc_types::{
-    HttpOutcallError, MultiRpcResult, RpcApi, RpcConfig, RpcError, RpcService, RpcServices,
+    HttpOutcallError, MultiRpcResult, RpcConfig, RpcError, RpcService, RpcServices,
 };
 use ic_exports::ic_cdk::{
     self,
@@ -27,11 +27,11 @@ use crate::{
     gas::{estimate_transaction_fees, get_estimate_gas, FeeEstimates},
     signer::sign_eip1559_transaction,
     state::{
-        CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER, RPC_SERVICE, SCALE,
+        CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER, RPC_SERVICE,
+        SCALE,
     },
     types::{Account, DerivationPath},
 };
-use num_traits::ToPrimitive;
 
 /// Returns the estimated cycles cost of performing the RPC call if successful
 pub async fn estimate_cycles(
@@ -402,4 +402,185 @@ pub fn extract_call_result<T>(result: CallResult<(T,)>) -> ManagerResult<T> {
         .map_err(|(rejection_code, error_message)| {
             ManagerError::CallResult(rejection_code, error_message)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_primitives::{Address, U256};
+    use evm_rpc_types::{EthMainnetService, HttpOutcallError, RpcError};
+    use ic_cdk::api::call::RejectionCode;
+    use serde_json::json;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_string_to_address_valid() {
+        // Valid Ethereum address
+        let input = "0x0123456789abcdef0123456789abcdef01234567".to_string();
+        let result = string_to_address(input.clone());
+        assert!(result.is_ok());
+        let address = result.unwrap();
+        assert_eq!(address, Address::from_str(&input).unwrap());
+    }
+
+    #[test]
+    fn test_string_to_address_invalid() {
+        // Invalid Ethereum address
+        let input = "invalid_address".to_string();
+        let result = string_to_address(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nat_to_u256_valid() {
+        // Nat that fits into U256
+        let value = 1234567890_u64;
+        let nat = Nat::from(value);
+        let result = nat_to_u256(&nat);
+        assert!(result.is_ok());
+        let u256 = result.unwrap();
+        assert_eq!(
+            u256,
+            U256::from_be_bytes({
+                let mut bytes = [0u8; 32];
+                let be_bytes = value.to_be_bytes();
+                bytes[32 - be_bytes.len()..].copy_from_slice(&be_bytes);
+                bytes
+            })
+        );
+    }
+
+    #[test]
+    fn test_is_response_size_error_true() {
+        // Create an RpcError that represents a response size error
+        let err = RpcError::HttpOutcallError(HttpOutcallError::IcError {
+            code: RejectionCode::SysFatal,
+            message: "size limit exceeded".to_string(),
+        });
+        assert!(is_response_size_error(&err));
+    }
+
+    #[test]
+    fn test_is_response_size_error_false() {
+        // Create an RpcError that does not represent a response size error
+        let err = RpcError::HttpOutcallError(HttpOutcallError::IcError {
+            code: RejectionCode::CanisterReject,
+            message: "some other error".to_string(),
+        });
+        assert!(!is_response_size_error(&err));
+    }
+
+    #[test]
+    fn test_extract_multi_rpc_result_consistent_ok() {
+        let result: MultiRpcResult<String> = MultiRpcResult::Consistent(Ok("success".to_string()));
+        let extracted = extract_multi_rpc_result(result);
+        assert!(extracted.is_ok());
+        assert_eq!(extracted.unwrap(), "success".to_string());
+    }
+
+    #[test]
+    fn test_extract_multi_rpc_result_consistent_err() {
+        let rpc_err = RpcError::ProviderError(evm_rpc_types::ProviderError::NoPermission);
+        let result: MultiRpcResult<String> = MultiRpcResult::Consistent(Err(rpc_err.clone()));
+        let extracted = extract_multi_rpc_result(result);
+        assert!(extracted.is_err());
+        match extracted.unwrap_err() {
+            ManagerError::RpcResponseError(err) => {
+                assert_eq!(format!("{:?}", err), format!("{:?}", rpc_err));
+            }
+            _ => panic!("Expected RpcResponseError"),
+        }
+    }
+
+    #[test]
+    fn test_extract_multi_rpc_result_inconsistent() {
+        let result: MultiRpcResult<String> = MultiRpcResult::Inconsistent(vec![]);
+        let extracted = extract_multi_rpc_result(result);
+        assert!(extracted.is_err());
+        match extracted.unwrap_err() {
+            ManagerError::NoConsensus => {}
+            _ => panic!("Expected NoConsensus error"),
+        }
+    }
+
+    #[test]
+    fn test_extract_call_result_ok() {
+        let call_result: CallResult<(String,)> = Ok(("success".to_string(),));
+        let extracted = extract_call_result(call_result);
+        assert!(extracted.is_ok());
+        assert_eq!(extracted.unwrap(), "success".to_string());
+    }
+
+    #[test]
+    fn test_extract_call_result_err() {
+        let call_result: CallResult<(String,)> =
+            Err((RejectionCode::CanisterReject, "error message".to_string()));
+        let extracted = extract_call_result(call_result);
+        assert!(extracted.is_err());
+        match extracted.unwrap_err() {
+            ManagerError::CallResult(code, message) => {
+                assert_eq!(code, RejectionCode::CanisterReject);
+                assert_eq!(message, "error message".to_string());
+            }
+            _ => panic!("Expected CallResult error"),
+        }
+    }
+
+    #[test]
+    fn test_eth_call_args() {
+        let to = "0x0123456789abcdef0123456789abcdef01234567".to_string();
+        let data = vec![0x12, 0x34, 0x56];
+        let hex_block_number = "latest";
+        let result = eth_call_args(to.clone(), data.clone(), hex_block_number);
+        let expected_json = json!({
+            "id": 1,
+            "jsonrpc": "2.0",
+            "params": [ {
+                "to": to,
+                "data": format!("0x{}", hex::encode(data))
+            },
+            hex_block_number
+            ],
+            "method": "eth_call"
+        })
+        .to_string();
+        assert_eq!(result, expected_json);
+    }
+
+    #[test]
+    fn test_get_rpc_services() {
+        let rpc_services = get_rpc_services();
+        assert_eq!(rpc_services, RpcServices::EthMainnet(None));
+    }
+
+    #[test]
+    fn test_get_rpc_config() {
+        let max_response_bytes = Some(5000);
+        let config = get_rpc_config(max_response_bytes);
+        assert_eq!(config.response_size_estimate, Some(5000));
+        assert!(config.response_consensus.is_some());
+        if let Some(evm_rpc_types::ConsensusStrategy::Threshold { total, min }) =
+            config.response_consensus
+        {
+            assert_eq!(total, Some(3));
+            assert_eq!(min, 2);
+        } else {
+            panic!("Expected Threshold consensus strategy");
+        }
+    }
+
+    #[test]
+    fn test_get_rpc_service() {
+        // Since `get_rpc_service` uses a thread-local variable, we need to set it up
+        // For testing purposes, we can assume that it returns an RpcService
+        // We cannot directly test the rotation without setting up the thread-local state
+        // So we'll just call it and check that it returns a value
+        let rpc_service = get_rpc_service();
+        // Since we don't know the exact value, we can check that it's of type RpcService
+        // For example:
+        assert!(matches!(
+            rpc_service,
+            RpcService::EthMainnet(EthMainnetService::Alchemy)
+        ));
+    }
 }

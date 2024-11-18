@@ -20,12 +20,12 @@ use num_traits::cast::ToPrimitive;
 use serde_json::json;
 
 use crate::{
+    error::*,
     evm_rpc::Service,
     state::*,
     strategy::StrategyData,
     types::{depositCall, SwapResponse},
     utils::*,
-    error::*
 };
 
 pub async fn check_threshold() -> ManagerResult<()> {
@@ -133,7 +133,11 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
     let discount_percentage = CYCLES_DISCOUNT_PERCENTAGE.with(|percentage| percentage.get());
     let rate = fetch_ether_cycles_rate().await? * discount_percentage / 100;
     let attached_cycles = msg_cycles_available() as u128;
-    let maximum_returned_ether_amount = Nat::from(attached_cycles.saturating_mul(rate as u128).saturating_mul(SCALE)); // SCALE here is the decimals ckETH tokens have (10^18)
+    let maximum_returned_ether_amount = Nat::from(
+        attached_cycles
+            .saturating_mul(rate as u128)
+            .saturating_mul(SCALE),
+    ); // SCALE here is the decimals ckETH tokens have (10^18)
 
     // first check if the balance permits the max transfer amount
     let cketh_balance = fetch_cketh_balance().await?;
@@ -141,14 +145,19 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
     let (transfer_amount, cycles_to_accept) = if cketh_balance > maximum_returned_ether_amount {
         (maximum_returned_ether_amount, attached_cycles)
     } else {
-        let cycles_to_accept = (cketh_balance.clone() / SCALE / rate).0.to_u64().ok_or_else(|| {
-            ManagerError::DecodingError(
-                "Error while decoding the amount of cycles to accept to u64".to_string(),
-            )
-        })?;
+        let cycles_to_accept = (cketh_balance.clone() / SCALE / rate)
+            .0
+            .to_u64()
+            .ok_or_else(|| {
+                ManagerError::DecodingError(
+                    "Error while decoding the amount of cycles to accept to u64".to_string(),
+                )
+            })?;
         (cketh_balance, cycles_to_accept as u128)
     };
+
     msg_cycles_accept(cycles_to_accept as u64); // we are not worried about casting like this as `msg_cycles_available()` had returned a u64 before
+
     // third send the cketh to the user
     let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.get());
 
@@ -170,5 +179,34 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
             returning_ether: transfer_amount,
         }),
         Err(err) => Err(ManagerError::Custom(err.1)),
+    }
+}
+
+#[derive(Default)]
+pub struct SwapLock(bool);
+
+impl SwapLock {
+    fn apply(&mut self) {
+        SWAP_LOCK.with(|lock| lock.set(self.0));
+    }
+
+    pub fn lock(&mut self) -> ManagerResult<()> {
+        if self.0 || SWAP_LOCK.with(|lock| lock.get()) {
+            return Err(ManagerError::Locked);
+        }
+        self.0 = true;
+        self.apply();
+        Ok(())
+    }
+
+    pub fn unlock(&mut self) {
+        self.0 = false;
+        self.apply();
+    }
+}
+
+impl Drop for SwapLock {
+    fn drop(&mut self) {
+        self.unlock();
     }
 }

@@ -29,7 +29,7 @@ pub enum ManagerError {
     /// No consensus was reached among RPC providers
     NoConsensus,
     /// Arithmetic error
-    Arithmetic(String)
+    Arithmetic(String),
 }
 
 pub fn arithmetic_err<S: AsRef<str>>(s: S) -> ManagerError {

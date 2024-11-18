@@ -1,5 +1,5 @@
 use candid::{self, CandidType, Deserialize, Nat, Principal};
-use evm_rpc_types::{MultiRpcResult, Provider, RpcConfig, RpcResult, RpcService, RpcServices};
+use evm_rpc_types::{MultiRpcResult, RpcConfig, RpcResult, RpcService, RpcServices};
 use ic_exports::ic_cdk::{self, api::call::CallResult as Result};
 use serde::Serialize;
 
@@ -233,7 +233,7 @@ pub struct Block {
     pub uncles: Vec<String>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Service(pub Principal);
 
 impl Default for Service {

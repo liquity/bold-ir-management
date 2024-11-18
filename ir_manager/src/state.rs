@@ -45,6 +45,8 @@ thread_local! {
     pub static CKETH_HELPER: RefCell<String> = RefCell::new("0x7574eB42cA208A4f6960ECCAfDF186D627dCC175".to_string());
     /// ckETH ledger canister's principal ID
     pub static CKETH_LEDGER: Cell<Principal> = Cell::new(Principal::from_slice("ss2fx-dyaaa-aaaar-qacoq-cai".as_bytes()));
+    /// Swap ckETH Lock
+    pub static SWAP_LOCK: Cell<bool> = Cell::new(false);
 
     /// HashMap containing all strategies' information
     pub static STRATEGY_DATA: RefCell<HashMap<u32, StrategyData>> = RefCell::new(HashMap::new());

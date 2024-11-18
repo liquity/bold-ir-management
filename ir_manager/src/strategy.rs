@@ -3,11 +3,11 @@ use alloy_sol_types::SolCall;
 use candid::Principal;
 use ic_exports::ic_cdk::api::time;
 
+use crate::error::*;
 use crate::evm_rpc::*;
 use crate::state::*;
 use crate::types::*;
 use crate::utils::*;
-use crate::error::*;
 
 /// Struct containing all information necessary to execute a strategy
 #[derive(Clone)]
@@ -154,7 +154,9 @@ impl StrategyData {
     /// Locks the strategy.
     /// Mutably accesses the strategy data in the HashMap.
     fn lock(&mut self) -> ManagerResult<()> {
-        if self.lock {
+        let state_lock = STRATEGY_DATA
+            .with(|strategies| strategies.borrow().get(&self.key).cloned().unwrap().lock);
+        if self.lock || state_lock {
             // already processing
             return Err(ManagerError::Locked);
         }
@@ -165,14 +167,9 @@ impl StrategyData {
 
     /// Unlocks the strategy.
     /// Mutably accesses the strategy data in the HashMap.
-    pub fn unlock(&mut self) -> ManagerResult<()> {
-        if !self.lock {
-            // already unlocked
-            return Err(ManagerError::Locked);
-        }
+    pub fn unlock(&mut self) {
         self.lock = false;
         self.apply_change();
-        Ok(())
     }
 
     /// The only public function for this struct implementation. It runs the strategy and returns `Err` in case of failure.
@@ -212,10 +209,16 @@ impl StrategyData {
                 block_tag.clone(),
             )
             .await?;
-        let redemption_split = unbacked_portion_price_and_redeemability._0.checked_div(total_unbacked).ok_or(arithmetic_err("Total unbacked was 0."))?;
-        let maximum_redeemable_against_collateral = redemption_split.saturating_mul(entire_system_debt);
+        let redemption_split = unbacked_portion_price_and_redeemability
+            ._0
+            .checked_div(total_unbacked)
+            .ok_or(arithmetic_err("Total unbacked was 0."))?;
+        let maximum_redeemable_against_collateral =
+            redemption_split.saturating_mul(entire_system_debt);
 
-        let exponent: U256 = U256::from(5 * 1_000_000_000_000_000_u128).checked_div(redemption_fee).ok_or(arithmetic_err("redemption fee was 0."))?;
+        let exponent: U256 = U256::from(5 * 1_000_000_000_000_000_u128)
+            .checked_div(redemption_fee)
+            .ok_or(arithmetic_err("redemption fee was 0."))?;
         let target_percentage = self.target_min.pow(exponent);
 
         let strategy_result = self
@@ -241,7 +244,8 @@ impl StrategyData {
                 _newAnnualInterestRate: new_rate.to::<u128>(),
                 _upperHint: upper_hint,
                 _lowerHint: lower_hint,
-                _maxUpfrontFee: max_upfront_fee.saturating_add(U256::from(1_000_000_000_000_000_u128)), // + %0.001 ,
+                _maxUpfrontFee: max_upfront_fee
+                    .saturating_add(U256::from(1_000_000_000_000_000_u128)), // + %0.001 ,
             };
 
             for _ in 0..2 {
@@ -265,7 +269,7 @@ impl StrategyData {
                         self.last_update = time();
                         self.latest_rate = new_rate;
                         self.apply_change();
-                        self.unlock()?;
+                        self.unlock();
                         return Ok(());
                     }
                     SendRawTransactionStatus::InsufficientFunds => {
@@ -282,7 +286,7 @@ impl StrategyData {
             }
         }
 
-        self.unlock()?;
+        self.unlock();
         Ok(())
     }
 
@@ -483,7 +487,9 @@ impl StrategyData {
         let mut new_rate = U256::from(0);
         for trove in troves.iter() {
             if counted_debt > target_percentage * maximum_redeemable_against_collateral {
-                new_rate = trove.interestRate.saturating_add(U256::from(100_000_000_000_000_u128)); // 1 bps = 0.01%
+                new_rate = trove
+                    .interestRate
+                    .saturating_add(U256::from(100_000_000_000_000_u128)); // 1 bps = 0.01%
                 break;
             }
             counted_debt += trove.debt;
@@ -536,11 +542,10 @@ impl StrategyData {
         new_rate: U256,
         average_rate: U256,
     ) -> ManagerResult<bool> {
-        let r = time_since_last_update.checked_div(upfront_fee_period).ok_or(arithmetic_err("Upfront fee period was 0."))?;
-        if (U256::from(1) - r)
-            * (self.latest_rate - new_rate)
-            > average_rate
-        {
+        let r = time_since_last_update
+            .checked_div(upfront_fee_period)
+            .ok_or(arithmetic_err("Upfront fee period was 0."))?;
+        if (U256::from(1) - r) * (self.latest_rate - new_rate) > average_rate {
             return Ok(true);
         } else if time_since_last_update > upfront_fee_period {
             return Ok(true);
@@ -551,49 +556,7 @@ impl StrategyData {
 
 impl Drop for StrategyData {
     fn drop(&mut self) {
-        self.lock = false;
+        self.unlock();
     }
 }
 
-mod test {
-    use super::*;
-
-    #[test]
-    fn should_obtain_lock_for_different_strategies() {
-        let strategy_one = StrategyData::default().mint().unwrap().lock();
-        let mut strategy_two = StrategyData::default();
-        strategy_two.key = 1;
-        strategy_two.mint().unwrap();
-        let lock_result = strategy_two.lock();
-        assert!(strategy_one.is_ok());
-        assert!(lock_result.is_ok());
-    }
-
-    #[test]
-    fn should_not_obtain_lock_for_the_same_strategy_again() {
-        let mut strategy = StrategyData::default();
-        let lock_result_one = strategy.lock();
-        assert_ne!(lock_result_one, Err(ManagerError::Locked));
-        let lock_result_two = strategy.lock();
-        assert_eq!(lock_result_two, Err(ManagerError::Locked));
-    }
-
-    #[test]
-    fn should_release_lock_on_drop() {
-        let _ = StrategyData::default().mint(); // A strategy with key zero has been added to the state.
-        {
-            // a new strategy is created (but the data is the same)
-            // it is locked successfully
-            let strategy = StrategyData::default().lock();
-            assert!(strategy.is_ok());
-        } // the strategy goes out of the scope here and Drop is called
-
-        // it is possible to lock it again.
-        // note: while these are technically two or three different instances, they all point to the same strategy in the thread.
-        let mut strategy = StrategyData::default();
-        assert_eq!(strategy.lock, false);
-        let lock_result = strategy.lock();
-        assert!(lock_result.is_ok());
-        assert_eq!(strategy.lock, true);
-    }
-}

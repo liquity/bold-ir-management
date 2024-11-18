@@ -2,13 +2,13 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 
 use crate::journal::JournalEntry;
 use crate::{
-    charger::{check_threshold, recharge_cketh, transfer_cketh},
+    charger::{check_threshold, recharge_cketh, transfer_cketh, SwapLock},
+    error::*,
     signer::{get_canister_public_key, pubkey_bytes_to_address},
     state::*,
     strategy::StrategyData,
     types::{StrategyInput, StrategyQueryData, SwapResponse},
     utils::{nat_to_u256, only_controller, string_to_address},
-    error::*
 };
 use alloy_primitives::Address;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
@@ -203,16 +203,24 @@ impl IrManager {
     #[update]
     pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
         // Ensure the cycle balance is above a certain threshold before proceeding
+        let mut swap_lock = SwapLock::default();
+        swap_lock.lock()?;
         check_threshold().await?;
         transfer_cketh(caller()).await
     }
 
-
     #[query]
     pub async fn get_logs(&self, depth: u64) -> ManagerResult<Vec<JournalEntry>> {
-        let state = JOURNAL.with(|m| m.borrow().iter().map(|s| s.clone()).collect::<Vec<JournalEntry>>());
+        let state = JOURNAL.with(|m| {
+            m.borrow()
+                .iter()
+                .map(|s| s.clone())
+                .collect::<Vec<JournalEntry>>()
+        });
 
-        let entries : Vec<JournalEntry> = state.try_into().map_err(|err| ManagerError::Custom(format!("{:#?}", err)))?;
+        let entries: Vec<JournalEntry> = state
+            .try_into()
+            .map_err(|err| ManagerError::Custom(format!("{:#?}", err)))?;
 
         Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
     }
