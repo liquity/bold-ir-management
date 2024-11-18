@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::{state::insert_journal_entry, types::ManagerResult};
 
 /// Journal entry
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Deserialize, Clone)]
 pub struct JournalEntry {
     pub timestamp: u64,
     pub entry: ManagerResult<()>,

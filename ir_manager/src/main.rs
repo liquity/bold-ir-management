@@ -1,4 +1,4 @@
-use crate::canister::IrManager;
+use ir_manager::IrManager;
 
 fn main() {
     let canister_e_idl = IrManager::idl();

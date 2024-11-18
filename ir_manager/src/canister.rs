@@ -67,7 +67,7 @@ impl IrManager {
             derivation_path,
         )?;
 
-        strategy_data.mint();
+        strategy_data.mint()?;
 
         Ok(eoa_pk.to_string())
     }
@@ -204,6 +204,16 @@ impl IrManager {
         // Ensure the cycle balance is above a certain threshold before proceeding
         check_threshold().await?;
         transfer_cketh(caller()).await
+    }
+
+
+    #[query]
+    pub async fn get_logs(&self, depth: u64) -> ManagerResult<Vec<JournalEntry>> {
+        let state = JOURNAL.with(|m| m.borrow().iter().map(|s| s.clone()).collect::<Vec<JournalEntry>>());
+
+        let entries : Vec<JournalEntry> = state.try_into().map_err(|err| ManagerError::Custom(format!("{:#?}", err)))?;
+
+        Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
     }
 
     /// Generates the IDL for the canister interface.

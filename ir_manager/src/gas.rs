@@ -1,16 +1,12 @@
 use alloy_primitives::U256;
 use candid::Nat;
-use evm_rpc_types::{Nat256, RpcServices};
-use serde_bytes::ByteBuf;
+use evm_rpc_types::RpcServices;
 use serde_json::json;
-use std::{ops::Add, str::FromStr};
 
 use crate::{
     evm_rpc::*,
     types::{EthCallResponse, ManagerError, ManagerResult},
-    utils::{
-        extract_call_result, extract_multi_rpc_result, nat_to_u256, request_with_dynamic_retries,
-    },
+    utils::{extract_call_result, extract_multi_rpc_result, request_with_dynamic_retries},
 };
 
 /// The minimum suggested maximum priority fee per gas.

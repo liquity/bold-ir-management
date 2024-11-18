@@ -1,26 +1,22 @@
 #![allow(dead_code)]
 
-use std::{io::Read, str::FromStr};
+use std::str::FromStr;
 
 use alloy::consensus::TxEip1559;
 use alloy_primitives::{Address, Bytes, TxKind, U256};
 use alloy_sol_types::SolCall;
 use candid::{Nat, Principal};
 use evm_rpc_types::{
-    HttpOutcallError, MultiRpcResult, RpcApi, RpcConfig, RpcError, RpcResult, RpcService,
-    RpcServices,
+    HttpOutcallError, MultiRpcResult, RpcApi, RpcConfig, RpcError, RpcService, RpcServices,
 };
-use ic_exports::{
-    ic_cdk::{
-        self,
-        api::{
-            call::CallResult,
-            is_controller,
-            management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
-        },
-        call, id,
+use ic_exports::ic_cdk::{
+    self,
+    api::{
+        call::CallResult,
+        is_controller,
+        management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
     },
-    ic_kit::RejectionCode,
+    call, id,
 };
 use serde_json::json;
 
@@ -32,7 +28,7 @@ use crate::{
     state::{
         CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER, RPC_SERVICE,
     },
-    types::{Account, DerivationPath, EthCallResponse, ManagerError, ManagerResult},
+    types::{Account, DerivationPath, ManagerError, ManagerResult},
 };
 use num_traits::ToPrimitive;
 
@@ -42,7 +38,7 @@ pub async fn estimate_cycles(
     json_data: String,
     max_response_bytes: u64,
 ) -> ManagerResult<u128> {
-    let rpc = todo!();
+    let rpc = get_rpc_service();
     let call_result = rpc_canister
         .request_cost(rpc, json_data, max_response_bytes)
         .await;

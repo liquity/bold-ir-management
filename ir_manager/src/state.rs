@@ -7,7 +7,7 @@ use alloy_primitives::{Address, U256};
 use candid::Nat;
 use evm_rpc_types::RpcService;
 use ic_exports::candid::Principal;
-use ic_stable_structures::{DefaultMemoryImpl, Memory, Vec as StableVec};
+use ic_stable_structures::{DefaultMemoryImpl, Vec as StableVec};
 
 use crate::journal::JournalEntry;
 use crate::strategy::StrategyData;
@@ -67,5 +67,5 @@ thread_local! {
 
 /// Inserts a new journal entry
 pub fn insert_journal_entry(entry: &mut JournalEntry) {
-    JOURNAL.with_borrow_mut(|vec| vec.push(entry));
+    let _ = JOURNAL.with_borrow_mut(|vec| vec.push(entry));
 }
