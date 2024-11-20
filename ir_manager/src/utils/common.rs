@@ -232,8 +232,10 @@ pub async fn call_with_dynamic_retries(
 pub fn get_rpc_service() -> RpcService {
     RPC_SERVICE.with(|rpc| {
         let mut state = rpc.borrow_mut();
-        // we can safely unwrap, because the RPC services are never deleted, just rotated.
-        let rpc = state.front().unwrap().clone();
+        let rpc = match state.front() {
+            Some(inner) => inner.clone(),
+            None => unreachable!(),
+        };
         state.rotate_left(1);
         rpc
     })

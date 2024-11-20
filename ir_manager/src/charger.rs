@@ -96,9 +96,14 @@ async fn ether_deposit() -> ManagerResult<()> {
             CKETH_EOA_TURN_COUNTER.with(|counter| counter.set(new_counter));
 
             // Fetch the cycles with estimation and send transaction
+            let eoa = strategy
+                .settings
+                .eoa_pk
+                .ok_or(ManagerError::NonExistentValue)?
+                .to_string();
             return TransactionBuilder::default()
                 .to(cketh_helper)
-                .from(strategy.settings.eoa_pk.unwrap().to_string())
+                .from(eoa)
                 .data(transaction_data)
                 .value(ether_value)
                 .nonce(strategy.data.eoa_nonce)

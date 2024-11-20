@@ -12,6 +12,9 @@ use ic_exports::ic_cdk::api::management_canister::ecdsa::{
 };
 
 use crate::types::DerivationPath;
+use crate::utils::error::ManagerError;
+
+use super::error::ManagerResult;
 
 pub async fn get_canister_public_key(
     key_id: EcdsaKeyId,
@@ -32,7 +35,7 @@ pub async fn sign_eip1559_transaction(
     tx: TxEip1559,
     key_id: EcdsaKeyId,
     derivation_path: DerivationPath,
-) -> String {
+) -> ManagerResult<String> {
     let tx_hash = tx.signature_hash();
 
     let r_and_s = sign_with_ecdsa(SignWithEcdsaArgument {
@@ -48,14 +51,14 @@ pub async fn sign_eip1559_transaction(
     let parity = y_parity(&tx_hash, &r_and_s, &ecdsa_pub_key);
 
     let signature =
-        Signature::from_bytes_and_parity(&r_and_s, parity).expect("should be a valid signature");
+        Signature::from_bytes_and_parity(&r_and_s, parity?).expect("should be a valid signature");
 
     let signed_tx = tx.into_signed(signature);
 
     let tx_envelope = TxEnvelope::from(signed_tx);
 
     let signed_tx_bytes = tx_envelope.encoded_2718();
-    format!("0x{}", hex::encode(&signed_tx_bytes))
+    Ok(format!("0x{}", hex::encode(&signed_tx_bytes)))
 }
 
 /// Converts the public key bytes to an Ethereum address with a checksum.
@@ -76,18 +79,18 @@ pub fn pubkey_bytes_to_address(pubkey_bytes: &[u8]) -> String {
 }
 
 /// Computes the parity bit allowing to recover the public key from the signature.
-fn y_parity(prehash: &FixedBytes<32>, sig: &[u8], pubkey: &[u8]) -> Parity {
+fn y_parity(prehash: &FixedBytes<32>, sig: &[u8], pubkey: &[u8]) -> ManagerResult<Parity> {
     use alloy::signers::k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 
     let orig_key = VerifyingKey::from_sec1_bytes(pubkey).expect("failed to parse the pubkey");
-    let signature = Signature::try_from(sig).unwrap();
+    let signature = Signature::try_from(sig).map_err(|_| ManagerError::NonExistentValue)?;
     for parity in [0u8, 1] {
-        let recid = RecoveryId::try_from(parity).unwrap();
+        let recid = RecoveryId::try_from(parity).map_err(|_| ManagerError::NonExistentValue)?;
         let recovered_key =
             VerifyingKey::recover_from_prehash(prehash.as_slice(), &signature, recid)
                 .expect("failed to recover key");
         if recovered_key == orig_key {
-            return Parity::Eip155(parity as u64);
+            return Ok(Parity::Eip155(parity as u64));
         }
     }
 

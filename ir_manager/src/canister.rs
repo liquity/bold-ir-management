@@ -1,6 +1,6 @@
 //! The canister's public methods
 
-use std::{str::FromStr, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use crate::constants::MAX_RETRY_ATTEMPTS;
 use crate::journal::JournalEntry;
@@ -16,7 +16,6 @@ use crate::{
     state::*,
     types::{StrategyInput, StrategyQueryData, SwapResponse},
 };
-use alloy_primitives::Address;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
 use ic_exports::{
     candid::Principal,
@@ -58,7 +57,7 @@ impl IrManager {
         };
         let public_key_bytes =
             get_canister_public_key(key_id, None, Some(derivation_path.clone())).await;
-        let eoa_pk = Address::from_str(&pubkey_bytes_to_address(&public_key_bytes)).unwrap();
+        let eoa_pk = string_to_address(pubkey_bytes_to_address(&public_key_bytes))?;
         let rpc_canister = Service(strategy.rpc_principal);
 
         // Convert String addresses to Address ones

@@ -110,7 +110,7 @@ impl TransactionBuilder {
         };
 
         let signed_transaction =
-            sign_eip1559_transaction(request, key_id, self.derivation_path).await;
+            sign_eip1559_transaction(request, key_id, self.derivation_path).await?;
 
         match rpc_canister
             .eth_send_raw_transaction(rpc, None, signed_transaction, self.cycles)

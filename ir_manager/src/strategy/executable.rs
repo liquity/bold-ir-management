@@ -75,13 +75,13 @@ impl ExecutableStrategy {
     /// Prevents concurrent execution of the strategy to ensure consistent state.
     fn lock(&mut self) -> ManagerResult<()> {
         let state_lock = STRATEGY_STATE.with(|strategies| {
-            strategies
+            Ok(strategies
                 .borrow()
                 .get(&self.settings.key)
                 .cloned()
-                .unwrap()
-                .lock
-        });
+                .ok_or(ManagerError::NonExistentValue)?
+                .lock)
+        })?;
         if self.lock || state_lock {
             // Already locked, indicating the strategy is being processed elsewhere
             return Err(ManagerError::Locked);
@@ -126,7 +126,10 @@ impl ExecutableStrategy {
             let fetched_troves = self
                 .fetch_multiple_sorted_troves(troves_index, max_count, block_tag.clone())
                 .await?;
-            let last_trove = fetched_troves.last().unwrap().clone();
+            let last_trove = fetched_troves
+                .last()
+                .ok_or(ManagerError::NonExistentValue)?
+                .clone();
             troves.extend(fetched_troves);
             if last_trove.debt == U256::ZERO && last_trove.interestRate == U256::ZERO {
                 break;
@@ -189,9 +192,14 @@ impl ExecutableStrategy {
 
             // Retry the transaction twice if necessary
             for _ in 0..2 {
+                let eoa = self
+                    .settings
+                    .eoa_pk
+                    .ok_or(ManagerError::NonExistentValue)?
+                    .to_string();
                 let tx_response = TransactionBuilder::default()
                     .to(self.settings.batch_manager.to_string())
-                    .from(self.settings.eoa_pk.unwrap().to_string())
+                    .from(eoa)
                     .data(payload.abi_encode())
                     .value(U256::ZERO)
                     .nonce(self.data.eoa_nonce)
