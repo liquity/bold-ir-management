@@ -3,11 +3,11 @@ use alloy_sol_types::SolCall;
 use candid::Principal;
 use ic_exports::ic_cdk::api::time;
 
-use crate::error::*;
-use crate::evm_rpc::*;
 use crate::state::*;
 use crate::types::*;
-use crate::utils::*;
+use crate::utils::common::*;
+use crate::utils::evm_rpc::*;
+use crate::utils::error::*;
 
 /// Struct containing all information necessary to execute a strategy
 #[derive(Clone)]

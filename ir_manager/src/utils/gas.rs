@@ -3,12 +3,11 @@ use candid::Nat;
 use evm_rpc_types::RpcServices;
 use serde_json::json;
 
-use crate::{
-    error::*,
-    evm_rpc::*,
-    types::EthCallResponse,
-    utils::{extract_call_result, extract_multi_rpc_result, request_with_dynamic_retries},
-};
+use crate::types::*;
+
+use super::common::{extract_call_result, extract_multi_rpc_result, request_with_dynamic_retries};
+use super::error::{ManagerError, ManagerResult};
+use super::evm_rpc::{BlockTag, FeeHistory, FeeHistoryArgs, Service};
 
 /// The minimum suggested maximum priority fee per gas.
 const MIN_SUGGEST_MAX_PRIORITY_FEE_PER_GAS: u64 = 1_500_000_000;
@@ -17,32 +16,6 @@ pub struct FeeEstimates {
     pub max_fee_per_gas: u128,
     pub max_priority_fee_per_gas: u128,
 }
-
-/// Converts a `Nat256` to a `u128` by extracting the lower 128 bits.
-// fn nat256_to_u128(value: &Nat256) -> ManagerResult<u128> {
-//     // Convert Nat256 to a byte vector in big-endian order
-//     let bytes = value.into_be_bytes();
-
-//     // Ensure the byte vector has at least 16 bytes
-//     let padded_bytes = if bytes.len() < 16 {
-//         // Pad with leading zeros if less than 16 bytes
-//         let mut padded = vec![0u8; 16 - bytes.len()];
-//         padded.extend_from_slice(&bytes);
-//         padded
-//     } else {
-//         // Use the last 16 bytes if more than 16 bytes
-//         bytes[bytes.len() - 16..].to_vec()
-//     };
-
-//     // Convert the 16 bytes to a u128
-//     Ok(u128::from_be_bytes(padded_bytes.try_into().map_err(
-//         |_| {
-//             ManagerError::DecodingError(format!(
-//                 "Failed at converting Nat256 to u128: Slice with incorrect length"
-//             ))
-//         },
-//     )?))
-// }
 
 pub async fn fee_history(
     block_count: Nat,
@@ -142,7 +115,7 @@ pub async fn get_estimate_gas(
     })
     .to_string();
 
-    let rpc_canister_response = request_with_dynamic_retries(rpc_canister, args).await?;
+    let rpc_canister_response : String = request_with_dynamic_retries(rpc_canister, args).await?;
 
     let decoded_response: EthCallResponse =
         serde_json::from_str(&rpc_canister_response).map_err(|err| {

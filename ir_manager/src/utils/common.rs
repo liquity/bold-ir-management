@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::str::FromStr;
 
 use alloy::consensus::TxEip1559;
@@ -18,14 +16,16 @@ use ic_exports::ic_cdk::{
     },
     call, id,
 };
-use serde_json::json;
 
-use crate::{
+use super::{
     error::*,
     evm_rpc::*,
     exchange::*,
     gas::{estimate_transaction_fees, get_estimate_gas, FeeEstimates},
     signer::sign_eip1559_transaction,
+};
+
+use crate::{
     state::{
         CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER, RPC_SERVICE,
         SCALE,
@@ -151,41 +151,17 @@ pub fn decode_abi_response<T, F: SolCall<Return = T>>(hex_data: String) -> Manag
         .map_err(|err| ManagerError::DecodingError(err.to_string()))
 }
 
-pub fn eth_call_args(to: String, data: Vec<u8>, hex_block_number: &str) -> String {
-    json!({
-        "id": 1,
-        "jsonrpc": "2.0",
-        "params": [ {
-            "to": to,
-            "data": format!("0x{}", hex::encode(data))
-        },
-        hex_block_number
-        ],
-        "method": "eth_call"
-    })
-    .to_string()
-}
-
 pub async fn get_block_tag(rpc_canister: &Service) -> ManagerResult<BlockTag> {
     let rpc = get_rpc_services();
     let rpc_config = get_rpc_config(Some(2_000));
 
     let call_result = rpc_canister
-        .get_block_by_number(rpc, Some(rpc_config), BlockTag::Latest)
+        .get_block_by_number(rpc, Some(rpc_config), BlockTag::Safe)
         .await;
     let rpc_result = extract_call_result(call_result)?;
     let result = extract_multi_rpc_result(rpc_result)?;
 
-    let safe_block = result.number - Nat::from(32_u8);
-
-    // let safe_block_converted = Nat256::try_from(safe_block).map_err(|err| {
-    //     ManagerError::DecodingError(format!(
-    //         "Could not convert current block number to a Nat256: {:#?}",
-    //         err
-    //     ))
-    // })?;
-
-    Ok(BlockTag::Number(safe_block))
+    Ok(BlockTag::Number(result.number))
 }
 
 pub async fn send_raw_transaction(

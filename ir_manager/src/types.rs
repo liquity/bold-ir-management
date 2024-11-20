@@ -61,6 +61,7 @@ pub struct Account {
     pub subaccount: Option<Subaccount>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EthCallResponse {

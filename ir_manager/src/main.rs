@@ -1,3 +1,5 @@
+#![deny(clippy::unwrap_used)]
+
 use ir_manager::IrManager;
 
 fn main() {

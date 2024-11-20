@@ -1,14 +1,15 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use crate::journal::JournalEntry;
+use crate::utils::common::*;
+use crate::utils::error::*;
+use crate::utils::evm_rpc::Service;
+use crate::utils::signer::*;
 use crate::{
     charger::{check_threshold, recharge_cketh, transfer_cketh, SwapLock},
-    error::*,
-    signer::{get_canister_public_key, pubkey_bytes_to_address},
     state::*,
     strategy::StrategyData,
     types::{StrategyInput, StrategyQueryData, SwapResponse},
-    utils::{nat_to_u256, only_controller, string_to_address},
 };
 use alloy_primitives::Address;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
@@ -18,7 +19,7 @@ use ic_exports::{
         api::management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
         caller, spawn,
     },
-    ic_cdk_timers::{set_timer, set_timer_interval},
+    ic_cdk_timers::set_timer_interval,
 };
 
 #[derive(Canister)]
@@ -53,7 +54,7 @@ impl IrManager {
         let public_key_bytes =
             get_canister_public_key(key_id, None, Some(derivation_path.clone())).await;
         let eoa_pk = Address::from_str(&pubkey_bytes_to_address(&public_key_bytes)).unwrap();
-        let rpc_canister = crate::evm_rpc::Service(strategy.rpc_principal);
+        let rpc_canister = Service(strategy.rpc_principal);
         let strategy_data = StrategyData::new(
             strategy.key,
             manager,
@@ -90,11 +91,10 @@ impl IrManager {
         let max_retry_attempts = Arc::new(MAX_RETRY_ATTEMPTS.with(|attempts| attempts.get()));
 
         // Start all strategies immediately
-        strategies.clone().into_iter().for_each(|(id, strategy)| {
-            let max_retry_attempts = Arc::clone(&max_retry_attempts);
-
-            set_timer(Duration::ZERO, move || {
-                let mut strategy = strategy.clone();
+        strategies
+            .clone()
+            .into_iter()
+            .for_each(|(id, mut strategy)| {
                 let max_retry_attempts = Arc::clone(&max_retry_attempts);
                 spawn(async move {
                     for turn in 1..=*max_retry_attempts {
@@ -115,7 +115,6 @@ impl IrManager {
                     }
                 });
             });
-        });
 
         // Set timers for each strategy (execute every 1 hour)
         strategies.into_iter().for_each(|(id, strategy)| {
@@ -138,7 +137,7 @@ impl IrManager {
                             Ok(()) => break, // Exit on success
                             Err(_) => {
                                 let _ = strategy.unlock();
-                            } // Unlock on failure
+                            }
                         }
                     }
                 });

@@ -3,29 +3,23 @@ use std::str::FromStr;
 use alloy_primitives::{FixedBytes, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
-use ic_exports::{
-    candid::Nat,
-    ic_cdk::{
-        api::{
-            self,
-            call::{msg_cycles_accept, msg_cycles_available},
-            canister_balance,
-        },
-        call,
+use ic_exports::ic_cdk::{
+    api::{
+        self,
+        call::{msg_cycles_accept, msg_cycles_available},
+        canister_balance,
     },
-    ic_kit::CallResult,
+    call,
 };
+use ic_exports::{candid::Nat, ic_kit::CallResult};
 use icrc_ledger_types::icrc1::transfer::{TransferArg, TransferError};
-use num_traits::cast::ToPrimitive;
 use serde_json::json;
-
+use num_traits::ToPrimitive;
+use crate::utils::{common::{extract_call_result, fetch_cketh_balance, fetch_ether_cycles_rate, get_rpc_service, send_raw_transaction}, error::*, evm_rpc::Service};
 use crate::{
-    error::*,
-    evm_rpc::Service,
     state::*,
     strategy::StrategyData,
     types::{depositCall, SwapResponse},
-    utils::*,
 };
 
 pub async fn check_threshold() -> ManagerResult<()> {
@@ -132,6 +126,9 @@ async fn fetch_balance(rpc_canister: &Service, pk: String) -> ManagerResult<U256
 pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> {
     let discount_percentage = CYCLES_DISCOUNT_PERCENTAGE.with(|percentage| percentage.get());
     let rate = fetch_ether_cycles_rate().await? * discount_percentage / 100;
+    if rate == 0 {
+        return Err(arithmetic_err("The calculated ETH/CXDR rate is zero."));
+    }
     let attached_cycles = msg_cycles_available() as u128;
     let maximum_returned_ether_amount = Nat::from(
         attached_cycles

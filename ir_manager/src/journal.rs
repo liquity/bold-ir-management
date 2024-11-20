@@ -5,7 +5,7 @@ use ic_exports::ic_cdk::api::time;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
-use crate::{error::ManagerResult, state::insert_journal_entry};
+use crate::{state::insert_journal_entry, utils::error::*};
 
 /// Journal entry
 #[derive(CandidType, Deserialize, Clone)]
