@@ -1,3 +1,5 @@
+//! Types and interfaces to interact with the EVM RPC canister
+
 use candid::{self, CandidType, Deserialize, Nat, Principal};
 use evm_rpc_types::{MultiRpcResult, RpcConfig, RpcResult, RpcService, RpcServices};
 use ic_exports::ic_cdk::{self, api::call::CallResult as Result};

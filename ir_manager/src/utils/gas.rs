@@ -1,3 +1,5 @@
+//! Makes gas estimations and is used to submit a transaction through the TransactionBuilder
+
 use alloy_primitives::U256;
 use candid::Nat;
 use evm_rpc_types::RpcServices;

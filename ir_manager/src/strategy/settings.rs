@@ -1,7 +1,11 @@
+//! Lazily initialized strategy settings
+
 use alloy_primitives::{Address, U256};
 
 use crate::{types::DerivationPath, utils::evm_rpc::Service};
 
+/// Lazily initialized settings
+/// These settings are only set once after spawning with their default values
 #[derive(Clone, Default)]
 pub struct StrategySettings {
     /// Key in the Hashmap<u32, StrategyData> that is `STRATEGY_DATA`

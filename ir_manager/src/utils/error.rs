@@ -1,3 +1,5 @@
+//! Result and error types
+
 use candid::CandidType;
 use evm_rpc_types::RpcError;
 use ic_exports::ic_kit::RejectionCode;

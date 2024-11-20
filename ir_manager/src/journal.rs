@@ -1,3 +1,8 @@
+//! Journal for logging events within the canister.
+//! This is mainly (and maybe exclusively) used for
+//! - recording what happens in each strategy execution cycle
+//! - logging responses that are not returned to any user/caller
+
 use std::borrow::Cow;
 
 use candid::{CandidType, Decode, Encode};

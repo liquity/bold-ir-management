@@ -1,7 +1,8 @@
+//! Common utility and helper functions that are used across the project
+
 use std::str::FromStr;
 
-use alloy::consensus::TxEip1559;
-use alloy_primitives::{Address, Bytes, TxKind, U256};
+use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use candid::{Nat, Principal};
 use evm_rpc_types::{
@@ -9,28 +10,16 @@ use evm_rpc_types::{
 };
 use ic_exports::ic_cdk::{
     self,
-    api::{
-        call::CallResult,
-        is_controller,
-        management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId},
-    },
+    api::{call::CallResult, is_controller},
     call, id,
 };
 
-use super::{
-    error::*,
-    evm_rpc::*,
-    exchange::*,
-    gas::{estimate_transaction_fees, get_estimate_gas, FeeEstimates},
-    signer::sign_eip1559_transaction,
-};
+use super::{error::*, evm_rpc::*, exchange::*};
 
 use crate::{
-    constants::{
-        cketh_ledger, exchange_rate_canister, CHAIN_ID, DEFAULT_MAX_RESPONSE_BYTES, SCALE,
-    },
+    constants::{cketh_ledger, exchange_rate_canister, DEFAULT_MAX_RESPONSE_BYTES, SCALE},
     state::RPC_SERVICE,
-    types::{Account, DerivationPath},
+    types::Account,
 };
 
 /// Returns the estimated cycles cost of performing the RPC call if successful
@@ -162,58 +151,6 @@ pub async fn get_block_tag(rpc_canister: &Service) -> ManagerResult<BlockTag> {
     let result = extract_multi_rpc_result(rpc_result)?;
 
     Ok(BlockTag::Number(result.number))
-}
-
-pub async fn send_raw_transaction(
-    to: String,
-    from: String,
-    data: Vec<u8>,
-    value: U256,
-    nonce: u64,
-    derivation_path: DerivationPath,
-    rpc_canister: &Service,
-    cycles: u128,
-) -> ManagerResult<MultiRpcResult<SendRawTransactionStatus>> {
-    let chain_id = CHAIN_ID;
-    let input = Bytes::from(data.clone());
-    let rpc: RpcServices = get_rpc_services();
-
-    let FeeEstimates {
-        max_fee_per_gas,
-        max_priority_fee_per_gas,
-    } = estimate_transaction_fees(9, rpc.clone(), rpc_canister).await?;
-
-    let estimated_gas = get_estimate_gas(rpc_canister, data, to.clone(), from).await?;
-
-    let key_id = EcdsaKeyId {
-        curve: EcdsaCurve::Secp256k1,
-        name: String::from("key_1"),
-    };
-
-    let request = TxEip1559 {
-        chain_id,
-        to: TxKind::Call(
-            Address::from_str(&to)
-                .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?,
-        ),
-        max_fee_per_gas,
-        max_priority_fee_per_gas,
-        value,
-        nonce,
-        gas_limit: estimated_gas.to::<u128>(),
-        access_list: Default::default(),
-        input,
-    };
-
-    let signed_transaction = sign_eip1559_transaction(request, key_id, derivation_path).await;
-
-    match rpc_canister
-        .eth_send_raw_transaction(rpc, None, signed_transaction, cycles)
-        .await
-    {
-        Ok((response,)) => Ok(response),
-        Err(e) => Err(ManagerError::Custom(e.1)),
-    }
 }
 
 fn is_response_size_error(err: &RpcError) -> bool {

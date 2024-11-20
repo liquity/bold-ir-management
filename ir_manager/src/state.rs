@@ -1,3 +1,5 @@
+//! The thread storage of the canister containing mutable data structures
+
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, VecDeque},
@@ -12,15 +14,17 @@ use crate::strategy::executable::ExecutableStrategy;
 
 thread_local! {
     /// Swap ckETH Lock
-    pub static SWAP_LOCK: Cell<bool> = const { Cell::new(false) };
+    pub static SWAP_LOCK: Cell<bool> = Cell::new(false);
     /// HashMap containing all strategies' information
     pub static STRATEGY_STATE: RefCell<HashMap<u32, ExecutableStrategy>> = RefCell::new(HashMap::new());
-    /// Vector of all manager addreses
-    pub static MANAGERS: RefCell<Vec<Address>> = const { RefCell::new(Vec::new()) };
+    /// Vector of all manager addresses
+    pub static MANAGERS: RefCell<Vec<Address>> = RefCell::new(Vec::new());
     /// A counter that tracks EOA turns for minting ckETH
-    pub static CKETH_EOA_TURN_COUNTER: Cell<u8> = const { Cell::new(0) };
+    pub static CKETH_EOA_TURN_COUNTER: Cell<u8> = Cell::new(0);
     /// Journal
-    pub static JOURNAL: RefCell<StableVec<JournalEntry, DefaultMemoryImpl>> = RefCell::new(StableVec::init(DefaultMemoryImpl::default()).expect("Failed to create default memory."));
+    pub static JOURNAL: RefCell<StableVec<JournalEntry, DefaultMemoryImpl>> = RefCell::new(
+        StableVec::init(DefaultMemoryImpl::default()).expect("Failed to create default memory.")
+    );
     /// RPC Service Vec Deque
     pub static RPC_SERVICE: RefCell<VecDeque<RpcService>> = RefCell::new(VecDeque::from([
         RpcService::EthMainnet(evm_rpc_types::EthMainnetService::Alchemy),

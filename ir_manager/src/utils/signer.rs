@@ -1,3 +1,5 @@
+//! Generates public keys, signs transactions, and computes signatures
+
 use alloy::consensus::{SignableTransaction, TxEip1559, TxEnvelope};
 use alloy::eips::eip2718::Encodable2718;
 use alloy::hex;

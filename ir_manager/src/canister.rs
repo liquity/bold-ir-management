@@ -1,3 +1,5 @@
+//! The canister's public methods
+
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use crate::constants::MAX_RETRY_ATTEMPTS;

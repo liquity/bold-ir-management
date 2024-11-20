@@ -1,3 +1,5 @@
+//! Commonly used types
+
 use crate::strategy::executable::ExecutableStrategy;
 
 use alloy_sol_types::sol;

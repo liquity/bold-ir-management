@@ -1,4 +1,4 @@
-#![deny(clippy::unwrap_used)]
+//! Generates the candid file automatically
 
 use ir_manager::IrManager;
 

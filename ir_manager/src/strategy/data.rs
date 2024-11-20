@@ -1,6 +1,8 @@
+//! Mutable strategy data
+
 use alloy_primitives::U256;
 
-/// Struct containing all information necessary to execute a strategy
+/// Struct containing all mutable data necessary to execute a strategy
 #[derive(Clone, Default)]
 pub struct StrategyData {
     /// Latest rate determined by the canister in the previous cycle

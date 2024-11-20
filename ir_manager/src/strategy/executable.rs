@@ -1,3 +1,5 @@
+//! The executable strategy wrapper that runs the strategy.
+
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use ic_exports::ic_cdk::api::time;
@@ -10,6 +12,7 @@ use crate::{
         common::*,
         error::*,
         evm_rpc::{BlockTag, SendRawTransactionStatus},
+        transaction_builder::TransactionBuilder,
     },
 };
 
@@ -186,17 +189,16 @@ impl ExecutableStrategy {
 
             // Retry the transaction twice if necessary
             for _ in 0..2 {
-                let tx_response = send_raw_transaction(
-                    self.settings.batch_manager.to_string(),
-                    self.settings.eoa_pk.unwrap().to_string(),
-                    payload.abi_encode(),
-                    U256::ZERO,
-                    self.data.eoa_nonce,
-                    self.settings.derivation_path.clone(),
-                    &self.settings.rpc_canister,
-                    1_000_000_000,
-                )
-                .await?;
+                let tx_response = TransactionBuilder::default()
+                    .to(self.settings.batch_manager.to_string())
+                    .from(self.settings.eoa_pk.unwrap().to_string())
+                    .data(payload.abi_encode())
+                    .value(U256::ZERO)
+                    .nonce(self.data.eoa_nonce)
+                    .derivation_path(self.settings.derivation_path.clone())
+                    .cycles(10_000_000_000)
+                    .send(&self.settings.rpc_canister)
+                    .await?;
 
                 let result = extract_multi_rpc_result(tx_response)?;
 

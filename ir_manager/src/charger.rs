@@ -1,3 +1,7 @@
+//! Responsible for:
+//! - facilitating the ckETH<>Cycles arbitrage opportunity
+//! - minting ckETH from ETH.
+
 use std::str::FromStr;
 
 use crate::{
@@ -8,10 +12,10 @@ use crate::{
     utils::{
         common::{
             extract_call_result, fetch_cketh_balance, fetch_ether_cycles_rate, get_rpc_service,
-            send_raw_transaction,
         },
         error::*,
         evm_rpc::Service,
+        transaction_builder::TransactionBuilder,
     },
 };
 use crate::{
@@ -92,18 +96,17 @@ async fn ether_deposit() -> ManagerResult<()> {
             CKETH_EOA_TURN_COUNTER.with(|counter| counter.set(new_counter));
 
             // Fetch the cycles with estimation and send transaction
-            return send_raw_transaction(
-                cketh_helper,
-                strategy.settings.eoa_pk.unwrap().to_string(),
-                transaction_data,
-                ether_value,
-                strategy.data.eoa_nonce,
-                strategy.settings.derivation_path.clone(),
-                &strategy.settings.rpc_canister,
-                100000000,
-            )
-            .await
-            .map(|_| Ok(()))?;
+            return TransactionBuilder::default()
+                .to(cketh_helper)
+                .from(strategy.settings.eoa_pk.unwrap().to_string())
+                .data(transaction_data)
+                .value(ether_value)
+                .nonce(strategy.data.eoa_nonce)
+                .derivation_path(strategy.settings.derivation_path.clone())
+                .cycles(10_000_000_000)
+                .send(&strategy.settings.rpc_canister)
+                .await
+                .map(|_| Ok(()))?;
         }
     }
 
