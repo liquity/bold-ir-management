@@ -115,7 +115,7 @@ pub async fn get_estimate_gas(
     })
     .to_string();
 
-    let rpc_canister_response : String = request_with_dynamic_retries(rpc_canister, args).await?;
+    let rpc_canister_response: String = request_with_dynamic_retries(rpc_canister, args).await?;
 
     let decoded_response: EthCallResponse =
         serde_json::from_str(&rpc_canister_response).map_err(|err| {

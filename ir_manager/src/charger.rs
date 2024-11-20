@@ -1,5 +1,24 @@
 use std::str::FromStr;
 
+use crate::{
+    constants::{
+        cketh_fee, cketh_ledger, cketh_threshold, ether_recharge_value, CKETH_HELPER,
+        CYCLES_DISCOUNT_PERCENTAGE, CYCLES_THRESHOLD, SCALE,
+    },
+    utils::{
+        common::{
+            extract_call_result, fetch_cketh_balance, fetch_ether_cycles_rate, get_rpc_service,
+            send_raw_transaction,
+        },
+        error::*,
+        evm_rpc::Service,
+    },
+};
+use crate::{
+    state::*,
+    strategy::executable::ExecutableStrategy,
+    types::{depositCall, SwapResponse},
+};
 use alloy_primitives::{FixedBytes, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
@@ -13,17 +32,11 @@ use ic_exports::ic_cdk::{
 };
 use ic_exports::{candid::Nat, ic_kit::CallResult};
 use icrc_ledger_types::icrc1::transfer::{TransferArg, TransferError};
-use serde_json::json;
 use num_traits::ToPrimitive;
-use crate::utils::{common::{extract_call_result, fetch_cketh_balance, fetch_ether_cycles_rate, get_rpc_service, send_raw_transaction}, error::*, evm_rpc::Service};
-use crate::{
-    state::*,
-    strategy::StrategyData,
-    types::{depositCall, SwapResponse},
-};
+use serde_json::json;
 
 pub async fn check_threshold() -> ManagerResult<()> {
-    let threshold = CYCLES_THRESHOLD.with(|threshold| threshold.get());
+    let threshold = CYCLES_THRESHOLD;
     if canister_balance() <= threshold {
         return Ok(());
     }
@@ -32,7 +45,7 @@ pub async fn check_threshold() -> ManagerResult<()> {
 
 pub async fn recharge_cketh() -> ManagerResult<()> {
     let current_balance = fetch_cketh_balance().await?;
-    let cketh_threshold = CKETH_THRESHOLD.with(|threshold| threshold.borrow().clone());
+    let cketh_threshold = cketh_threshold();
     if current_balance < cketh_threshold {
         // Deposit ether from one of the EOAs that has enough balance
         return ether_deposit().await;
@@ -41,9 +54,9 @@ pub async fn recharge_cketh() -> ManagerResult<()> {
 }
 
 async fn ether_deposit() -> ManagerResult<()> {
-    let ether_value = ETHER_RECHARGE_VALUE.with(|ether_value| ether_value.get());
-    let cketh_helper: String = CKETH_HELPER.with(|cketh_helper| cketh_helper.borrow().clone());
-    let mut strategies: Vec<StrategyData> = STRATEGY_DATA
+    let ether_value = ether_recharge_value();
+    let cketh_helper: String = CKETH_HELPER.to_string();
+    let mut strategies: Vec<ExecutableStrategy> = STRATEGY_STATE
         .with(|strategies_hashmap| strategies_hashmap.borrow().clone().into_values().collect());
 
     let turn = CKETH_EOA_TURN_COUNTER.with(|counter| counter.get());
@@ -51,12 +64,12 @@ async fn ether_deposit() -> ManagerResult<()> {
     strategies.rotate_left(turn as usize);
 
     for (index, strategy) in strategies.iter().enumerate() {
-        let eoa = match strategy.eoa_pk {
+        let eoa = match strategy.settings.eoa_pk {
             Some(pk) => pk,
             None => continue, // Skip if eoa_pk is None
         };
 
-        let balance = match fetch_balance(&strategy.rpc_canister, eoa.to_string()).await {
+        let balance = match fetch_balance(&strategy.settings.rpc_canister, eoa.to_string()).await {
             Ok(balance) => balance,
             Err(_) => continue, // Skip on error
         };
@@ -81,12 +94,12 @@ async fn ether_deposit() -> ManagerResult<()> {
             // Fetch the cycles with estimation and send transaction
             return send_raw_transaction(
                 cketh_helper,
-                strategy.eoa_pk.unwrap().to_string(),
+                strategy.settings.eoa_pk.unwrap().to_string(),
                 transaction_data,
                 ether_value,
-                strategy.eoa_nonce,
-                strategy.derivation_path.clone(),
-                &strategy.rpc_canister,
+                strategy.data.eoa_nonce,
+                strategy.settings.derivation_path.clone(),
+                &strategy.settings.rpc_canister,
                 100000000,
             )
             .await
@@ -114,17 +127,17 @@ async fn fetch_balance(rpc_canister: &Service, pk: String) -> ManagerResult<U256
 
     let call_result = rpc_canister.request(rpc, json_args, 50000, 10000000).await;
     let canister_response = extract_call_result(call_result)?;
-    let hex = canister_response.map_err(|err| ManagerError::RpcResponseError(err))?;
+    let hex = canister_response.map_err(ManagerError::RpcResponseError)?;
 
     let mut padded = [0u8; 32];
     let start = 32 - hex.len();
-    padded[start..].copy_from_slice(&hex.as_bytes());
+    padded[start..].copy_from_slice(hex.as_bytes());
 
     Ok(U256::from_be_bytes(padded))
 }
 
 pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> {
-    let discount_percentage = CYCLES_DISCOUNT_PERCENTAGE.with(|percentage| percentage.get());
+    let discount_percentage = CYCLES_DISCOUNT_PERCENTAGE;
     let rate = fetch_ether_cycles_rate().await? * discount_percentage / 100;
     if rate == 0 {
         return Err(arithmetic_err("The calculated ETH/CXDR rate is zero."));
@@ -156,12 +169,12 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
     msg_cycles_accept(cycles_to_accept as u64); // we are not worried about casting like this as `msg_cycles_available()` had returned a u64 before
 
     // third send the cketh to the user
-    let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.get());
+    let ledger_principal = cketh_ledger();
 
     let args = TransferArg {
         from_subaccount: None,
         to: receiver.into(),
-        fee: Some(CKETH_FEE.with(|fee| fee.borrow().clone())),
+        fee: Some(cketh_fee()),
         created_at_time: None,
         memo: None,
         amount: transfer_amount.clone(),

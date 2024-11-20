@@ -26,10 +26,10 @@ use super::{
 };
 
 use crate::{
-    state::{
-        CHAIN_ID, CKETH_LEDGER, DEFAULT_MAX_RESPONSE_BYTES, EXCHANGE_RATE_CANISTER, RPC_SERVICE,
-        SCALE,
+    constants::{
+        cketh_ledger, exchange_rate_canister, CHAIN_ID, DEFAULT_MAX_RESPONSE_BYTES, SCALE,
     },
+    state::RPC_SERVICE,
     types::{Account, DerivationPath},
 };
 
@@ -75,7 +75,7 @@ pub fn string_to_address(input: String) -> ManagerResult<Address> {
 pub fn nat_to_u256(n: &Nat) -> ManagerResult<U256> {
     let be_bytes = n.0.to_bytes_be();
     if be_bytes.len() > 32 {
-        return Err(ManagerError::DecodingError(format!("The `Nat` input length exceedes 32 bytes when converted to big-endian bytes representation.")));
+        return Err(ManagerError::DecodingError("The `Nat` input length exceedes 32 bytes when converted to big-endian bytes representation.".to_string()));
     }
     // Ensure the byte array is exactly 32 bytes long
     let mut padded_bytes = [0u8; 32];
@@ -86,7 +86,7 @@ pub fn nat_to_u256(n: &Nat) -> ManagerResult<U256> {
 }
 
 pub async fn fetch_cketh_balance() -> ManagerResult<Nat> {
-    let ledger_principal = CKETH_LEDGER.with(|ledger| ledger.get());
+    let ledger_principal = cketh_ledger();
     let args = Account {
         owner: id(),
         subaccount: None,
@@ -103,7 +103,7 @@ pub async fn fetch_cketh_balance() -> ManagerResult<Nat> {
 }
 
 pub async fn fetch_ether_cycles_rate() -> ManagerResult<u64> {
-    let exchange_rate_canister = EXCHANGE_RATE_CANISTER.with(|principal_id| principal_id.get());
+    let exchange_rate_canister = exchange_rate_canister();
     let fetch_args = GetExchangeRateRequest {
         base_asset: Asset {
             symbol: "ETH".to_string(),
@@ -174,7 +174,7 @@ pub async fn send_raw_transaction(
     rpc_canister: &Service,
     cycles: u128,
 ) -> ManagerResult<MultiRpcResult<SendRawTransactionStatus>> {
-    let chain_id = CHAIN_ID.with(|id| id.get());
+    let chain_id = CHAIN_ID;
     let input = Bytes::from(data.clone());
     let rpc: RpcServices = get_rpc_services();
 
@@ -250,15 +250,17 @@ pub async fn call_with_dynamic_retries(
     to: Address,
     data: Vec<u8>,
 ) -> ManagerResult<String> {
-    let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
+    let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
     let provider_set: RpcServices = get_rpc_services();
 
     // There is a 2 MB limit on the response size, an ICP limitation.
     while max_response_bytes < 2_000_000 {
         // Perform the request using the provided function
-        let mut transaction = TransactionRequest::default();
-        transaction.to = Some(to.to_string());
-        transaction.input = Some(format!("{:?}", data));
+        let transaction = TransactionRequest {
+            to: Some(to.to_string()),
+            input: Some(format!("{:?}", data)),
+            ..Default::default()
+        };
 
         let args = CallArgs {
             transaction,
@@ -285,9 +287,9 @@ pub async fn call_with_dynamic_retries(
         return extracted_rpc_result;
     }
 
-    Err(ManagerError::Custom(format!(
-        "Request with dynamic retries reached its ceiling of 2 Megabytes."
-    )))
+    Err(ManagerError::Custom(
+        "Request with dynamic retries reached its ceiling of 2 Megabytes.".to_string(),
+    ))
 }
 
 pub fn get_rpc_service() -> RpcService {
@@ -309,7 +311,7 @@ pub async fn request_with_dynamic_retries(
     rpc_canister: &Service,
     json_data: String,
 ) -> ManagerResult<String> {
-    let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES.with(|value| value.get());
+    let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
     let mut rpc = get_rpc_service();
     let mut rpc_changes = 0;
 
@@ -323,8 +325,8 @@ pub async fn request_with_dynamic_retries(
             .request(rpc.clone(), json_data.clone(), max_response_bytes, cycles)
             .await;
 
-        let extracted_response = extract_call_result(call_result)?
-            .map_err(|rpc_err| ManagerError::RpcResponseError(rpc_err));
+        let extracted_response =
+            extract_call_result(call_result)?.map_err(ManagerError::RpcResponseError);
 
         if let Err(ManagerError::RpcResponseError(err)) = extracted_response.clone() {
             if is_response_size_error(&err) {
@@ -338,9 +340,9 @@ pub async fn request_with_dynamic_retries(
         return extracted_response;
     }
 
-    Err(ManagerError::Custom(format!(
-        "Request with dynamic retries reached its ceiling of 2 Megabytes."
-    )))
+    Err(ManagerError::Custom(
+        "Request with dynamic retries reached its ceiling of 2 Megabytes.".to_string(),
+    ))
 }
 
 /// On success, returns the nonce associated with the given address
@@ -372,9 +374,7 @@ pub async fn get_nonce(rpc_canister: &Service, address: Address) -> ManagerResul
 /// Extracts result from `MultiRpcResult`, if the threshold is met.
 pub fn extract_multi_rpc_result<T>(result: MultiRpcResult<T>) -> ManagerResult<T> {
     match result {
-        MultiRpcResult::Consistent(response) => {
-            response.map_err(|rpc_err| ManagerError::RpcResponseError(rpc_err))
-        }
+        MultiRpcResult::Consistent(response) => response.map_err(ManagerError::RpcResponseError),
         MultiRpcResult::Inconsistent(_) => Err(ManagerError::NoConsensus),
     }
 }
@@ -394,7 +394,6 @@ mod tests {
     use alloy_primitives::{Address, U256};
     use evm_rpc_types::{EthMainnetService, HttpOutcallError, RpcError};
     use ic_cdk::api::call::RejectionCode;
-    use serde_json::json;
     use std::str::FromStr;
 
     #[test]
@@ -508,27 +507,6 @@ mod tests {
             }
             _ => panic!("Expected CallResult error"),
         }
-    }
-
-    #[test]
-    fn test_eth_call_args() {
-        let to = "0x0123456789abcdef0123456789abcdef01234567".to_string();
-        let data = vec![0x12, 0x34, 0x56];
-        let hex_block_number = "latest";
-        let result = eth_call_args(to.clone(), data.clone(), hex_block_number);
-        let expected_json = json!({
-            "id": 1,
-            "jsonrpc": "2.0",
-            "params": [ {
-                "to": to,
-                "data": format!("0x{}", hex::encode(data))
-            },
-            hex_block_number
-            ],
-            "method": "eth_call"
-        })
-        .to_string();
-        assert_eq!(result, expected_json);
     }
 
     #[test]
