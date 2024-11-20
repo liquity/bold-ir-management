@@ -126,10 +126,18 @@ pub async fn fetch_ether_cycles_rate() -> ManagerResult<u64> {
         .await;
     let canister_response = extract_call_result(call_result)?;
     match canister_response {
-        Ok(response) => Ok(response
-            .rate
-            .checked_div(response.metadata.decimals as u64)
-            .ok_or(arithmetic_err("ETH/CXDR decimals value was zero."))?),
+        Ok(response) => {
+            let decimals = 10_u64
+                .checked_pow(response.metadata.decimals)
+                .ok_or(arithmetic_err(
+                    "The ETH/CXDR decimals calculation overflowed.",
+                ))?;
+            let rate = response
+                .rate
+                .checked_div(decimals)
+                .ok_or(arithmetic_err("ETH/CXDR decimals value was zero."))?;
+            Ok(rate)
+        }
         Err(err) => Err(ManagerError::Custom(format!(
             "Error from the exchange rate canister: {:#?}",
             err
