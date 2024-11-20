@@ -163,7 +163,7 @@ fn is_response_size_error(err: &RpcError) -> bool {
 }
 
 pub fn get_rpc_services() -> RpcServices {
-    RpcServices::EthMainnet(None)
+    RpcServices::EthSepolia(None)
 }
 
 pub fn get_rpc_config(max_response_bytes: Option<u64>) -> RpcConfig {

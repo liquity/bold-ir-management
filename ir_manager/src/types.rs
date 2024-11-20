@@ -1,6 +1,6 @@
 //! Commonly used types
 
-use crate::strategy::executable::ExecutableStrategy;
+use crate::strategy::stale::StableStrategy;
 
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
@@ -17,7 +17,6 @@ pub struct StrategyInput {
     pub multi_trove_getter: String,
     pub collateral_index: Nat,
     pub rpc_principal: Principal,
-    pub rpc_url: String,
     pub upfront_fee_period: Nat,
     pub collateral_registry: String,
     pub hint_helper: String,
@@ -34,8 +33,8 @@ pub struct StrategyQueryData {
     pub last_update: u64,
 }
 
-impl From<ExecutableStrategy> for StrategyQueryData {
-    fn from(value: ExecutableStrategy) -> Self {
+impl From<StableStrategy> for StrategyQueryData {
+    fn from(value: StableStrategy) -> Self {
         Self {
             latest_rate: value.data.latest_rate.to_string(),
             target_min: value.settings.target_min.to_string(),

@@ -9,6 +9,7 @@ use crate::{
         cketh_fee, cketh_ledger, cketh_threshold, ether_recharge_value, CKETH_HELPER,
         CYCLES_DISCOUNT_PERCENTAGE, CYCLES_THRESHOLD, SCALE,
     },
+    strategy::stale::StableStrategy,
     utils::{
         common::{
             extract_call_result, fetch_cketh_balance, fetch_ether_cycles_rate, get_rpc_service,
@@ -20,7 +21,6 @@ use crate::{
 };
 use crate::{
     state::*,
-    strategy::executable::ExecutableStrategy,
     types::{depositCall, SwapResponse},
 };
 use alloy_primitives::{FixedBytes, U256};
@@ -60,7 +60,7 @@ pub async fn recharge_cketh() -> ManagerResult<()> {
 async fn ether_deposit() -> ManagerResult<()> {
     let ether_value = ether_recharge_value();
     let cketh_helper: String = CKETH_HELPER.to_string();
-    let mut strategies: Vec<ExecutableStrategy> = STRATEGY_STATE
+    let mut strategies: Vec<StableStrategy> = STRATEGY_STATE
         .with(|strategies_hashmap| strategies_hashmap.borrow().clone().into_values().collect());
 
     let turn = CKETH_EOA_TURN_COUNTER.with(|counter| counter.get());

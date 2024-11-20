@@ -6,6 +6,7 @@ use ic_exports::ic_cdk::api::time;
 
 use crate::{
     constants::{max_number_of_troves, tolerance_margin_down, tolerance_margin_up, SCALE},
+    journal::JournalEntry,
     state::{MANAGERS, STRATEGY_STATE},
     types::*,
     utils::{
@@ -29,45 +30,13 @@ pub struct ExecutableStrategy {
 }
 
 impl ExecutableStrategy {
-    /// Builder-style setter functions for the struct
-
-    /// Set the strategy settings
-    pub fn settings(&mut self, settings: StrategySettings) -> &mut Self {
-        self.settings = settings;
-        self
-    }
-
-    /// Set the strategy data
-    pub fn data(&mut self, data: StrategyData) -> &mut Self {
-        self.data = data;
-        self
-    }
-
-    /// Utility functions
-
-    /// Mint the strategy by adding it to the state
-    /// "Minting" here means registering the strategy in a persistent state.
-    pub fn mint(&self) -> ManagerResult<Self> {
-        STRATEGY_STATE.with(|strategies| {
-            let mut binding = strategies.borrow_mut();
-            // Ensure that we do not overwrite an existing strategy with the same key
-            if binding.get(&self.settings.key).is_some() {
-                return Err(ManagerError::Custom(
-                    "This strategy key is already mined.".to_string(),
-                ));
-            }
-            binding.insert(self.settings.key, self.clone());
-            Ok(self.clone())
-        })
-    }
-
     /// Replaces the strategy data in the HashMap
     /// This function updates the state of the strategy in the HashMap
     fn apply_change(&self) {
         STRATEGY_STATE.with(|strategies| {
             strategies
                 .borrow_mut()
-                .insert(self.settings.key, self.clone());
+                .insert(self.settings.key, self.into());
         });
     }
 
@@ -524,6 +493,10 @@ impl Drop for ExecutableStrategy {
     /// Ensures that resources are freed and the strategy is no longer locked
     fn drop(&mut self) {
         self.unlock();
+        JournalEntry::new(Ok(()))
+            .note("Executable strategy is dropped.")
+            .strategy(self.settings.key)
+            .commit();
     }
 }
 

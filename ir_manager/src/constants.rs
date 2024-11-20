@@ -7,7 +7,7 @@ use candid::{Nat, Principal};
 pub const SCALE: u128 = 1_000_000_000_000_000_000; // e18
 
 /// Chain ID
-pub const CHAIN_ID: u64 = 1; // Ethereum main-net
+pub const CHAIN_ID: u64 = 11155111; // Ethereum main-net
 
 /// Tolerance margin up formula constant
 const TOLERANCE_MARGIN_UP_RAW: u128 = 2 * SCALE / 100; // 2*10^16 => 20%

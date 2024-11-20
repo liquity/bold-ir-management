@@ -60,7 +60,6 @@ type StrategyInput = record {
   collateral_index : nat;
   multi_trove_getter : text;
   upfront_fee_period : nat;
-  rpc_url : text;
   target_min : nat;
   collateral_registry : text;
 };

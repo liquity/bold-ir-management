@@ -5,8 +5,9 @@ use std::{sync::Arc, time::Duration};
 use crate::constants::MAX_RETRY_ATTEMPTS;
 use crate::journal::JournalEntry;
 use crate::strategy::data::StrategyData;
-use crate::strategy::executable::ExecutableStrategy;
+use crate::strategy::run::run_strategy;
 use crate::strategy::settings::StrategySettings;
+use crate::strategy::stale::StableStrategy;
 use crate::utils::common::*;
 use crate::utils::error::*;
 use crate::utils::evm_rpc::Service;
@@ -86,7 +87,7 @@ impl IrManager {
 
         let strategy_data = StrategyData::default();
 
-        ExecutableStrategy::default()
+        StableStrategy::default()
             .settings(strategy_settings)
             .data(strategy_data)
             .mint()?;
@@ -114,60 +115,20 @@ impl IrManager {
     pub async fn start_timers(&self) -> ManagerResult<()> {
         only_controller(caller())?;
         // Retrieve all strategies for setting up timers
-        let strategies = STRATEGY_STATE.with(|vector_data| vector_data.borrow().clone());
+        let strategies: Vec<u32> = STRATEGY_STATE
+            .with(|vector_data| vector_data.borrow().iter().map(|(key, _)| *key).collect());
+
         let max_retry_attempts = Arc::new(MAX_RETRY_ATTEMPTS);
 
         // Start all strategies immediately
-        strategies
-            .clone()
-            .into_iter()
-            .for_each(|(id, mut strategy)| {
-                let max_retry_attempts = Arc::clone(&max_retry_attempts);
-                spawn(async move {
-                    for turn in 1..=*max_retry_attempts {
-                        let result = strategy.execute().await;
-                        // log the result
-                        JournalEntry::new(result.clone())
-                            .strategy(id)
-                            .turn(turn)
-                            .commit();
-
-                        // Handle success or failure for each strategy execution attempt
-                        match result {
-                            Ok(()) => break,
-                            Err(_) => {
-                                strategy.unlock(); // Unlock on failure
-                            }
-                        }
-                    }
-                });
-            });
+        strategies.clone().into_iter().for_each(|key| {
+            spawn(run_strategy(key));
+        });
 
         // Set timers for each strategy (execute every 1 hour)
-        strategies.into_iter().for_each(|(id, strategy)| {
-            let max_retry_attempts = Arc::clone(&max_retry_attempts);
-
+        strategies.into_iter().for_each(|key| {
             set_timer_interval(Duration::from_secs(3_600), move || {
-                let mut strategy = strategy.clone();
-                let max_retry_attempts = Arc::clone(&max_retry_attempts);
-                spawn(async move {
-                    for turn in 1..=*max_retry_attempts {
-                        let result = strategy.execute().await;
-                        // log the result
-                        JournalEntry::new(result.clone())
-                            .strategy(id)
-                            .turn(turn)
-                            .commit();
-
-                        // Handle success or failure for each strategy execution attempt
-                        match result {
-                            Ok(()) => break, // Exit on success
-                            Err(_) => {
-                                strategy.unlock();
-                            }
-                        }
-                    }
-                });
+                spawn(run_strategy(key));
             });
         });
 
