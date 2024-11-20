@@ -1,4 +1,4 @@
-use crate::strategy::StrategyData;
+use crate::strategy::executable::ExecutableStrategy;
 
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
@@ -32,15 +32,15 @@ pub struct StrategyQueryData {
     pub last_update: u64,
 }
 
-impl From<StrategyData> for StrategyQueryData {
-    fn from(value: StrategyData) -> Self {
+impl From<ExecutableStrategy> for StrategyQueryData {
+    fn from(value: ExecutableStrategy) -> Self {
         Self {
-            latest_rate: value.latest_rate.to_string(),
-            target_min: value.target_min.to_string(),
-            eoa_pk: value.eoa_pk.map(|pk| pk.to_string()),
-            last_update: value.last_update,
-            trove_manager: value.manager.to_string(),
-            batch_manager: value.batch_manager.to_string(),
+            latest_rate: value.data.latest_rate.to_string(),
+            target_min: value.settings.target_min.to_string(),
+            eoa_pk: value.settings.eoa_pk.map(|pk| pk.to_string()),
+            last_update: value.data.last_update,
+            trove_manager: value.settings.manager.to_string(),
+            batch_manager: value.settings.batch_manager.to_string(),
             locked: value.lock,
         }
     }
