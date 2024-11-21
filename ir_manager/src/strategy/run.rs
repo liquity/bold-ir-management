@@ -17,16 +17,17 @@ pub async fn run_strategy(key: u32) {
                 None
             },
             |stable_strategy| {
-                JournalEntry::new(Ok(()))
-                    .note("Executable strategy is created.")
-                    .strategy(key)
-                    .commit();
                 Some(stable_strategy.into())
             },
         )
     });
 
     if let Some(mut executable_strategy) = strategy {
+        JournalEntry::new(Ok(()))
+            .note("Executable strategy is created.")
+            .strategy(key)
+            .commit();
+
         for turn in 1..=MAX_RETRY_ATTEMPTS {
             let result = executable_strategy.execute().await;
 

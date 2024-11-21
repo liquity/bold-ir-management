@@ -10,10 +10,10 @@ use ic_exports::ic_cdk::api::management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId
 use crate::{constants::CHAIN_ID, types::DerivationPath};
 
 use super::{
-    common::get_rpc_services,
+    common::{get_block_tag, get_rpc_services},
     error::{ManagerError, ManagerResult},
     evm_rpc::{SendRawTransactionStatus, Service},
-    gas::{estimate_transaction_fees, get_estimate_gas, FeeEstimates},
+    gas::{estimate_transaction_fees, FeeEstimates},
     signer::sign_eip1559_transaction,
 };
 
@@ -80,14 +80,25 @@ impl TransactionBuilder {
         let chain_id = CHAIN_ID;
         let input = Bytes::from(self.data.clone());
         let rpc: RpcServices = get_rpc_services();
-
+        let block_tag = get_block_tag(rpc_canister, true).await?;
         let FeeEstimates {
             max_fee_per_gas,
             max_priority_fee_per_gas,
-        } = estimate_transaction_fees(9, rpc.clone(), rpc_canister).await?;
+        } = estimate_transaction_fees(9, rpc.clone(), rpc_canister, block_tag.clone()).await?;
 
-        let estimated_gas =
-            get_estimate_gas(rpc_canister, self.data, self.to.clone(), self.from).await?;
+        // let block_number = if let BlockTag::Number(num) = block_tag {
+        //     num
+        // } else {
+        //     unreachable!()
+        // };
+        // let estimated_gas = get_estimate_gas(
+        //     rpc_canister,
+        //     self.data,
+        //     self.to.clone(),
+        //     self.from,
+        //     block_number,
+        // )
+        // .await?;
 
         let key_id = EcdsaKeyId {
             curve: EcdsaCurve::Secp256k1,
@@ -104,7 +115,7 @@ impl TransactionBuilder {
             max_priority_fee_per_gas,
             value: self.value,
             nonce: self.nonce,
-            gas_limit: estimated_gas.to::<u128>(),
+            gas_limit: 450_000, // TODO: THIS NEEDS TO CHANGE. THE GET_ESTIMATE_GAS FN FAILS AT CONSENSUS
             access_list: Default::default(),
             input,
         };

@@ -6,6 +6,7 @@
 use std::borrow::Cow;
 
 use candid::{CandidType, Decode, Encode};
+use chrono::{DateTime, Utc};
 use ic_exports::ic_cdk::api::time;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
@@ -15,7 +16,7 @@ use crate::{state::insert_journal_entry, utils::error::*};
 /// Journal entry
 #[derive(CandidType, Deserialize, Clone)]
 pub struct JournalEntry {
-    pub timestamp: u64,
+    pub date_and_time: String,
     pub entry: ManagerResult<()>,
     pub strategy_id: Option<u32>,
     pub turn: Option<u8>,
@@ -27,8 +28,16 @@ impl JournalEntry {
     /// Create a new instance of a journal entry
     /// Fills the `timestamp` and `entry` fields
     pub fn new(entry: ManagerResult<()>) -> Self {
+        // Convert nanoseconds to seconds
+        let timestamp_s: i64 = time() as i64 / 1_000_000_000;
+
+        let datetime = DateTime::<Utc>::from_timestamp(timestamp_s, 0).expect("Invalid timestamp");
+
+        // Format the DateTime as "dd-mm-yyyy hh:mm:ss"
+        let formatted_date = datetime.format("%d-%m-%Y %H:%M:%S").to_string();
+
         Self {
-            timestamp: time(),
+            date_and_time: formatted_date,
             entry,
             strategy_id: None,
             turn: None,
@@ -70,7 +79,7 @@ impl Storable for JournalEntry {
     }
 
     const BOUND: Bound = Bound::Bounded {
-        max_size: 500,
+        max_size: 16_384, // 16 KB
         is_fixed_size: false,
     };
 }

@@ -7,11 +7,11 @@ type HttpOutcallError = variant {
   };
 };
 type JournalEntry = record {
+  date_and_time : text;
   note : opt text;
   turn : opt nat8;
   entry : Result;
   strategy_id : opt nat32;
-  timestamp : nat64;
 };
 type JsonRpcError = record { code : int64; message : text };
 type ManagerError = variant {
@@ -23,7 +23,7 @@ type ManagerError = variant {
   Arithmetic : text;
   RpcResponseError : RpcError;
   CyclesBalanceAboveRechargingThreshold;
-  NoConsensus;
+  NoConsensus : text;
   NonExistentValue;
 };
 type ProviderError = variant {

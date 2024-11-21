@@ -3,6 +3,7 @@
 use alloy_primitives::U256;
 use candid::Nat;
 use evm_rpc_types::RpcServices;
+use ic_exports::ic_cdk::print;
 use serde_json::json;
 
 use crate::types::*;
@@ -54,10 +55,11 @@ pub async fn estimate_transaction_fees(
     block_count: u8,
     rpc_services: RpcServices,
     evm_rpc: &Service,
+    block_tag: BlockTag,
 ) -> ManagerResult<FeeEstimates> {
     let fee_history = fee_history(
         Nat::from(block_count),
-        BlockTag::Latest,
+        block_tag,
         Some(vec![95]),
         rpc_services,
         evm_rpc,
@@ -103,7 +105,10 @@ pub async fn get_estimate_gas(
     data: Vec<u8>,
     to: String,
     from: String,
+    block_number: Nat,
 ) -> ManagerResult<U256> {
+    let block_number_u128 = u128::try_from(block_number.0)
+        .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
     let args = json!({
         "id": 1,
         "jsonrpc": "2.0",
@@ -112,11 +117,11 @@ pub async fn get_estimate_gas(
             "to": to,
             "data": format!("0x{}", hex::encode(data))
         },
-        "latest"],
+        block_number_u128],
         "method": "eth_estimateGas"
     })
     .to_string();
-
+    print(&args);
     let rpc_canister_response: String = request_with_dynamic_retries(rpc_canister, args).await?;
 
     let decoded_response: EthCallResponse =

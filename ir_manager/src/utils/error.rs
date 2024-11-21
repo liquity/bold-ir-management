@@ -29,7 +29,7 @@ pub enum ManagerError {
     /// No arbitrage opportunity is available.
     CyclesBalanceAboveRechargingThreshold,
     /// No consensus was reached among RPC providers
-    NoConsensus,
+    NoConsensus(String),
     /// Arithmetic error
     Arithmetic(String),
 }

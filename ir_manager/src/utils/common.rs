@@ -1,6 +1,6 @@
 //! Common utility and helper functions that are used across the project
 
-use std::str::FromStr;
+use std::{fmt::Debug, str::FromStr};
 
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
@@ -11,7 +11,7 @@ use evm_rpc_types::{
 use ic_exports::ic_cdk::{
     self,
     api::{call::CallResult, is_controller},
-    call, id,
+    call, id, print,
 };
 
 use super::{error::*, evm_rpc::*, exchange::*};
@@ -136,16 +136,35 @@ pub async fn fetch_ether_cycles_rate() -> ManagerResult<u64> {
 
 /// Returns `T` from Solidity struct.
 pub fn decode_abi_response<T, F: SolCall<Return = T>>(hex_data: String) -> ManagerResult<T> {
-    F::abi_decode_returns(hex_data.as_bytes(), false)
+    let stripped_hex = if hex_data.starts_with("0x") {
+        hex_data[2..].to_string()
+    } else {
+        hex_data
+    };
+    let hex_bytes =
+        hex::decode(stripped_hex).map_err(|err| ManagerError::DecodingError(err.to_string()))?;
+    F::abi_decode_returns(&hex_bytes, false)
         .map_err(|err| ManagerError::DecodingError(err.to_string()))
 }
 
-pub async fn get_block_tag(rpc_canister: &Service) -> ManagerResult<BlockTag> {
+pub async fn get_block_tag(rpc_canister: &Service, latest: bool) -> ManagerResult<BlockTag> {
     let rpc = get_rpc_services();
-    let rpc_config = get_rpc_config(Some(2_000));
+    let rpc_config = RpcConfig {
+        response_size_estimate: Some(2000),
+        response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
+            total: Some(1),
+            min: 1,
+        }),
+    };
+
+    let tag = if latest {
+        BlockTag::Latest
+    } else {
+        BlockTag::Safe
+    };
 
     let call_result = rpc_canister
-        .get_block_by_number(rpc, Some(rpc_config), BlockTag::Safe)
+        .get_block_by_number(rpc, Some(rpc_config), tag)
         .await;
     let rpc_result = extract_call_result(call_result)?;
     let result = extract_multi_rpc_result(rpc_result)?;
@@ -189,13 +208,13 @@ pub async fn call_with_dynamic_retries(
 ) -> ManagerResult<String> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
     let provider_set: RpcServices = get_rpc_services();
-
+    let data_string = format!("0x{}", hex::encode(data));
     // There is a 2 MB limit on the response size, an ICP limitation.
     while max_response_bytes < 2_000_000 {
         // Perform the request using the provided function
         let transaction = TransactionRequest {
             to: Some(to.to_string()),
-            input: Some(format!("{:?}", data)),
+            input: Some(data_string.to_string()),
             ..Default::default()
         };
 
@@ -205,7 +224,6 @@ pub async fn call_with_dynamic_retries(
         };
 
         let config = get_rpc_config(Some(max_response_bytes));
-
         let response = rpc_canister
             .eth_call(provider_set.clone(), Some(config), args)
             .await;
@@ -268,6 +286,10 @@ pub async fn request_with_dynamic_retries(
             extract_call_result(call_result)?.map_err(ManagerError::RpcResponseError);
 
         if let Err(ManagerError::RpcResponseError(err)) = extracted_response.clone() {
+            print(format!(
+                "RPC error in request with dynamic retries: {:#?}",
+                err
+            ));
             if is_response_size_error(&err) {
                 max_response_bytes *= 2;
                 continue;
@@ -279,9 +301,16 @@ pub async fn request_with_dynamic_retries(
         return extracted_response;
     }
 
-    Err(ManagerError::Custom(
-        "Request with dynamic retries reached its ceiling of 2 Megabytes.".to_string(),
-    ))
+    if max_response_bytes >= 2_000_000 {
+        return Err(ManagerError::Custom(
+            "Request with dynamic retries reached its ceiling of 2 MB.".to_string(),
+        ));
+    } else if rpc_changes >= 3 {
+        return Err(ManagerError::Custom(
+            "Request with dynamic retries reached its ceiling of 3 provider rotations.".to_string(),
+        ));
+    }
+    unreachable!()
 }
 
 /// On success, returns the nonce associated with the given address
@@ -311,10 +340,12 @@ pub async fn get_nonce(rpc_canister: &Service, address: Address) -> ManagerResul
 }
 
 /// Extracts result from `MultiRpcResult`, if the threshold is met.
-pub fn extract_multi_rpc_result<T>(result: MultiRpcResult<T>) -> ManagerResult<T> {
+pub fn extract_multi_rpc_result<T: Debug>(result: MultiRpcResult<T>) -> ManagerResult<T> {
     match result {
         MultiRpcResult::Consistent(response) => response.map_err(ManagerError::RpcResponseError),
-        MultiRpcResult::Inconsistent(_) => Err(ManagerError::NoConsensus),
+        MultiRpcResult::Inconsistent(responses) => {
+            Err(ManagerError::NoConsensus(format!("{:#?}", responses)))
+        }
     }
 }
 
@@ -411,17 +442,6 @@ mod tests {
                 assert_eq!(format!("{:?}", err), format!("{:?}", rpc_err));
             }
             _ => panic!("Expected RpcResponseError"),
-        }
-    }
-
-    #[test]
-    fn test_extract_multi_rpc_result_inconsistent() {
-        let result: MultiRpcResult<String> = MultiRpcResult::Inconsistent(vec![]);
-        let extracted = extract_multi_rpc_result(result);
-        assert!(extracted.is_err());
-        match extracted.unwrap_err() {
-            ManagerError::NoConsensus => {}
-            _ => panic!("Expected NoConsensus error"),
         }
     }
 

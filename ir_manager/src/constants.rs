@@ -22,10 +22,10 @@ pub fn tolerance_margin_down() -> U256 {
 }
 
 /// Max number of retry attempts
-pub const MAX_RETRY_ATTEMPTS: u8 = 3;
+pub const MAX_RETRY_ATTEMPTS: u8 = 1;
 
 /// Max number of troves to fetch in one call
-pub const MAX_NUMBER_OF_TROVES: u128 = 100;
+pub const MAX_NUMBER_OF_TROVES: u128 = 50;
 pub fn max_number_of_troves() -> U256 {
     U256::from(MAX_NUMBER_OF_TROVES)
 }
