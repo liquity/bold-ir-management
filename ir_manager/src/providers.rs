@@ -5,6 +5,7 @@ use evm_rpc_types::{MultiRpcResult, RpcServices};
 
 use crate::{
     constants::PROVIDER_COUNT,
+    journal::JournalEntry,
     state::RPC_REPUTATIONS,
     types::ProviderService,
     utils::error::{ManagerError, ManagerResult},
@@ -16,7 +17,7 @@ fn fetch_provider_list() -> Vec<(i64, ProviderService)> {
 }
 
 /// Sorts the providers and returns the top ones.
-pub fn ranked_provider_list() -> Vec<ProviderService> {
+fn ranked_provider_list() -> Vec<ProviderService> {
     let mut provider_list = fetch_provider_list();
 
     // Sort the providers by the first element in descending order
@@ -42,6 +43,12 @@ pub fn increment_provider_score(provider: &ProviderService) {
         // Find the provider in the leaderboard
         if let Some(entry) = leaderboard.iter_mut().find(|(_, p)| p == provider) {
             entry.0 = entry.0.saturating_add(1); // Increment the score, saturating at i64::MAX
+            JournalEntry::new(Ok(()))
+                .note(format!(
+                    "Provider {:#?} reputation change: +1 | new reputation: {}",
+                    provider, entry.0
+                ))
+                .commit();
         }
     });
 }
@@ -54,6 +61,12 @@ pub fn decrement_provider_score(provider: &ProviderService) {
         // Find the provider in the leaderboard
         if let Some(entry) = leaderboard.iter_mut().find(|(_, p)| p == provider) {
             entry.0 = entry.0.saturating_sub(1); // Decrement the score, saturating at i64::MIN
+            JournalEntry::new(Ok(()))
+                .note(format!(
+                    "Provider {:#?} reputation change: -1 | new reputation: {}",
+                    provider, entry.0
+                ))
+                .commit();
         }
     });
 }
