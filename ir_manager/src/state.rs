@@ -6,7 +6,7 @@ use std::{
 };
 
 use alloy_primitives::Address;
-use evm_rpc_types::RpcService;
+use evm_rpc_types::{EthSepoliaService, RpcService};
 use ic_stable_structures::{DefaultMemoryImpl, Vec as StableVec};
 
 use crate::{journal::JournalEntry, strategy::stale::StableStrategy};
@@ -31,6 +31,8 @@ thread_local! {
         RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::Alchemy),
         RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::Ankr),
     ]));
+    /// Reputation-based ranking list of all providers
+    pub static RPC_REPUTATIONS: RefCell<Vec<(i64, EthSepoliaService)>> = RefCell::new(Vec::new());
 }
 
 /// Inserts a new journal entry

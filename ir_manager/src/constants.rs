@@ -73,3 +73,9 @@ const CKETH_LEDGER_RAW: &[u8] = b"ss2fx-dyaaa-aaaar-qacoq-cai";
 pub fn cketh_ledger() -> Principal {
     Principal::from_slice(CKETH_LEDGER_RAW)
 }
+
+/// Number of providers to use
+pub const PROVIDER_COUNT: u8 = 3;
+
+/// Number of providers needed to reach consensus
+pub const PROVIDER_THRESHOLD: u8 = 2;
