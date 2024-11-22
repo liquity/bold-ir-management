@@ -30,8 +30,6 @@ thread_local! {
     pub static RPC_SERVICE: RefCell<VecDeque<RpcService>> = RefCell::new(VecDeque::from([
         RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::Alchemy),
         RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::Ankr),
-        RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::BlockPi),
-        RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::PublicNode)
     ]));
 }
 

@@ -209,7 +209,14 @@ impl ExecutableStrategy {
                     .ok_or(ManagerError::NonExistentValue)?
                     .to_string();
 
-                print("Sending a transaction");
+                JournalEntry::new(Ok(()))
+                    .note(format!(
+                        "Sending a rate adjustment transaction with this rate: {}",
+                        new_rate
+                    ))
+                    .strategy(self.settings.key)
+                    .commit();
+
                 let tx_response = TransactionBuilder::default()
                     .to(self.settings.batch_manager.to_string())
                     .from(eoa)
@@ -220,12 +227,22 @@ impl ExecutableStrategy {
                     .cycles(40_000_000_000_u128)
                     .send(&self.settings.rpc_canister)
                     .await?;
-                print(" transaction sent");
+
+                JournalEntry::new(Ok(()))
+                    .note("The rate adjustment transaction is sent.")
+                    .strategy(self.settings.key)
+                    .commit();
+
                 let result = extract_multi_rpc_result(tx_response)?;
-                print(format!("{:#?}", result));
+
                 // Handle different transaction statuses
                 match result {
                     SendRawTransactionStatus::Ok(a) => {
+                        JournalEntry::new(Ok(()))
+                            .note("The rate adjustment transaction was successful.")
+                            .strategy(self.settings.key)
+                            .commit();
+
                         print(format!("{:#?}", a));
                         self.data.eoa_nonce += 1;
                         self.data.last_update = time();
@@ -235,18 +252,25 @@ impl ExecutableStrategy {
                         return Ok(());
                     }
                     SendRawTransactionStatus::InsufficientFunds => {
-                        return Err(ManagerError::Custom(format!(
-                            "[GAS] Strategy {}: Not enough Ether balance to cover the gas fee.",
-                            self.settings.key
-                        )))
+                        return Err(ManagerError::Custom(
+                            "Not enough balance to cover the gas fee.".to_string(),
+                        ))
                     }
                     SendRawTransactionStatus::NonceTooLow
                     | SendRawTransactionStatus::NonceTooHigh => {
-                        print(" updating the nonce");
+                        JournalEntry::new(Ok(()))
+                            .note("The rate adjustment transaction failed due to wrong nonce. Adjusting the nonce...")
+                            .strategy(self.settings.key)
+                            .commit();
                         self.update_nonce().await?;
                     }
                 }
             }
+        } else {
+            JournalEntry::new(Ok(()))
+                            .note("The rate adjustment requirements were not met. No need to submit a transaction.")
+                            .strategy(self.settings.key)
+                            .commit();
         }
 
         // Unlock the strategy after attempting execution

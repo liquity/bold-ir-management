@@ -223,6 +223,8 @@ pub async fn call_with_dynamic_retries(
             block: Some(block.clone()),
         };
 
+        print(format!("{:#?}", args));
+
         let config = get_rpc_config(Some(max_response_bytes));
         let response = rpc_canister
             .eth_call(provider_set.clone(), Some(config), args)
