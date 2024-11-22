@@ -196,6 +196,24 @@ impl IrManager {
         Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
     }
 
+    #[query]
+    pub async fn get_strategy_logs(
+        &self,
+        depth: u64,
+        strategy_key: u32,
+    ) -> ManagerResult<Vec<JournalEntry>> {
+        // Filter the journal entries by strategy_key
+        let entries: Vec<JournalEntry> = JOURNAL.with(|n| {
+            n.borrow()
+                .iter()
+                .filter(|entry| entry.strategy_id == Some(strategy_key))
+                .collect()
+        });
+
+        // Limit the results to the desired depth
+        Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
+    }
+
     /// Generates the IDL for the canister interface.
     pub fn idl() -> Idl {
         generate_idl!()

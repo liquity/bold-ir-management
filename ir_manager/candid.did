@@ -78,6 +78,7 @@ service : {
   get_logs : (nat64) -> (Result_1) query;
   get_strategies : () -> (vec StrategyQueryData);
   get_strategy_address : (nat32) -> (opt text);
+  get_strategy_logs : (nat64, nat32) -> (Result_1) query;
   mint_strategy : (StrategyInput) -> (Result_2);
   set_batch_manager : (nat32, text) -> (Result);
   start_timers : () -> (Result);
