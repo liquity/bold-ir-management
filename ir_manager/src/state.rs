@@ -32,7 +32,7 @@ thread_local! {
         RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::Ankr),
     ]));
     /// Reputation-based ranking list of all providers
-    pub static RPC_REPUTATIONS: RefCell<Vec<(i64, EthSepoliaService)>> = RefCell::new(Vec::new());
+    pub static RPC_REPUTATIONS: RefCell<Vec<(i64, EthSepoliaService)>> = RefCell::new(vec![(0, EthSepoliaService::Ankr), (0, EthSepoliaService::BlockPi), (0, EthSepoliaService::PublicNode), (0, EthSepoliaService::Sepolia), (0, EthSepoliaService::Alchemy)]);
 }
 
 /// Inserts a new journal entry

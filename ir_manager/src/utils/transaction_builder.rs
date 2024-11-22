@@ -116,7 +116,7 @@ impl TransactionBuilder {
             max_priority_fee_per_gas,
             value: self.value,
             nonce: self.nonce,
-            gas_limit: 450_000, // TODO: THIS NEEDS TO CHANGE. THE GET_ESTIMATE_GAS FN FAILS AT CONSENSUS
+            gas_limit: 700_000, // TODO: THIS NEEDS TO CHANGE. THE GET_ESTIMATE_GAS FN FAILS AT CONSENSUS
             access_list: Default::default(),
             input,
         };

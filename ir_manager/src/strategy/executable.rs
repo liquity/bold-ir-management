@@ -75,7 +75,8 @@ impl ExecutableStrategy {
         // print(format!("Reached before block tag"));
 
         // Fetch the current block tag
-        let block_tag = get_block_tag(&self.settings.rpc_canister, false).await?;
+        // let block_tag = get_block_tag(&self.settings.rpc_canister, false).await?;
+        let block_tag = BlockTag::Number(candid::Nat::from(7131640_u64));
 
         // print(format!("Reached after block tag: {:#?}", &block_tag));
 

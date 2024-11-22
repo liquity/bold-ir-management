@@ -23,16 +23,29 @@ fn ranked_provider_list() -> Vec<ProviderService> {
     // Sort the providers by the first element in descending order
     provider_list.sort_by(|a, b| b.0.cmp(&a.0));
 
-    // Extract only the `ProviderService` values
-    let mut provider_list: Vec<ProviderService> =
-        provider_list.into_iter().map(|(_, x)| x).collect();
+    // Extract the top PROVIDER_COUNT providers
+    let mut result = Vec::new();
+    let mut count = 0;
 
-    // Truncate the list to a maximum of `PROVIDER_COUNT`
-    if provider_list.len() > PROVIDER_COUNT as usize {
-        provider_list.truncate(PROVIDER_COUNT as usize);
+    for i in 0..provider_list.len() {
+        if count >= PROVIDER_COUNT as usize {
+            break;
+        }
+
+        result.push(provider_list[i].1.clone());
+        count += 1;
+
+        // Check if the next provider is exactly one behind the current one
+        if i + 1 < provider_list.len() && count < PROVIDER_COUNT as usize {
+            if provider_list[i].0 - provider_list[i + 1].0 == 1 {
+                result.push(provider_list[i + 1].1.clone());
+                count += 1;
+            }
+        }
     }
 
-    provider_list
+    result.truncate(PROVIDER_COUNT as usize);
+    result
 }
 
 /// Increments the score of a specific provider by 1, using saturating arithmetic
@@ -76,6 +89,13 @@ pub fn get_ranked_rpc_providers() -> RpcServices {
     let ranked_provider_list = ranked_provider_list();
 
     RpcServices::EthSepolia(Some(ranked_provider_list))
+}
+
+/// Returns the top ranking provider from the leaderboard
+pub fn get_ranked_rpc_provider() -> RpcServices {
+    let ranked_provider_list = ranked_provider_list();
+
+    RpcServices::EthSepolia(Some(ranked_provider_list[..1].to_vec()))
 }
 
 /// Updates the provider rankings based on the providers used in a call and the outcome of that call.

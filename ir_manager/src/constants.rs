@@ -75,7 +75,7 @@ pub fn cketh_ledger() -> Principal {
 }
 
 /// Number of providers to use
-pub const PROVIDER_COUNT: u8 = 3;
+pub const PROVIDER_COUNT: u8 = 1;
 
 /// Number of providers needed to reach consensus
-pub const PROVIDER_THRESHOLD: u8 = 2;
+pub const PROVIDER_THRESHOLD: u8 = 1;

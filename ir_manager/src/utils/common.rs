@@ -21,7 +21,7 @@ use crate::{
         cketh_ledger, exchange_rate_canister, DEFAULT_MAX_RESPONSE_BYTES, PROVIDER_COUNT,
         PROVIDER_THRESHOLD, SCALE,
     },
-    providers::{extract_multi_rpc_result, get_ranked_rpc_providers},
+    providers::{extract_multi_rpc_result, get_ranked_rpc_provider, get_ranked_rpc_providers},
     state::RPC_SERVICE,
     types::Account,
 };
@@ -152,7 +152,7 @@ pub fn decode_abi_response<T, F: SolCall<Return = T>>(hex_data: String) -> Manag
 }
 
 pub async fn get_block_tag(rpc_canister: &Service, latest: bool) -> ManagerResult<BlockTag> {
-    let rpc = get_ranked_rpc_providers();
+    let rpc = get_ranked_rpc_provider();
     let rpc_config = RpcConfig {
         response_size_estimate: Some(2000),
         response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
@@ -328,8 +328,8 @@ pub async fn get_nonce(rpc_canister: &Service, address: Address) -> ManagerResul
     let config = RpcConfig {
         response_size_estimate: Some(10_000),
         response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
-            total: Some(3),
-            min: 2,
+            total: Some(PROVIDER_COUNT),
+            min: PROVIDER_THRESHOLD,
         }),
     };
 
