@@ -6,9 +6,10 @@ use evm_rpc_types::RpcServices;
 use ic_exports::ic_cdk::print;
 use serde_json::json;
 
+use crate::providers::extract_multi_rpc_result;
 use crate::types::*;
 
-use super::common::{extract_call_result, extract_multi_rpc_result, request_with_dynamic_retries};
+use super::common::{extract_call_result, request_with_dynamic_retries};
 use super::error::{ManagerError, ManagerResult};
 use super::evm_rpc::{BlockTag, FeeHistory, FeeHistoryArgs, Service};
 
@@ -36,12 +37,12 @@ pub async fn fee_history(
     let cycles = 25_000_000_000;
 
     let call_result = evm_rpc
-        .eth_fee_history(rpc_services, None, fee_history_args, cycles)
+        .eth_fee_history(rpc_services.clone(), None, fee_history_args, cycles)
         .await;
 
     let canister_response = extract_call_result(call_result)?;
 
-    extract_multi_rpc_result(canister_response)
+    extract_multi_rpc_result(rpc_services, canister_response)
 }
 
 fn median_index(length: usize) -> usize {

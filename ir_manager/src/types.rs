@@ -4,10 +4,14 @@ use crate::strategy::stale::StableStrategy;
 
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
+use evm_rpc_types::EthSepoliaService;
 use serde::{Deserialize, Serialize};
 
 /// Derivation path for the tECDSA signatures
 pub type DerivationPath = Vec<Vec<u8>>;
+
+/// Provider service to use
+pub type ProviderService = EthSepoliaService;
 
 #[derive(CandidType, Deserialize)]
 pub struct StrategyInput {

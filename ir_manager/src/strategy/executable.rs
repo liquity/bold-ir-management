@@ -217,7 +217,7 @@ impl ExecutableStrategy {
                     .strategy(self.settings.key)
                     .commit();
 
-                let tx_response = TransactionBuilder::default()
+                let result = TransactionBuilder::default()
                     .to(self.settings.batch_manager.to_string())
                     .from(eoa)
                     .data(payload.abi_encode())
@@ -232,8 +232,6 @@ impl ExecutableStrategy {
                     .note("The rate adjustment transaction is sent.")
                     .strategy(self.settings.key)
                     .commit();
-
-                let result = extract_multi_rpc_result(tx_response)?;
 
                 // Handle different transaction statuses
                 match result {
