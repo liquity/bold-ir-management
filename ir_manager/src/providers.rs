@@ -32,15 +32,16 @@ fn ranked_provider_list() -> Vec<ProviderService> {
             break;
         }
 
-        result.push(provider_list[i].1.clone());
+        result.push(provider_list[i].1);
         count += 1;
 
         // Check if the next provider is exactly one behind the current one
-        if i + 1 < provider_list.len() && count < PROVIDER_COUNT as usize {
-            if provider_list[i].0 - provider_list[i + 1].0 == 1 {
-                result.push(provider_list[i + 1].1.clone());
-                count += 1;
-            }
+        if i + 1 < provider_list.len()
+            && count < PROVIDER_COUNT as usize
+            && provider_list[i].0 - provider_list[i + 1].0 == 1
+        {
+            result.push(provider_list[i + 1].1);
+            count += 1;
         }
     }
 
@@ -106,25 +107,22 @@ pub fn extract_multi_rpc_result<T: Debug>(
     match result {
         MultiRpcResult::Consistent(response) => {
             if let RpcServices::EthSepolia(services) = providers {
-                let providers_unwrapped = services.unwrap();
+                let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
                 providers_unwrapped
                     .iter()
-                    .for_each(|provider| increment_provider_score(provider));
+                    .for_each(increment_provider_score);
             }
 
-            return response.map_err(ManagerError::RpcResponseError);
+            response.map_err(ManagerError::RpcResponseError)
         }
         MultiRpcResult::Inconsistent(responses) => {
             responses.iter().for_each(|(provider, result)| {
-                match provider {
-                    evm_rpc_types::RpcService::EthSepolia(eth_sepolia_service) => {
-                        if result.is_ok() {
-                            increment_provider_score(eth_sepolia_service);
-                        } else {
-                            decrement_provider_score(eth_sepolia_service);
-                        }
+                if let evm_rpc_types::RpcService::EthSepolia(eth_sepolia_service) = provider {
+                    if result.is_ok() {
+                        increment_provider_score(eth_sepolia_service);
+                    } else {
+                        decrement_provider_score(eth_sepolia_service);
                     }
-                    _ => {} // Unsupported/unexpected provider...
                 }
             });
             Err(ManagerError::NoConsensus(format!("{:#?}", responses)))

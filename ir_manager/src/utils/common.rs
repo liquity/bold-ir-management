@@ -140,11 +140,7 @@ pub async fn fetch_ether_cycles_rate() -> ManagerResult<u64> {
 
 /// Returns `T` from Solidity struct.
 pub fn decode_abi_response<T, F: SolCall<Return = T>>(hex_data: String) -> ManagerResult<T> {
-    let stripped_hex = if hex_data.starts_with("0x") {
-        hex_data[2..].to_string()
-    } else {
-        hex_data
-    };
+    let stripped_hex = hex_data.strip_prefix("0x").unwrap_or(&hex_data);
     let hex_bytes =
         hex::decode(stripped_hex).map_err(|err| ManagerError::DecodingError(err.to_string()))?;
     F::abi_decode_returns(&hex_bytes, false)

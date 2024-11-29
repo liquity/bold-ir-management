@@ -460,9 +460,7 @@ impl ExecutableStrategy {
             }
         } else {
             JournalEntry::new(Ok(()), LogType::Info)
-                .note(format!(
-                    "No trove has delegated its rate adjustment to this manager."
-                ))
+                .note("No trove has delegated its rate adjustment to this manager.")
                 .strategy(self.settings.key)
                 .commit();
         }
