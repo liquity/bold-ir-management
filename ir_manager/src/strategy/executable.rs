@@ -1,12 +1,14 @@
 //! The executable strategy wrapper that runs the strategy.
 
+use std::ops::Div;
+
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use ic_exports::ic_cdk::{api::time, print};
 
 use crate::{
-    constants::{max_number_of_troves, tolerance_margin_down, tolerance_margin_up, SCALE},
-    journal::JournalEntry,
+    constants::{max_number_of_troves, scale, tolerance_margin_down, tolerance_margin_up},
+    journal::{JournalEntry, LogType},
     state::{MANAGERS, STRATEGY_STATE},
     types::*,
     utils::{
@@ -72,54 +74,35 @@ impl ExecutableStrategy {
     pub async fn execute(&mut self) -> ManagerResult<()> {
         // Lock the strategy to prevent concurrent execution
         self.lock()?;
-        // print(format!("Reached before block tag"));
 
         // Fetch the current block tag
-        // let block_tag = get_block_tag(&self.settings.rpc_canister, false).await?;
-        let block_tag = BlockTag::Number(candid::Nat::from(7131640_u64));
-
-        // print(format!("Reached after block tag: {:#?}", &block_tag));
+        let block_tag = get_block_tag(&self.settings.rpc_canister, true).await?;
+        // let block_tag = BlockTag::Number(candid::Nat::from(7131640_u64));
+        JournalEntry::new(Ok(()), LogType::Info)
+            .note(format!("Chose block tag {:?}.", block_tag))
+            .strategy(self.settings.key)
+            .commit();
 
         // Calculate time since last update
-        let time_since_last_update = U256::from(time() - self.data.last_update);
-        // print(format!(
-        //     "Reached after time since last update: {:#?}",
-        //     &time_since_last_update
-        // ));
-        // print(format!("Reached before entire_system_debt"));
+        let time_since_last_update = U256::from(time().div(1_000_000_000) - self.data.last_update);
 
         // Fetch the entire system debt from the blockchain
         let entire_system_debt: U256 = self.fetch_entire_system_debt(block_tag.clone()).await?;
-        // print(format!(
-        //     "Reached after entire_system_debt: {:#?}",
-        //     entire_system_debt
-        // ));
-        // print(format!(
-        //     "Reached before unbacked_portion_price_and_redeemability"
-        // ));
 
         // Fetch the unbacked portion price and redeemability status
         let unbacked_portion_price_and_redeemability = self
             .fetch_unbacked_portion_price_and_redeemablity(None, block_tag.clone())
             .await?;
-        // print(format!(
-        //     "Reached after unbacked_portion_price_and_redeemability: {:#?}",
-        //     unbacked_portion_price_and_redeemability._0
-        // ));
 
         // Fetch and collect troves
         let mut troves: Vec<DebtPerInterestRate> = vec![];
         let mut troves_index = U256::from(0);
         let max_count = max_number_of_troves();
         loop {
-            // print(format!("Reached before fetched_troves"));
             let fetched_troves = self
                 .fetch_multiple_sorted_troves(troves_index, max_count, block_tag.clone())
                 .await?;
-            // print(format!(
-            //     "Reached after fetched_troves: {:#?}",
-            //     fetched_troves[0].debt
-            // ));
+
             let last_trove = fetched_troves
                 .last()
                 .ok_or(ManagerError::NonExistentValue)?
@@ -130,15 +113,9 @@ impl ExecutableStrategy {
             }
             troves_index += max_count;
         }
-        // print(format!("Reached before redemption_fee"));
 
         // Fetch the redemption fee rate
         let redemption_fee = self.fetch_redemption_rate(block_tag.clone()).await?;
-        // print(format!(
-        //     "Reached after redemption_fee: {:#?}",
-        //     redemption_fee
-        // ));
-        // print(format!("Reached before total_unbacked"));
 
         // Calculate the total unbacked collateral
         let total_unbacked = self
@@ -147,33 +124,31 @@ impl ExecutableStrategy {
                 block_tag.clone(),
             )
             .await?;
-        // print(format!(
-        //     "Reached after total_unbacked: {:#?}",
-        //     total_unbacked
-        // ));
-        // print(format!("Reached before redemption_split"));
 
         // Calculate redemption split and maximum redeemable against collateral
-        let redemption_split = unbacked_portion_price_and_redeemability
+        let maximum_redeemable_against_collateral = unbacked_portion_price_and_redeemability
             ._0
+            .saturating_mul(entire_system_debt)
             .checked_div(total_unbacked)
             .ok_or(arithmetic_err("Total unbacked was 0."))?;
-        let maximum_redeemable_against_collateral =
-            redemption_split.saturating_mul(entire_system_debt);
-        // print(format!(
-        //     "Reached after redemption_split: {:#?}",
-        //     redemption_split
-        // ));
-        // print(format!("Reached before target_percentage"));
-        // Calculate the target percentage based on redemption fee and settings
-        let exponent: U256 = U256::from(5 * 1_000_000_000_000_000_u128)
-            .checked_div(redemption_fee)
-            .ok_or(arithmetic_err("redemption fee was 0."))?;
-        let target_percentage = self.settings.target_min.pow(exponent);
-        // print(format!(
-        //     "Reached after target_percentage: {:#?}",
-        //     target_percentage
-        // ));
+
+        let target_percentage_numerator = self
+            .settings
+            .target_min
+            .saturating_mul(U256::from(2))
+            .saturating_mul(redemption_fee);
+
+        let target_percentage_denominator =
+            redemption_fee.saturating_add(U256::from(5 * 10_u128.pow(15)));
+        let target_percentage = target_percentage_numerator
+            .checked_div(target_percentage_denominator)
+            .ok_or(arithmetic_err("Target percentage's denominator was zero."))?;
+
+        JournalEntry::new(Ok(()), LogType::Info)
+            .note(format!("target_percentage({}) || numerator({})=(2*2*10^17)*redemption_fee, redemption_fee {} || 5*10^15 + redemption_fee {}", target_percentage, target_percentage_numerator, redemption_fee, target_percentage_denominator))
+            .strategy(self.settings.key)
+            .commit();
+
         // Execute the strategy logic based on calculated values and collected troves
         let strategy_result = self
             .run_strategy(
@@ -210,9 +185,9 @@ impl ExecutableStrategy {
                     .ok_or(ManagerError::NonExistentValue)?
                     .to_string();
 
-                JournalEntry::new(Ok(()))
+                JournalEntry::new(Ok(()), LogType::Info)
                     .note(format!(
-                        "Sending a rate adjustment transaction with this rate: {}",
+                        "Sending a rate adjustment transaction with rate: {}",
                         new_rate
                     ))
                     .strategy(self.settings.key)
@@ -229,7 +204,7 @@ impl ExecutableStrategy {
                     .send(&self.settings.rpc_canister)
                     .await?;
 
-                JournalEntry::new(Ok(()))
+                JournalEntry::new(Ok(()), LogType::Info)
                     .note("The rate adjustment transaction is sent.")
                     .strategy(self.settings.key)
                     .commit();
@@ -237,14 +212,14 @@ impl ExecutableStrategy {
                 // Handle different transaction statuses
                 match result {
                     SendRawTransactionStatus::Ok(a) => {
-                        JournalEntry::new(Ok(()))
+                        JournalEntry::new(Ok(()), LogType::RateAdjustment)
                             .note("The rate adjustment transaction was successful.")
                             .strategy(self.settings.key)
                             .commit();
 
                         print(format!("{:#?}", a));
                         self.data.eoa_nonce += 1;
-                        self.data.last_update = time();
+                        self.data.last_update = time() / 1_000_000_000;
                         self.data.latest_rate = new_rate;
                         self.apply_change();
                         self.unlock();
@@ -257,7 +232,7 @@ impl ExecutableStrategy {
                     }
                     SendRawTransactionStatus::NonceTooLow
                     | SendRawTransactionStatus::NonceTooHigh => {
-                        JournalEntry::new(Ok(()))
+                        JournalEntry::new(Ok(()), LogType::Info)
                             .note("The rate adjustment transaction failed due to wrong nonce. Adjusting the nonce...")
                             .strategy(self.settings.key)
                             .commit();
@@ -266,7 +241,7 @@ impl ExecutableStrategy {
                 }
             }
         } else {
-            JournalEntry::new(Ok(()))
+            JournalEntry::new(Ok(()), LogType::Info)
                             .note("The rate adjustment requirements were not met. No need to submit a transaction.")
                             .strategy(self.settings.key)
                             .commit();
@@ -424,12 +399,14 @@ impl ExecutableStrategy {
     }
 
     /// Returns the current debt in front of the user's batch.
-    fn get_current_debt_in_front(&self, troves: Vec<DebtPerInterestRate>) -> Option<U256> {
+    fn get_current_debt_in_front(&mut self, troves: Vec<DebtPerInterestRate>) -> Option<U256> {
         let mut counted_debt = U256::from(0);
 
         for trove in troves.iter() {
             if trove.interestBatchManager == self.settings.batch_manager {
-                return Some(trove.debt);
+                // update the current interest rate
+                self.data.latest_rate(trove.interestRate);
+                return Some(counted_debt);
             }
             counted_debt = counted_debt.saturating_add(trove.debt);
         }
@@ -438,7 +415,7 @@ impl ExecutableStrategy {
 
     /// Runs the strategy by analyzing troves and calculating changes if necessary.
     async fn run_strategy(
-        &self,
+        &mut self,
         troves: Vec<DebtPerInterestRate>,
         time_since_last_update: U256,
         upfront_fee_period: U256,
@@ -447,6 +424,11 @@ impl ExecutableStrategy {
         block_tag: BlockTag,
     ) -> ManagerResult<Option<(U256, U256)>> {
         if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
+            JournalEntry::new(Ok(()), LogType::Info)
+                .note(format!("current debt in front: {}", current_debt_in_front))
+                .strategy(self.settings.key)
+                .commit();
+
             // Calculate new rate
             let new_rate = self
                 .calculate_new_rate(
@@ -476,6 +458,13 @@ impl ExecutableStrategy {
             )?) {
                 return Ok(Some((new_rate, upfront_fee)));
             }
+        } else {
+            JournalEntry::new(Ok(()), LogType::Info)
+                .note(format!(
+                    "No trove has delegated its rate adjustment to this manager."
+                ))
+                .strategy(self.settings.key)
+                .commit();
         }
 
         Ok(None)
@@ -490,14 +479,19 @@ impl ExecutableStrategy {
     ) -> ManagerResult<U256> {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);
-        for trove in troves.iter() {
-            if counted_debt > target_percentage * maximum_redeemable_against_collateral {
+        let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
+
+        for trove in troves
+            .iter()
+            .filter(|t| t.interestBatchManager != self.settings.batch_manager)
+        {
+            counted_debt += trove.debt;
+            if counted_debt > target_debt {
                 new_rate = trove
                     .interestRate
                     .saturating_add(U256::from(100_000_000_000_000_u128)); // Increment rate by 1 bps (0.01%)
                 break;
             }
-            counted_debt += trove.debt;
         }
         Ok(new_rate)
     }
@@ -509,11 +503,18 @@ impl ExecutableStrategy {
         maximum_redeemable_against_collateral: U256,
         target_percentage: U256,
     ) -> bool {
-        if debt_in_front
-            < (U256::from(SCALE) - tolerance_margin_down())
-                * target_percentage
-                * maximum_redeemable_against_collateral
-        {
+        let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
+        let target_debt_with_margin = target_debt * (scale() - tolerance_margin_down()) / scale();
+
+        JournalEntry::new(Ok(()), LogType::Info)
+            .note(format!(
+                "increase check: {} < {}",
+                debt_in_front, target_debt_with_margin
+            ))
+            .strategy(self.settings.key)
+            .commit();
+
+        if debt_in_front < target_debt_with_margin {
             return true;
         }
         false
@@ -526,11 +527,18 @@ impl ExecutableStrategy {
         maximum_redeemable_against_collateral: U256,
         target_percentage: U256,
     ) -> bool {
-        if debt_in_front
-            > (U256::from(SCALE) + tolerance_margin_up())
-                * maximum_redeemable_against_collateral
-                * target_percentage
-        {
+        let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
+        let target_debt_with_margin = target_debt * (scale() + tolerance_margin_up()) / scale();
+
+        JournalEntry::new(Ok(()), LogType::Info)
+            .note(format!(
+                "first decrease check: {} > {}",
+                debt_in_front, target_debt_with_margin
+            ))
+            .strategy(self.settings.key)
+            .commit();
+
+        if debt_in_front > target_debt_with_margin {
             return true;
         }
         false
@@ -547,9 +555,15 @@ impl ExecutableStrategy {
         let r = time_since_last_update
             .checked_div(upfront_fee_period)
             .ok_or(arithmetic_err("Upfront fee period was 0."))?;
+        JournalEntry::new(Ok(()), LogType::Info)
+        .note(format!("second decrease check: time since last update {} upfront fee period {} latest rate {} new rate {} average rate {}", time_since_last_update, upfront_fee_period, self.data.latest_rate, new_rate, average_rate))
+        .strategy(self.settings.key)
+        .commit();
+
         if (U256::from(1) - r) * (self.data.latest_rate - new_rate) > average_rate
             || time_since_last_update > upfront_fee_period
         {
+            print("second decrease check passed");
             return Ok(true);
         }
         Ok(false)
@@ -561,7 +575,7 @@ impl Drop for ExecutableStrategy {
     /// Ensures that resources are freed and the strategy is no longer locked
     fn drop(&mut self) {
         self.unlock();
-        JournalEntry::new(Ok(()))
+        JournalEntry::new(Ok(()), LogType::Info)
             .note("Executable strategy is dropped.")
             .strategy(self.settings.key)
             .commit();

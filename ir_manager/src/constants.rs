@@ -5,18 +5,21 @@ use candid::{Nat, Principal};
 
 /// Scale used for fixed point arithmetic
 pub const SCALE: u128 = 1_000_000_000_000_000_000; // e18
+pub fn scale() -> U256 {
+    U256::from(SCALE)
+}
 
 /// Chain ID
 pub const CHAIN_ID: u64 = 11155111; // Ethereum main-net
 
 /// Tolerance margin up formula constant
-const TOLERANCE_MARGIN_UP_RAW: u128 = 2 * SCALE / 100; // 2*10^16 => 20%
+const TOLERANCE_MARGIN_UP_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
 pub fn tolerance_margin_up() -> U256 {
     U256::from(TOLERANCE_MARGIN_UP_RAW)
 }
 
 /// Tolerance margin down formula constant
-const TOLERANCE_MARGIN_DOWN_RAW: u128 = 2 * SCALE / 100; // 2*10^16 => 20%
+const TOLERANCE_MARGIN_DOWN_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
 pub fn tolerance_margin_down() -> U256 {
     U256::from(TOLERANCE_MARGIN_DOWN_RAW)
 }
@@ -75,7 +78,7 @@ pub fn cketh_ledger() -> Principal {
 }
 
 /// Number of providers to use
-pub const PROVIDER_COUNT: u8 = 1;
+pub const PROVIDER_COUNT: u8 = 3;
 
 /// Number of providers needed to reach consensus
-pub const PROVIDER_THRESHOLD: u8 = 1;
+pub const PROVIDER_THRESHOLD: u8 = 2;

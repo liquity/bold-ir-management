@@ -87,19 +87,9 @@ impl TransactionBuilder {
             max_priority_fee_per_gas,
         } = estimate_transaction_fees(9, rpc.clone(), rpc_canister, block_tag.clone()).await?;
 
-        // let block_number = if let BlockTag::Number(num) = block_tag {
-        //     num
-        // } else {
-        //     unreachable!()
-        // };
-        // let estimated_gas = get_estimate_gas(
-        //     rpc_canister,
-        //     self.data,
-        //     self.to.clone(),
-        //     self.from,
-        //     block_number,
-        // )
-        // .await?;
+        let estimated_gas =
+            super::gas::get_estimate_gas(rpc_canister, self.data, self.to.clone(), self.from)
+                .await?;
 
         let key_id = EcdsaKeyId {
             curve: EcdsaCurve::Secp256k1,
@@ -116,7 +106,7 @@ impl TransactionBuilder {
             max_priority_fee_per_gas,
             value: self.value,
             nonce: self.nonce,
-            gas_limit: 700_000, // TODO: THIS NEEDS TO CHANGE. THE GET_ESTIMATE_GAS FN FAILS AT CONSENSUS
+            gas_limit: estimated_gas.to::<u128>(), // TODO: THIS NEEDS TO CHANGE. THE GET_ESTIMATE_GAS FN FAILS AT CONSENSUS
             access_list: Default::default(),
             input,
         };

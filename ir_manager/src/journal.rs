@@ -13,6 +13,15 @@ use serde::Deserialize;
 
 use crate::{state::insert_journal_entry, utils::error::*};
 
+/// Log type
+#[derive(PartialEq, CandidType, Deserialize, Clone)]
+pub enum LogType {
+    RateAdjustment,
+    ExecutionResult,
+    Info,
+    ProviderReputationChange,
+}
+
 /// Journal entry
 #[derive(CandidType, Deserialize, Clone)]
 pub struct JournalEntry {
@@ -21,13 +30,14 @@ pub struct JournalEntry {
     pub strategy_id: Option<u32>,
     pub turn: Option<u8>,
     pub note: Option<String>,
+    pub log_type: LogType,
 }
 
 /// Builder for journal entries
 impl JournalEntry {
     /// Create a new instance of a journal entry
     /// Fills the `timestamp` and `entry` fields
-    pub fn new(entry: ManagerResult<()>) -> Self {
+    pub fn new(entry: ManagerResult<()>, log_type: LogType) -> Self {
         // Convert nanoseconds to seconds
         let timestamp_s: i64 = time() as i64 / 1_000_000_000;
 
@@ -42,6 +52,7 @@ impl JournalEntry {
             strategy_id: None,
             turn: None,
             note: None,
+            log_type,
         }
     }
 

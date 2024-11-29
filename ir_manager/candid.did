@@ -10,10 +10,17 @@ type JournalEntry = record {
   date_and_time : text;
   note : opt text;
   turn : opt nat8;
+  log_type : LogType;
   entry : Result;
   strategy_id : opt nat32;
 };
 type JsonRpcError = record { code : int64; message : text };
+type LogType = variant {
+  Info;
+  RateAdjustment;
+  ProviderReputationChange;
+  ExecutionResult;
+};
 type ManagerError = variant {
   CallResult : record { RejectionCode; text };
   Custom : text;
@@ -75,6 +82,7 @@ type StrategyQueryData = record {
 type SwapResponse = record { returning_ether : nat; accepted_cycles : nat };
 type ValidationError = variant { Custom : text; InvalidHex : text };
 service : {
+  get_filtered_strategy_logs : (nat64, nat32, LogType) -> (Result_1) query;
   get_logs : (nat64) -> (Result_1) query;
   get_strategies : () -> (vec StrategyQueryData);
   get_strategy_address : (nat32) -> (opt text);

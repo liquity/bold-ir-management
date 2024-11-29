@@ -173,7 +173,7 @@ pub async fn get_block_tag(rpc_canister: &Service, latest: bool) -> ManagerResul
     let rpc_result = extract_call_result(call_result)?;
     let result = extract_multi_rpc_result(rpc, rpc_result)?;
 
-    Ok(BlockTag::Number(result.number))
+    Ok(BlockTag::Number(result.number - Nat::from(32_u32))) // todo: change this line, returns -32 even if the tag is latest
 }
 
 fn is_response_size_error(err: &RpcError) -> bool {
@@ -222,8 +222,6 @@ pub async fn call_with_dynamic_retries(
             transaction,
             block: Some(block.clone()),
         };
-
-        print(format!("{:#?}", args));
 
         let config = get_rpc_config(Some(max_response_bytes));
         let response = rpc_canister

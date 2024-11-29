@@ -56,7 +56,7 @@ pub fn increment_provider_score(provider: &ProviderService) {
         // Find the provider in the leaderboard
         if let Some(entry) = leaderboard.iter_mut().find(|(_, p)| p == provider) {
             entry.0 = entry.0.saturating_add(1); // Increment the score, saturating at i64::MAX
-            JournalEntry::new(Ok(()))
+            JournalEntry::new(Ok(()), crate::journal::LogType::ProviderReputationChange)
                 .note(format!(
                     "Provider {:#?} reputation change: +1 | new reputation: {}",
                     provider, entry.0
@@ -74,7 +74,7 @@ pub fn decrement_provider_score(provider: &ProviderService) {
         // Find the provider in the leaderboard
         if let Some(entry) = leaderboard.iter_mut().find(|(_, p)| p == provider) {
             entry.0 = entry.0.saturating_sub(1); // Decrement the score, saturating at i64::MIN
-            JournalEntry::new(Ok(()))
+            JournalEntry::new(Ok(()), crate::journal::LogType::ProviderReputationChange)
                 .note(format!(
                     "Provider {:#?} reputation change: -1 | new reputation: {}",
                     provider, entry.0

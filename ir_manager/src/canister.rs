@@ -4,6 +4,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::constants::MAX_RETRY_ATTEMPTS;
 use crate::journal::JournalEntry;
+use crate::journal::LogType;
 use crate::strategy::data::StrategyData;
 use crate::strategy::run::run_strategy;
 use crate::strategy::settings::StrategySettings;
@@ -139,7 +140,7 @@ impl IrManager {
                 for turn in 1..=*max_retry_attempts {
                     let result = recharge_cketh().await;
                     // log the result
-                    JournalEntry::new(result.clone())
+                    JournalEntry::new(result.clone(), crate::journal::LogType::Info)
                         .turn(turn)
                         .note("ckETH recharging cycle")
                         .commit();
@@ -207,6 +208,27 @@ impl IrManager {
             n.borrow()
                 .iter()
                 .filter(|entry| entry.strategy_id == Some(strategy_key))
+                .collect()
+        });
+
+        // Limit the results to the desired depth
+        Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
+    }
+
+    #[query]
+    pub async fn get_filtered_strategy_logs(
+        &self,
+        depth: u64,
+        strategy_key: u32,
+        log_type: LogType,
+    ) -> ManagerResult<Vec<JournalEntry>> {
+        // Filter the journal entries by strategy_key
+        let entries: Vec<JournalEntry> = JOURNAL.with(|n| {
+            n.borrow()
+                .iter()
+                .filter(|entry| {
+                    entry.strategy_id == Some(strategy_key) && entry.log_type == log_type
+                })
                 .collect()
         });
 

@@ -106,10 +106,7 @@ pub async fn get_estimate_gas(
     data: Vec<u8>,
     to: String,
     from: String,
-    block_number: Nat,
 ) -> ManagerResult<U256> {
-    let block_number_u128 = u128::try_from(block_number.0)
-        .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
     let args = json!({
         "id": 1,
         "jsonrpc": "2.0",
@@ -118,7 +115,7 @@ pub async fn get_estimate_gas(
             "to": to,
             "data": format!("0x{}", hex::encode(data))
         },
-        block_number_u128],
+        "latest"],
         "method": "eth_estimateGas"
     })
     .to_string();
