@@ -22,7 +22,7 @@ use crate::{
         PROVIDER_THRESHOLD, SCALE,
     },
     providers::{extract_multi_rpc_result, get_ranked_rpc_provider, get_ranked_rpc_providers},
-    state::RPC_SERVICE,
+    state::{LAST_SAFE_BLOCK, RPC_SERVICE},
     types::Account,
 };
 
@@ -41,13 +41,17 @@ pub async fn estimate_cycles(
 
     match extracted_call_result {
         Ok(cost) => {
-            let cost_u128 = u128::try_from(cost.0).map_err(|err| {
-                ManagerError::DecodingError(format!("Error converting Nat to u128: {:#?}", err))
-            })?;
+            let cost_u128 = nat_to_u128(cost)?;
             Ok(cost_u128)
         }
         Err(rpc_err) => Err(ManagerError::RpcResponseError(rpc_err)),
     }
+}
+
+pub fn nat_to_u128(num: Nat) -> ManagerResult<u128> {
+    u128::try_from(num.0).map_err(|err| {
+        ManagerError::DecodingError(format!("Error converting Nat to u128: {:#?}", err))
+    })
 }
 
 /// Returns Err if the `caller` is not a controller of the canister
@@ -169,7 +173,17 @@ pub async fn get_block_tag(rpc_canister: &Service, latest: bool) -> ManagerResul
     let rpc_result = extract_call_result(call_result)?;
     let result = extract_multi_rpc_result(rpc, rpc_result)?;
 
-    Ok(BlockTag::Number(result.number - Nat::from(32_u32))) // todo: change this line, returns -32 even if the tag is latest
+    if !latest {
+        // As a sanity check, we expect that the new block height > last queried height
+        let last_height = LAST_SAFE_BLOCK.with(|height| height.get());
+        if nat_to_u128(result.number.clone())? < last_height {
+            return Err(ManagerError::Custom(
+                "Queried block height is less than the last queried block number.".to_string(),
+            ));
+        }
+    }
+
+    Ok(BlockTag::Number(result.number))
 }
 
 fn is_response_size_error(err: &RpcError) -> bool {

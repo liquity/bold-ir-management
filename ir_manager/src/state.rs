@@ -12,6 +12,8 @@ use ic_stable_structures::{DefaultMemoryImpl, Vec as StableVec};
 use crate::{journal::JournalEntry, strategy::stale::StableStrategy};
 
 thread_local! {
+    /// Latest safe block
+    pub static LAST_SAFE_BLOCK: Cell<u128> = Cell::new(0);
     /// Swap ckETH Lock
     pub static SWAP_LOCK: Cell<bool> = Cell::new(false);
     /// HashMap containing all strategies' information
