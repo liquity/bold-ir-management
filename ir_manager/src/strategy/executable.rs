@@ -421,6 +421,8 @@ impl ExecutableStrategy {
     }
 
     /// Runs the strategy by analyzing troves and calculating changes if necessary.
+    /// Ok(false) represents no update condition was passed.
+    /// Ok(true) represents that either the increase or decrease conditions have passed, sending a new tx is approved.
     #[allow(clippy::too_many_arguments)]
     async fn run_strategy(
         &mut self,
@@ -447,6 +449,17 @@ impl ExecutableStrategy {
                 maximum_redeemable_against_collateral,
             )
             .await?;
+
+        if new_rate == self.data.latest_rate {
+            // we don't want to adjust the rate with the same value.
+            journal.append_note(
+                Ok(()),
+                LogType::Info,
+                "The calculated rate is the same as the current rate. No need to progress further.",
+            );
+
+            return Ok(None);
+        }
 
         // Predict upfront fee
         let upfront_fee = self.predict_upfront_fee(new_rate, block_tag).await?;

@@ -11,29 +11,47 @@ use serde::{Deserialize, Serialize};
 pub type DerivationPath = Vec<Vec<u8>>;
 
 /// Provider service to use
+// AUDIT: The following enums will be replaced by the Ethereum main-net providers.
+// AUDIT: Misconfiguration due to Sepolia types is out of scope.
 pub type ProviderService = EthSepoliaService;
 
 #[derive(CandidType, Deserialize)]
 pub struct StrategyInput {
+    /// Key in the Hashmap<u32, StrategyData> that is `STRATEGY_DATA`
     pub key: u32,
+    /// Minimum target for this strategy
     pub target_min: Nat,
+    /// Manager contract address for this strategy
     pub manager: String,
+    /// Multi trove getter contract address for this strategy
     pub multi_trove_getter: String,
+    /// Collateral index
     pub collateral_index: Nat,
+    /// EVM RPC Canister's principal
     pub rpc_principal: Principal,
+    /// Upfront fee period constant denominated in seconds
     pub upfront_fee_period: Nat,
+    /// Collateral registry contract address
     pub collateral_registry: String,
+    /// Hint helper contract address.
     pub hint_helper: String,
 }
 
 #[derive(CandidType)]
 pub struct StrategyQueryData {
     pub trove_manager: String,
+    /// Batch manager contract address for this strategy
     pub batch_manager: String,
+    /// Lock for the strategy. Determines if the strategy is currently being executed.
     pub locked: bool,
+    /// Latest rate determined by the canister in the previous cycle
     pub latest_rate: String,
+    /// Minimum target for this strategy
     pub target_min: String,
+    /// The EOA's public key
     pub eoa_pk: Option<String>,
+    /// Timestamp of the last time the strategy had updated the batch's interest rate.
+    /// Denominated in seconds.
     pub last_update: u64,
 }
 

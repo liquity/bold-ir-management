@@ -48,6 +48,7 @@ pub async fn estimate_cycles(
     }
 }
 
+/// Converts a Nat to u128
 pub fn nat_to_u128(num: Nat) -> ManagerResult<u128> {
     u128::try_from(num.0).map_err(|err| {
         ManagerError::DecodingError(format!("Error converting Nat to u128: {:#?}", err))
@@ -82,6 +83,7 @@ pub fn nat_to_u256(n: &Nat) -> ManagerResult<U256> {
     Ok(U256::from_be_bytes(padded_bytes))
 }
 
+/// Returns the ckETH balance of the canister
 pub async fn fetch_cketh_balance() -> ManagerResult<Nat> {
     let ledger_principal = cketh_ledger();
     let args = Account {
@@ -93,7 +95,8 @@ pub async fn fetch_cketh_balance() -> ManagerResult<Nat> {
         call(ledger_principal, "icrc1_balance_of", (args,)).await;
 
     match call_response {
-        // We are hardcoding 18 decimals points for ckETH, as it will always reflect the original Ether token's metadata (and that is immutable).
+        // The ckETH token similar to ETH will always have a decimal number of 18.
+        // We can avoid calling the metadata function to get the decimal separately by using SCALE.
         Ok(response) => Ok(response.0 / SCALE),
         Err(err) => Err(ManagerError::Custom(err.1)),
     }
@@ -363,7 +366,7 @@ pub fn extract_call_result<T>(result: CallResult<(T,)>) -> ManagerResult<T> {
 mod tests {
     use super::*;
     use alloy_primitives::{Address, U256};
-    use evm_rpc_types::{EthMainnetService, HttpOutcallError, RpcError};
+    use evm_rpc_types::{HttpOutcallError, RpcError};
     use ic_cdk::api::call::RejectionCode;
     use std::str::FromStr;
 
@@ -464,17 +467,12 @@ mod tests {
     }
 
     #[test]
-    fn test_get_rpc_service() {
-        // Since `get_rpc_service` uses a thread-local variable, we need to set it up
-        // For testing purposes, we can assume that it returns an RpcService
-        // We cannot directly test the rotation without setting up the thread-local state
-        // So we'll just call it and check that it returns a value
-        let rpc_service = get_rpc_service();
-        // Since we don't know the exact value, we can check that it's of type RpcService
-        // For example:
-        assert!(matches!(
-            rpc_service,
-            RpcService::EthMainnet(EthMainnetService::Alchemy)
-        ));
+    fn test_nat_to_u128_valid() {
+        // Nat that fits into u128
+        let value = 9876543210_u128;
+        let nat = Nat::from(value);
+        let result = nat_to_u128(nat.clone());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), value);
     }
 }

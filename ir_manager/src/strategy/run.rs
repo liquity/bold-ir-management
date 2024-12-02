@@ -7,6 +7,8 @@ use crate::{
 
 use super::executable::ExecutableStrategy;
 
+/// Runs the strategy by creating an executable instance of it that implements the drop trait.
+/// Starts a new log collection.
 pub async fn run_strategy(key: u32) {
     let mut journal = JournalCollection::open(Some(key));
 
@@ -49,8 +51,6 @@ pub async fn run_strategy(key: u32) {
             }
         }
     }
-
     // The executable strategy will go out of scope by this line, in any way possible.
     // When it goes out of scope, Drop is called and the stable strategy will be unlocked.
-    journal.close();
 }

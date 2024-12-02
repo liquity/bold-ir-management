@@ -1,4 +1,6 @@
 //! Interest Rate Manager's Constants
+// AUDIT: The following constants and parameters are subject to change and are not finalized.
+// AUDIT: The thresholds, margins, chain id, etc
 
 use alloy_primitives::U256;
 use candid::{Nat, Principal};
@@ -10,7 +12,7 @@ pub fn scale() -> U256 {
 }
 
 /// Chain ID
-pub const CHAIN_ID: u64 = 11155111; // Ethereum main-net
+pub const CHAIN_ID: u64 = 11155111; // Sepolia testnet
 
 /// Tolerance margin up formula constant
 const TOLERANCE_MARGIN_UP_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%

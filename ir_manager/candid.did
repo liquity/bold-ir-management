@@ -9,15 +9,14 @@ type HttpOutcallError = variant {
 type JournalEntry = record {
   date_and_time : text;
   note : opt text;
-  turn : opt nat8;
   log_type : LogType;
   entry : Result;
-  strategy_id : opt nat32;
 };
 type JsonRpcError = record { code : int64; message : text };
 type LogType = variant {
   Info;
   RateAdjustment;
+  Recharge;
   ProviderReputationChange;
   ExecutionResult;
 };
@@ -50,7 +49,10 @@ type RejectionCode = variant {
   CanisterReject;
 };
 type Result = variant { Ok; Err : ManagerError };
-type Result_1 = variant { Ok : vec JournalEntry; Err : ManagerError };
+type Result_1 = variant {
+  Ok : vec StableJournalCollection;
+  Err : ManagerError;
+};
 type Result_2 = variant { Ok : text; Err : ManagerError };
 type Result_3 = variant { Ok : SwapResponse; Err : ManagerError };
 type RpcError = variant {
@@ -58,6 +60,12 @@ type RpcError = variant {
   ProviderError : ProviderError;
   ValidationError : ValidationError;
   HttpOutcallError : HttpOutcallError;
+};
+type StableJournalCollection = record {
+  strategy : opt nat32;
+  entries : vec JournalEntry;
+  start_date_and_time : text;
+  end_date_and_time : text;
 };
 type StrategyInput = record {
   key : nat32;
@@ -82,13 +90,12 @@ type StrategyQueryData = record {
 type SwapResponse = record { returning_ether : nat; accepted_cycles : nat };
 type ValidationError = variant { Custom : text; InvalidHex : text };
 service : {
-  get_filtered_strategy_logs : (nat64, nat32, LogType) -> (Result_1) query;
   get_logs : (nat64) -> (Result_1) query;
   get_strategies : () -> (vec StrategyQueryData);
   get_strategy_address : (nat32) -> (opt text);
   get_strategy_logs : (nat64, nat32) -> (Result_1) query;
   mint_strategy : (StrategyInput) -> (Result_2);
-  set_batch_manager : (nat32, text) -> (Result);
+  set_batch_manager : (nat32, text, nat) -> (Result);
   start_timers : () -> (Result);
   swap_cketh : () -> (Result_3);
 }

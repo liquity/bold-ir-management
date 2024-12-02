@@ -14,6 +14,39 @@ use serde::Deserialize;
 use crate::{state::insert_journal_collection, utils::error::*};
 
 #[derive(CandidType, Deserialize, Clone)]
+pub struct StableJournalCollection {
+    pub start_date_and_time: String,
+    pub end_date_and_time: String,
+    pub strategy: Option<u32>,
+    pub entries: Vec<JournalEntry>,
+}
+
+impl StableJournalCollection {
+    /// Checks if the collection has only one entry that is a reputation change.
+    pub fn is_reputation_change(&self) -> bool {
+        if self.entries.len() == 1 {
+            return matches!(self.entries[0].log_type, LogType::ProviderReputationChange);
+        }
+        false
+    }
+}
+
+impl Storable for StableJournalCollection {
+    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+        Cow::Owned(Encode!(self).unwrap())
+    }
+
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+        Decode!(bytes.as_ref(), Self).unwrap()
+    }
+
+    const BOUND: Bound = Bound::Bounded {
+        max_size: 32_768, // 32 KB
+        is_fixed_size: false,
+    };
+}
+
+#[derive(CandidType, Deserialize, Clone)]
 pub struct JournalCollection {
     pub start_date_and_time: String,
     pub end_date_and_time: String,
@@ -54,9 +87,16 @@ impl JournalCollection {
     }
 
     /// Closes a journal collection by committing it to the state.
-    pub fn close(&mut self) {
+    /// Only called by the drop trait impl.
+    fn close(&mut self) {
         self.end_date_and_time = date_and_time();
-        insert_journal_collection(self);
+        let stable_jc = StableJournalCollection {
+            start_date_and_time: self.start_date_and_time.clone(),
+            end_date_and_time: self.end_date_and_time.clone(),
+            strategy: self.strategy,
+            entries: self.entries.clone(),
+        };
+        insert_journal_collection(stable_jc);
     }
 
     /// Appends a new entry to the collection
@@ -70,29 +110,6 @@ impl JournalCollection {
         self.entries.push(journal_entry);
         self
     }
-
-    /// Checks if the collection has only one entry that is a reputation change.
-    pub fn is_reputation_change(&self) -> bool {
-        if self.entries.len() == 1 {
-            return matches!(self.entries[0].log_type, LogType::ProviderReputationChange);
-        }
-        false
-    }
-}
-
-impl Storable for JournalCollection {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        Cow::Owned(Encode!(self).unwrap())
-    }
-
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Decode!(bytes.as_ref(), Self).unwrap()
-    }
-
-    const BOUND: Bound = Bound::Bounded {
-        max_size: 32_768, // 32 KB
-        is_fixed_size: false,
-    };
 }
 
 impl Drop for JournalCollection {

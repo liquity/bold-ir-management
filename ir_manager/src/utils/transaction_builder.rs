@@ -76,7 +76,9 @@ impl TransactionBuilder {
         self
     }
 
-    /// Builds the TransactionBuilder into a Transaction and sends it
+    /// Builds the TransactionBuilder into a Transaction and sends it.
+    /// Makes async calls to estimate the gas limit, priority fee per gas unit, and fee per gas.
+    /// Handles the signing internally.
     pub async fn send(self, rpc_canister: &Service) -> ManagerResult<SendRawTransactionStatus> {
         let chain_id = CHAIN_ID;
         let input = Bytes::from(self.data.clone());
@@ -124,5 +126,101 @@ impl TransactionBuilder {
             }
             Err(e) => Err(ManagerError::Custom(e.1)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::DerivationPath;
+    use alloy_primitives::U256;
+
+    #[test]
+    fn test_default_transaction_builder() {
+        let builder = TransactionBuilder::default();
+        assert_eq!(builder.to, "");
+        assert_eq!(builder.from, "");
+        assert_eq!(builder.data, Vec::<u8>::new());
+        assert_eq!(builder.value, U256::ZERO);
+        assert_eq!(builder.nonce, 0);
+        assert_eq!(builder.derivation_path, DerivationPath::default());
+        assert_eq!(builder.cycles, 0);
+    }
+
+    #[test]
+    fn test_set_to() {
+        let to_address = "0x0123456789abcdef0123456789abcdef01234567".to_string();
+        let builder = TransactionBuilder::default().to(to_address.clone());
+        assert_eq!(builder.to, to_address);
+    }
+
+    #[test]
+    fn test_set_from() {
+        let from_address = "0xabcdef0123456789abcdef0123456789abcdef01".to_string();
+        let builder = TransactionBuilder::default().from(from_address.clone());
+        assert_eq!(builder.from, from_address);
+    }
+
+    #[test]
+    fn test_set_data() {
+        let data = vec![0xde, 0xad, 0xbe, 0xef];
+        let builder = TransactionBuilder::default().data(data.clone());
+        assert_eq!(builder.data, data);
+    }
+
+    #[test]
+    fn test_set_value() {
+        let value = U256::from(1000);
+        let builder = TransactionBuilder::default().value(value);
+        assert_eq!(builder.value, value);
+    }
+
+    #[test]
+    fn test_set_nonce() {
+        let nonce = 42;
+        let builder = TransactionBuilder::default().nonce(nonce);
+        assert_eq!(builder.nonce, nonce);
+    }
+
+    #[test]
+    fn test_set_derivation_path() {
+        let derivation_path = vec![vec![44, 60, 0, 0, 0]];
+        let builder = TransactionBuilder::default().derivation_path(derivation_path.clone());
+        assert_eq!(builder.derivation_path, derivation_path);
+    }
+
+    #[test]
+    fn test_set_cycles() {
+        let cycles = 1_000_000;
+        let builder = TransactionBuilder::default().cycles(cycles);
+        assert_eq!(builder.cycles, cycles);
+    }
+
+    #[test]
+    fn test_chained_setters() {
+        let to_address = "0x0123456789abcdef0123456789abcdef01234567".to_string();
+        let from_address = "0xabcdef0123456789abcdef0123456789abcdef01".to_string();
+        let data = vec![0xde, 0xad, 0xbe, 0xef];
+        let value = U256::from(1000);
+        let nonce = 42;
+        let derivation_path = vec![vec![44, 60, 0, 0, 0]];
+        let cycles = 1_000_000;
+
+        let builder = TransactionBuilder::default()
+            .to(to_address.clone())
+            .from(from_address.clone())
+            .data(data.clone())
+            .value(value)
+            .nonce(nonce)
+            .derivation_path(derivation_path.clone())
+            .cycles(cycles);
+
+        assert_eq!(builder.to, to_address);
+        assert_eq!(builder.from, from_address);
+        assert_eq!(builder.data, data);
+        assert_eq!(builder.value, value);
+        assert_eq!(builder.nonce, nonce);
+        assert_eq!(builder.derivation_path, derivation_path);
+        assert_eq!(builder.cycles, cycles);
     }
 }

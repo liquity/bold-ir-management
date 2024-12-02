@@ -59,16 +59,14 @@ pub fn increment_provider_score(provider: &ProviderService) {
             entry.0 = entry.0.saturating_add(1); // Increment the score, saturating at i64::MAX
 
             if entry.0 % 10 == 0 {
-                JournalCollection::open(None)
-                    .append_note(
-                        Ok(()),
-                        crate::journal::LogType::ProviderReputationChange,
-                        format!(
-                            "Provider {:#?} reputation change: +1 | new reputation: {}",
-                            provider, entry.0
-                        ),
-                    )
-                    .close();
+                JournalCollection::open(None).append_note(
+                    Ok(()),
+                    crate::journal::LogType::ProviderReputationChange,
+                    format!(
+                        "Provider {:#?} reputation change: +1 | new reputation: {}",
+                        provider, entry.0
+                    ),
+                );
             }
         }
     });
@@ -83,16 +81,14 @@ pub fn decrement_provider_score(provider: &ProviderService) {
         if let Some(entry) = leaderboard.iter_mut().find(|(_, p)| p == provider) {
             entry.0 = entry.0.saturating_sub(1); // Decrement the score, saturating at i64::MIN
             if entry.0 % 10 == 0 {
-                JournalCollection::open(None)
-                    .append_note(
-                        Ok(()),
-                        crate::journal::LogType::ProviderReputationChange,
-                        format!(
-                            "Provider {:#?} reputation change: -1 | new reputation: {}",
-                            provider, entry.0
-                        ),
-                    )
-                    .close();
+                JournalCollection::open(None).append_note(
+                    Ok(()),
+                    crate::journal::LogType::ProviderReputationChange,
+                    format!(
+                        "Provider {:#?} reputation change: -1 | new reputation: {}",
+                        provider, entry.0
+                    ),
+                );
             }
         }
     });
@@ -101,14 +97,14 @@ pub fn decrement_provider_score(provider: &ProviderService) {
 /// Returns the top ranking providers from the leaderboard
 pub fn get_ranked_rpc_providers() -> RpcServices {
     let ranked_provider_list = ranked_provider_list();
-
+    // AUDIT: The following enums will be replaced by the Ethereum main-net providers. Out of scope.
     RpcServices::EthSepolia(Some(ranked_provider_list))
 }
 
 /// Returns the top ranking provider from the leaderboard
 pub fn get_ranked_rpc_provider() -> RpcServices {
     let ranked_provider_list = ranked_provider_list();
-
+    // AUDIT: The following enums will be replaced by the Ethereum main-net providers. Out of scope.
     RpcServices::EthSepolia(Some(ranked_provider_list[..1].to_vec()))
 }
 
@@ -117,6 +113,8 @@ pub fn extract_multi_rpc_result<T: Debug>(
     providers: RpcServices,
     result: MultiRpcResult<T>,
 ) -> ManagerResult<T> {
+    // AUDIT: The following enums will be replaced by the Ethereum main-net providers.
+    // AUDIT: Misconfiguration due to Sepolia types is out of scope.
     match result {
         MultiRpcResult::Consistent(response) => {
             if let RpcServices::EthSepolia(services) = providers {

@@ -4,6 +4,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::constants::MAX_RETRY_ATTEMPTS;
 use crate::journal::JournalCollection;
+use crate::journal::StableJournalCollection;
 use crate::strategy::data::StrategyData;
 use crate::strategy::run::run_strategy;
 use crate::strategy::settings::StrategySettings;
@@ -17,6 +18,7 @@ use crate::{
     state::*,
     types::{StrategyInput, StrategyQueryData, SwapResponse},
 };
+use candid::Nat;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
 use ic_exports::{
     candid::Principal,
@@ -36,6 +38,9 @@ pub struct IrManager {
 impl PreUpdate for IrManager {}
 
 impl IrManager {
+    /// Mints a new strategy with the provided input.
+    /// This function checks if the strategy key is already in use and if not, it creates a new strategy.
+    /// It also handles the necessary conversions for addresses and values.
     #[update]
     pub async fn mint_strategy(&self, strategy: StrategyInput) -> ManagerResult<String> {
         only_controller(caller())?;
@@ -85,6 +90,11 @@ impl IrManager {
             .rpc_canister(rpc_canister)
             .clone();
 
+        // The following line sets the nonce, latest rate, and latest update timestamp to 0.
+        // We don't care about any of those at this point.
+        // The nonce will be recalculated.
+        // The latest rate will be adjusted when the `set_batch_manager` function is called.
+        // The timestamp will stay as 0 until the first strategy rate adjustment tx is sent.
         let strategy_data = StrategyData::default();
 
         StableStrategy::default()
@@ -95,8 +105,15 @@ impl IrManager {
         Ok(eoa_pk.to_string())
     }
 
+    /// Sets the batch manager for a given strategy key.
+    /// This function ensures that only the controller can call it and updates the strategy's settings.
     #[update]
-    pub async fn set_batch_manager(&self, key: u32, batch_manager: String) -> ManagerResult<()> {
+    pub async fn set_batch_manager(
+        &self,
+        key: u32,
+        batch_manager: String,
+        current_rate: Nat,
+    ) -> ManagerResult<()> {
         only_controller(caller())?;
         let batch_manager_address = string_to_address(batch_manager)?;
         STRATEGY_STATE.with(|strategies| {
@@ -105,6 +122,7 @@ impl IrManager {
                 .get_mut(&key)
                 .ok_or(ManagerError::NonExistentValue)?;
             strategy.settings.batch_manager = batch_manager_address;
+            strategy.data.latest_rate = nat_to_u256(&current_rate)?;
             Ok(())
         })
     }
@@ -150,7 +168,6 @@ impl IrManager {
                         break;
                     }
                 }
-                journal.close();
             });
         });
 
@@ -181,6 +198,7 @@ impl IrManager {
 
             RPC_REPUTATIONS.with(|reputations| {
                 *reputations.borrow_mut() = vec![
+                    // AUDIT: The following enums will be replaced by the Ethereum main-net providers. Out of scope.
                     (0, evm_rpc_types::EthSepoliaService::Ankr),
                     (0, evm_rpc_types::EthSepoliaService::BlockPi),
                     (0, evm_rpc_types::EthSepoliaService::PublicNode),
@@ -250,8 +268,8 @@ impl IrManager {
     }
 
     #[query]
-    pub async fn get_logs(&self, depth: u64) -> ManagerResult<Vec<JournalCollection>> {
-        let entries = JOURNAL.with(|m| m.borrow().iter().collect::<Vec<JournalCollection>>());
+    pub async fn get_logs(&self, depth: u64) -> ManagerResult<Vec<StableJournalCollection>> {
+        let entries = JOURNAL.with(|m| m.borrow().iter().collect::<Vec<StableJournalCollection>>());
 
         Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
     }
@@ -261,9 +279,9 @@ impl IrManager {
         &self,
         depth: u64,
         strategy_key: u32,
-    ) -> ManagerResult<Vec<JournalCollection>> {
+    ) -> ManagerResult<Vec<StableJournalCollection>> {
         // Filter the journal entries by strategy_key
-        let entries: Vec<JournalCollection> = JOURNAL.with(|n| {
+        let entries: Vec<StableJournalCollection> = JOURNAL.with(|n| {
             n.borrow()
                 .iter()
                 .filter(|entry| entry.strategy == Some(strategy_key))
@@ -275,6 +293,7 @@ impl IrManager {
     }
 
     /// Generates the IDL for the canister interface.
+    /// This function uses the `generate_idl!()` macro to create the IDL.
     pub fn idl() -> Idl {
         generate_idl!()
     }
