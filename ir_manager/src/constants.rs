@@ -5,27 +5,30 @@ use candid::{Nat, Principal};
 
 /// Scale used for fixed point arithmetic
 pub const SCALE: u128 = 1_000_000_000_000_000_000; // e18
+pub fn scale() -> U256 {
+    U256::from(SCALE)
+}
 
 /// Chain ID
-pub const CHAIN_ID: u64 = 1; // Ethereum main-net
+pub const CHAIN_ID: u64 = 11155111; // Ethereum main-net
 
 /// Tolerance margin up formula constant
-const TOLERANCE_MARGIN_UP_RAW: u128 = 2 * SCALE / 100; // 2*10^16 => 20%
+const TOLERANCE_MARGIN_UP_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
 pub fn tolerance_margin_up() -> U256 {
     U256::from(TOLERANCE_MARGIN_UP_RAW)
 }
 
 /// Tolerance margin down formula constant
-const TOLERANCE_MARGIN_DOWN_RAW: u128 = 2 * SCALE / 100; // 2*10^16 => 20%
+const TOLERANCE_MARGIN_DOWN_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
 pub fn tolerance_margin_down() -> U256 {
     U256::from(TOLERANCE_MARGIN_DOWN_RAW)
 }
 
 /// Max number of retry attempts
-pub const MAX_RETRY_ATTEMPTS: u8 = 3;
+pub const MAX_RETRY_ATTEMPTS: u8 = 2;
 
 /// Max number of troves to fetch in one call
-pub const MAX_NUMBER_OF_TROVES: u128 = 100;
+pub const MAX_NUMBER_OF_TROVES: u128 = 50;
 pub fn max_number_of_troves() -> U256 {
     U256::from(MAX_NUMBER_OF_TROVES)
 }
@@ -73,3 +76,9 @@ const CKETH_LEDGER_RAW: &[u8] = b"ss2fx-dyaaa-aaaar-qacoq-cai";
 pub fn cketh_ledger() -> Principal {
     Principal::from_slice(CKETH_LEDGER_RAW)
 }
+
+/// Number of providers to use
+pub const PROVIDER_COUNT: u8 = 3;
+
+/// Number of providers needed to reach consensus
+pub const PROVIDER_THRESHOLD: u8 = 2;

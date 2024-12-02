@@ -3,11 +3,13 @@
 use alloy_primitives::U256;
 use candid::Nat;
 use evm_rpc_types::RpcServices;
+use ic_exports::ic_cdk::print;
 use serde_json::json;
 
+use crate::providers::extract_multi_rpc_result;
 use crate::types::*;
 
-use super::common::{extract_call_result, extract_multi_rpc_result, request_with_dynamic_retries};
+use super::common::{extract_call_result, request_with_dynamic_retries};
 use super::error::{ManagerError, ManagerResult};
 use super::evm_rpc::{BlockTag, FeeHistory, FeeHistoryArgs, Service};
 
@@ -35,12 +37,12 @@ pub async fn fee_history(
     let cycles = 25_000_000_000;
 
     let call_result = evm_rpc
-        .eth_fee_history(rpc_services, None, fee_history_args, cycles)
+        .eth_fee_history(rpc_services.clone(), None, fee_history_args, cycles)
         .await;
 
     let canister_response = extract_call_result(call_result)?;
 
-    extract_multi_rpc_result(canister_response)
+    extract_multi_rpc_result(rpc_services, canister_response)
 }
 
 fn median_index(length: usize) -> usize {
@@ -54,10 +56,11 @@ pub async fn estimate_transaction_fees(
     block_count: u8,
     rpc_services: RpcServices,
     evm_rpc: &Service,
+    block_tag: BlockTag,
 ) -> ManagerResult<FeeEstimates> {
     let fee_history = fee_history(
         Nat::from(block_count),
-        BlockTag::Latest,
+        block_tag,
         Some(vec![95]),
         rpc_services,
         evm_rpc,
@@ -116,7 +119,7 @@ pub async fn get_estimate_gas(
         "method": "eth_estimateGas"
     })
     .to_string();
-
+    print(&args);
     let rpc_canister_response: String = request_with_dynamic_retries(rpc_canister, args).await?;
 
     let decoded_response: EthCallResponse =

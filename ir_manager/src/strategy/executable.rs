@@ -1,11 +1,14 @@
 //! The executable strategy wrapper that runs the strategy.
 
+use std::ops::Div;
+
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
-use ic_exports::ic_cdk::api::time;
+use ic_exports::ic_cdk::{api::time, print};
 
 use crate::{
-    constants::{max_number_of_troves, tolerance_margin_down, tolerance_margin_up, SCALE},
+    constants::{max_number_of_troves, scale, tolerance_margin_down, tolerance_margin_up},
+    journal::{JournalCollection, LogType},
     state::{MANAGERS, STRATEGY_STATE},
     types::*,
     utils::{
@@ -29,45 +32,13 @@ pub struct ExecutableStrategy {
 }
 
 impl ExecutableStrategy {
-    /// Builder-style setter functions for the struct
-
-    /// Set the strategy settings
-    pub fn settings(&mut self, settings: StrategySettings) -> &mut Self {
-        self.settings = settings;
-        self
-    }
-
-    /// Set the strategy data
-    pub fn data(&mut self, data: StrategyData) -> &mut Self {
-        self.data = data;
-        self
-    }
-
-    /// Utility functions
-
-    /// Mint the strategy by adding it to the state
-    /// "Minting" here means registering the strategy in a persistent state.
-    pub fn mint(&self) -> ManagerResult<Self> {
-        STRATEGY_STATE.with(|strategies| {
-            let mut binding = strategies.borrow_mut();
-            // Ensure that we do not overwrite an existing strategy with the same key
-            if binding.get(&self.settings.key).is_some() {
-                return Err(ManagerError::Custom(
-                    "This strategy key is already mined.".to_string(),
-                ));
-            }
-            binding.insert(self.settings.key, self.clone());
-            Ok(self.clone())
-        })
-    }
-
     /// Replaces the strategy data in the HashMap
     /// This function updates the state of the strategy in the HashMap
     fn apply_change(&self) {
         STRATEGY_STATE.with(|strategies| {
             strategies
                 .borrow_mut()
-                .insert(self.settings.key, self.clone());
+                .insert(self.settings.key, self.into());
         });
     }
 
@@ -100,15 +71,20 @@ impl ExecutableStrategy {
 
     /// The main entry point to execute the strategy.
     /// Runs the strategy logic asynchronously.
-    pub async fn execute(&mut self) -> ManagerResult<()> {
+    pub async fn execute(&mut self, journal: &mut JournalCollection) -> ManagerResult<()> {
         // Lock the strategy to prevent concurrent execution
         self.lock()?;
 
         // Fetch the current block tag
-        let block_tag = get_block_tag(&self.settings.rpc_canister).await?;
+        let block_tag = get_block_tag(&self.settings.rpc_canister, true).await?;
+        journal.append_note(
+            Ok(()),
+            LogType::Info,
+            format!("Chose block tag {:?}.", block_tag),
+        );
 
         // Calculate time since last update
-        let time_since_last_update = U256::from(time() - self.data.last_update);
+        let time_since_last_update = U256::from(time().div(1_000_000_000) - self.data.last_update);
 
         // Fetch the entire system debt from the blockchain
         let entire_system_debt: U256 = self.fetch_entire_system_debt(block_tag.clone()).await?;
@@ -126,6 +102,7 @@ impl ExecutableStrategy {
             let fetched_troves = self
                 .fetch_multiple_sorted_troves(troves_index, max_count, block_tag.clone())
                 .await?;
+
             let last_trove = fetched_troves
                 .last()
                 .ok_or(ManagerError::NonExistentValue)?
@@ -136,6 +113,12 @@ impl ExecutableStrategy {
             }
             troves_index += max_count;
         }
+
+        let current_debt_in_front =
+            self.get_current_debt_in_front(troves.clone())
+                .ok_or(ManagerError::Custom(
+                    "No trove has delegated its rate adjustment to this manager.".to_string(),
+                ))?;
 
         // Fetch the redemption fee rate
         let redemption_fee = self.fetch_redemption_rate(block_tag.clone()).await?;
@@ -149,23 +132,33 @@ impl ExecutableStrategy {
             .await?;
 
         // Calculate redemption split and maximum redeemable against collateral
-        let redemption_split = unbacked_portion_price_and_redeemability
+        let maximum_redeemable_against_collateral = unbacked_portion_price_and_redeemability
             ._0
+            .saturating_mul(entire_system_debt)
             .checked_div(total_unbacked)
             .ok_or(arithmetic_err("Total unbacked was 0."))?;
-        let maximum_redeemable_against_collateral =
-            redemption_split.saturating_mul(entire_system_debt);
 
-        // Calculate the target percentage based on redemption fee and settings
-        let exponent: U256 = U256::from(5 * 1_000_000_000_000_000_u128)
-            .checked_div(redemption_fee)
-            .ok_or(arithmetic_err("redemption fee was 0."))?;
-        let target_percentage = self.settings.target_min.pow(exponent);
+        let target_percentage_numerator = self
+            .settings
+            .target_min
+            .saturating_mul(U256::from(2))
+            .saturating_mul(redemption_fee);
+
+        let target_percentage_denominator =
+            redemption_fee.saturating_add(U256::from(5 * 10_u128.pow(15)));
+        let target_percentage = target_percentage_numerator
+            .checked_div(target_percentage_denominator)
+            .ok_or(arithmetic_err("Target percentage's denominator was zero."))?;
+
+        // AUDIT: This will be removed post-audit.
+        journal.append_note(Ok(()), LogType::Info, format!("target_percentage({}) || numerator({})=(2*2*10^17)*redemption_fee, redemption_fee {} || 5*10^15 + redemption_fee {}", target_percentage, target_percentage_numerator, redemption_fee, target_percentage_denominator));
 
         // Execute the strategy logic based on calculated values and collected troves
         let strategy_result = self
             .run_strategy(
+                journal,
                 troves,
+                current_debt_in_front,
                 time_since_last_update,
                 self.settings.upfront_fee_period,
                 maximum_redeemable_against_collateral,
@@ -197,41 +190,68 @@ impl ExecutableStrategy {
                     .eoa_pk
                     .ok_or(ManagerError::NonExistentValue)?
                     .to_string();
-                let tx_response = TransactionBuilder::default()
+
+                journal.append_note(
+                    Ok(()),
+                    LogType::Info,
+                    format!(
+                        "Sending a rate adjustment transaction with rate: {}",
+                        new_rate
+                    ),
+                );
+
+                let result = TransactionBuilder::default()
                     .to(self.settings.batch_manager.to_string())
                     .from(eoa)
                     .data(payload.abi_encode())
                     .value(U256::ZERO)
                     .nonce(self.data.eoa_nonce)
                     .derivation_path(self.settings.derivation_path.clone())
-                    .cycles(10_000_000_000)
+                    .cycles(40_000_000_000_u128)
                     .send(&self.settings.rpc_canister)
                     .await?;
 
-                let result = extract_multi_rpc_result(tx_response)?;
+                journal.append_note(
+                    Ok(()),
+                    LogType::Info,
+                    "The rate adjustment transaction is sent.",
+                );
 
                 // Handle different transaction statuses
                 match result {
-                    SendRawTransactionStatus::Ok(_) => {
+                    SendRawTransactionStatus::Ok(a) => {
+                        journal.append_note(
+                            Ok(()),
+                            LogType::RateAdjustment,
+                            "The rate adjustment transaction was successful.",
+                        );
+
+                        print(format!("{:#?}", a));
                         self.data.eoa_nonce += 1;
-                        self.data.last_update = time();
+                        self.data.last_update = time() / 1_000_000_000;
                         self.data.latest_rate = new_rate;
                         self.apply_change();
                         self.unlock();
                         return Ok(());
                     }
                     SendRawTransactionStatus::InsufficientFunds => {
-                        return Err(ManagerError::Custom(format!(
-                            "[GAS] Strategy {}: Not enough Ether balance to cover the gas fee.",
-                            self.settings.key
-                        )))
+                        return Err(ManagerError::Custom(
+                            "Not enough balance to cover the gas fee.".to_string(),
+                        ))
                     }
                     SendRawTransactionStatus::NonceTooLow
                     | SendRawTransactionStatus::NonceTooHigh => {
+                        journal.append_note(Ok(()), LogType::Info,"The rate adjustment transaction failed due to wrong nonce. Adjusting the nonce...");
                         self.update_nonce().await?;
                     }
                 }
             }
+        } else {
+            journal.append_note(
+                Ok(()),
+                LogType::Info,
+                "The rate adjustment requirements were not met. No need to submit a transaction.",
+            );
         }
 
         // Unlock the strategy after attempting execution
@@ -271,7 +291,6 @@ impl ExecutableStrategy {
             data,
         )
         .await?;
-
         decode_abi_response::<
             predictAdjustBatchInterestRateUpfrontFeeReturn,
             predictAdjustBatchInterestRateUpfrontFeeCall,
@@ -387,12 +406,14 @@ impl ExecutableStrategy {
     }
 
     /// Returns the current debt in front of the user's batch.
-    fn get_current_debt_in_front(&self, troves: Vec<DebtPerInterestRate>) -> Option<U256> {
+    fn get_current_debt_in_front(&mut self, troves: Vec<DebtPerInterestRate>) -> Option<U256> {
         let mut counted_debt = U256::from(0);
 
         for trove in troves.iter() {
             if trove.interestBatchManager == self.settings.batch_manager {
-                return Some(trove.debt);
+                // update the current interest rate
+                self.data.latest_rate(trove.interestRate);
+                return Some(counted_debt);
             }
             counted_debt = counted_debt.saturating_add(trove.debt);
         }
@@ -400,45 +421,55 @@ impl ExecutableStrategy {
     }
 
     /// Runs the strategy by analyzing troves and calculating changes if necessary.
+    #[allow(clippy::too_many_arguments)]
     async fn run_strategy(
-        &self,
+        &mut self,
+        journal: &mut JournalCollection,
         troves: Vec<DebtPerInterestRate>,
+        current_debt_in_front: U256,
         time_since_last_update: U256,
         upfront_fee_period: U256,
         maximum_redeemable_against_collateral: U256,
         target_percentage: U256,
         block_tag: BlockTag,
     ) -> ManagerResult<Option<(U256, U256)>> {
-        if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
-            // Calculate new rate
-            let new_rate = self
-                .calculate_new_rate(
-                    troves,
-                    target_percentage,
-                    maximum_redeemable_against_collateral,
-                )
-                .await?;
+        journal.append_note(
+            Ok(()),
+            LogType::Info,
+            format!("current debt in front: {}", current_debt_in_front),
+        );
 
-            // Predict upfront fee
-            let upfront_fee = self.predict_upfront_fee(new_rate, block_tag).await?;
+        // Calculate new rate
+        let new_rate = self
+            .calculate_new_rate(
+                troves,
+                target_percentage,
+                maximum_redeemable_against_collateral,
+            )
+            .await?;
 
-            // Check conditions to execute the strategy
-            if self.increase_check(
-                current_debt_in_front,
-                maximum_redeemable_against_collateral,
-                target_percentage,
-            ) || (self.first_decrease_check(
-                current_debt_in_front,
-                maximum_redeemable_against_collateral,
-                target_percentage,
-            ) && self.second_decrease_check(
-                time_since_last_update,
-                upfront_fee_period,
-                new_rate,
-                upfront_fee,
-            )?) {
-                return Ok(Some((new_rate, upfront_fee)));
-            }
+        // Predict upfront fee
+        let upfront_fee = self.predict_upfront_fee(new_rate, block_tag).await?;
+
+        // Check conditions to execute the strategy
+        if self.increase_check(
+            journal,
+            current_debt_in_front,
+            maximum_redeemable_against_collateral,
+            target_percentage,
+        ) || (self.first_decrease_check(
+            journal,
+            current_debt_in_front,
+            maximum_redeemable_against_collateral,
+            target_percentage,
+        ) && self.second_decrease_check(
+            journal,
+            time_since_last_update,
+            upfront_fee_period,
+            new_rate,
+            upfront_fee,
+        )?) {
+            return Ok(Some((new_rate, upfront_fee)));
         }
 
         Ok(None)
@@ -453,14 +484,19 @@ impl ExecutableStrategy {
     ) -> ManagerResult<U256> {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);
-        for trove in troves.iter() {
-            if counted_debt > target_percentage * maximum_redeemable_against_collateral {
+        let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
+
+        for trove in troves
+            .iter()
+            .filter(|t| t.interestBatchManager != self.settings.batch_manager)
+        {
+            counted_debt += trove.debt;
+            if counted_debt > target_debt {
                 new_rate = trove
                     .interestRate
                     .saturating_add(U256::from(100_000_000_000_000_u128)); // Increment rate by 1 bps (0.01%)
                 break;
             }
-            counted_debt += trove.debt;
         }
         Ok(new_rate)
     }
@@ -468,15 +504,24 @@ impl ExecutableStrategy {
     /// Checks if the conditions for increasing debt are met.
     fn increase_check(
         &self,
+        journal: &mut JournalCollection,
         debt_in_front: U256,
         maximum_redeemable_against_collateral: U256,
         target_percentage: U256,
     ) -> bool {
-        if debt_in_front
-            < (U256::from(SCALE) - tolerance_margin_down())
-                * target_percentage
-                * maximum_redeemable_against_collateral
-        {
+        let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
+        let target_debt_with_margin = target_debt * (scale() - tolerance_margin_down()) / scale();
+
+        journal.append_note(
+            Ok(()),
+            LogType::Info,
+            format!(
+                "increase check: {} < {}",
+                debt_in_front, target_debt_with_margin
+            ),
+        );
+
+        if debt_in_front < target_debt_with_margin {
             return true;
         }
         false
@@ -485,15 +530,24 @@ impl ExecutableStrategy {
     /// First check for decreasing debt.
     fn first_decrease_check(
         &self,
+        journal: &mut JournalCollection,
         debt_in_front: U256,
         maximum_redeemable_against_collateral: U256,
         target_percentage: U256,
     ) -> bool {
-        if debt_in_front
-            > (U256::from(SCALE) + tolerance_margin_up())
-                * maximum_redeemable_against_collateral
-                * target_percentage
-        {
+        let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
+        let target_debt_with_margin = target_debt * (scale() + tolerance_margin_up()) / scale();
+
+        journal.append_note(
+            Ok(()),
+            LogType::Info,
+            format!(
+                "first decrease check: {} > {}",
+                debt_in_front, target_debt_with_margin
+            ),
+        );
+
+        if debt_in_front > target_debt_with_margin {
             return true;
         }
         false
@@ -502,6 +556,7 @@ impl ExecutableStrategy {
     /// Second check for decreasing debt based on update time, rate difference, and upfront fee.
     fn second_decrease_check(
         &self,
+        journal: &mut JournalCollection,
         time_since_last_update: U256,
         upfront_fee_period: U256,
         new_rate: U256,
@@ -510,9 +565,12 @@ impl ExecutableStrategy {
         let r = time_since_last_update
             .checked_div(upfront_fee_period)
             .ok_or(arithmetic_err("Upfront fee period was 0."))?;
+        journal.append_note(Ok(()), LogType::Info,format!("second decrease check: time since last update {} upfront fee period {} latest rate {} new rate {} average rate {}", time_since_last_update, upfront_fee_period, self.data.latest_rate, new_rate, average_rate));
+
         if (U256::from(1) - r) * (self.data.latest_rate - new_rate) > average_rate
             || time_since_last_update > upfront_fee_period
         {
+            print("second decrease check passed");
             return Ok(true);
         }
         Ok(false)

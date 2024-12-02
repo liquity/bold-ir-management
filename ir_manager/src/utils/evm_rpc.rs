@@ -2,7 +2,10 @@
 
 use candid::{self, CandidType, Deserialize, Nat, Principal};
 use evm_rpc_types::{MultiRpcResult, RpcConfig, RpcResult, RpcService, RpcServices};
-use ic_exports::ic_cdk::{self, api::call::CallResult as Result};
+use ic_exports::ic_cdk::{
+    self,
+    api::call::{call_with_payment128, CallResult as Result},
+};
 use serde::Serialize;
 
 #[derive(Clone, Debug, PartialEq, Eq, CandidType, Deserialize)]
@@ -267,7 +270,13 @@ impl Service {
         arg1: Option<RpcConfig>,
         arg2: GetTransactionCountArgs,
     ) -> Result<(MultiRpcResult<Nat>,)> {
-        ic_cdk::call(self.0, "eth_getTransactionCount", (arg0, arg1, arg2)).await
+        ic_cdk::api::call::call_with_payment128(
+            self.0,
+            "eth_getTransactionCount",
+            (arg0, arg1, arg2),
+            10_000_000_000_u128,
+        )
+        .await
     }
 
     pub async fn eth_send_raw_transaction(
@@ -296,7 +305,7 @@ impl Service {
             self.0,
             "eth_getBlockByNumber",
             (arg0, arg1, arg2),
-            1_000_000_000_u128,
+            20_000_000_000_u128,
         )
         .await
     }
@@ -326,6 +335,12 @@ impl Service {
         config: Option<RpcConfig>,
         args: CallArgs,
     ) -> Result<(MultiRpcResult<String>,)> {
-        ic_cdk::call(self.0, "eth_call", (source, config, args)).await
+        call_with_payment128(
+            self.0,
+            "eth_call",
+            (source, config, args),
+            20_000_000_000_u128,
+        )
+        .await
     }
 }

@@ -11,14 +11,18 @@ use evm_rpc_types::{
 use ic_exports::ic_cdk::{
     self,
     api::{call::CallResult, is_controller},
-    call, id,
+    call, id, print,
 };
 
 use super::{error::*, evm_rpc::*, exchange::*};
 
 use crate::{
-    constants::{cketh_ledger, exchange_rate_canister, DEFAULT_MAX_RESPONSE_BYTES, SCALE},
-    state::RPC_SERVICE,
+    constants::{
+        cketh_ledger, exchange_rate_canister, DEFAULT_MAX_RESPONSE_BYTES, PROVIDER_COUNT,
+        PROVIDER_THRESHOLD, SCALE,
+    },
+    providers::{extract_multi_rpc_result, get_ranked_rpc_provider, get_ranked_rpc_providers},
+    state::{LAST_SAFE_BLOCK, RPC_SERVICE},
     types::Account,
 };
 
@@ -37,13 +41,17 @@ pub async fn estimate_cycles(
 
     match extracted_call_result {
         Ok(cost) => {
-            let cost_u128 = u128::try_from(cost.0).map_err(|err| {
-                ManagerError::DecodingError(format!("Error converting Nat to u128: {:#?}", err))
-            })?;
+            let cost_u128 = nat_to_u128(cost)?;
             Ok(cost_u128)
         }
         Err(rpc_err) => Err(ManagerError::RpcResponseError(rpc_err)),
     }
+}
+
+pub fn nat_to_u128(num: Nat) -> ManagerResult<u128> {
+    u128::try_from(num.0).map_err(|err| {
+        ManagerError::DecodingError(format!("Error converting Nat to u128: {:#?}", err))
+    })
 }
 
 /// Returns Err if the `caller` is not a controller of the canister
@@ -136,19 +144,44 @@ pub async fn fetch_ether_cycles_rate() -> ManagerResult<u64> {
 
 /// Returns `T` from Solidity struct.
 pub fn decode_abi_response<T, F: SolCall<Return = T>>(hex_data: String) -> ManagerResult<T> {
-    F::abi_decode_returns(hex_data.as_bytes(), false)
+    let stripped_hex = hex_data.strip_prefix("0x").unwrap_or(&hex_data);
+    let hex_bytes =
+        hex::decode(stripped_hex).map_err(|err| ManagerError::DecodingError(err.to_string()))?;
+    F::abi_decode_returns(&hex_bytes, false)
         .map_err(|err| ManagerError::DecodingError(err.to_string()))
 }
 
-pub async fn get_block_tag(rpc_canister: &Service) -> ManagerResult<BlockTag> {
-    let rpc = get_rpc_services();
-    let rpc_config = get_rpc_config(Some(2_000));
+pub async fn get_block_tag(rpc_canister: &Service, latest: bool) -> ManagerResult<BlockTag> {
+    let rpc = get_ranked_rpc_provider();
+    let rpc_config = RpcConfig {
+        response_size_estimate: Some(2000),
+        response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
+            total: Some(1),
+            min: 1,
+        }),
+    };
+
+    let tag = if latest {
+        BlockTag::Latest
+    } else {
+        BlockTag::Safe
+    };
 
     let call_result = rpc_canister
-        .get_block_by_number(rpc, Some(rpc_config), BlockTag::Safe)
+        .get_block_by_number(rpc.clone(), Some(rpc_config), tag)
         .await;
     let rpc_result = extract_call_result(call_result)?;
-    let result = extract_multi_rpc_result(rpc_result)?;
+    let result = extract_multi_rpc_result(rpc, rpc_result)?;
+
+    if !latest {
+        // As a sanity check, we expect that the new block height > last queried height
+        let last_height = LAST_SAFE_BLOCK.with(|height| height.get());
+        if nat_to_u128(result.number.clone())? < last_height {
+            return Err(ManagerError::Custom(
+                "Queried block height is less than the last queried block number.".to_string(),
+            ));
+        }
+    }
 
     Ok(BlockTag::Number(result.number))
 }
@@ -162,16 +195,12 @@ fn is_response_size_error(err: &RpcError) -> bool {
     }
 }
 
-pub fn get_rpc_services() -> RpcServices {
-    RpcServices::EthMainnet(None)
-}
-
 pub fn get_rpc_config(max_response_bytes: Option<u64>) -> RpcConfig {
     RpcConfig {
         response_size_estimate: max_response_bytes,
         response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
-            total: Some(3),
-            min: 2,
+            total: Some(PROVIDER_COUNT),
+            min: PROVIDER_THRESHOLD,
         }),
     }
 }
@@ -188,14 +217,14 @@ pub async fn call_with_dynamic_retries(
     data: Vec<u8>,
 ) -> ManagerResult<String> {
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
-    let provider_set: RpcServices = get_rpc_services();
-
+    let provider_set: RpcServices = get_ranked_rpc_providers();
+    let data_string = format!("0x{}", hex::encode(data));
     // There is a 2 MB limit on the response size, an ICP limitation.
     while max_response_bytes < 2_000_000 {
         // Perform the request using the provided function
         let transaction = TransactionRequest {
             to: Some(to.to_string()),
-            input: Some(format!("{:?}", data)),
+            input: Some(data_string.to_string()),
             ..Default::default()
         };
 
@@ -205,13 +234,13 @@ pub async fn call_with_dynamic_retries(
         };
 
         let config = get_rpc_config(Some(max_response_bytes));
-
         let response = rpc_canister
             .eth_call(provider_set.clone(), Some(config), args)
             .await;
 
         let extracted_response = extract_call_result(response)?;
-        let extracted_rpc_result = extract_multi_rpc_result(extracted_response);
+        let extracted_rpc_result =
+            extract_multi_rpc_result(provider_set.clone(), extracted_response);
 
         if let Err(ManagerError::RpcResponseError(err)) = extracted_rpc_result.clone() {
             if is_response_size_error(&err) {
@@ -268,6 +297,10 @@ pub async fn request_with_dynamic_retries(
             extract_call_result(call_result)?.map_err(ManagerError::RpcResponseError);
 
         if let Err(ManagerError::RpcResponseError(err)) = extracted_response.clone() {
+            print(format!(
+                "RPC error in request with dynamic retries: {:#?}",
+                err
+            ));
             if is_response_size_error(&err) {
                 max_response_bytes *= 2;
                 continue;
@@ -279,15 +312,22 @@ pub async fn request_with_dynamic_retries(
         return extracted_response;
     }
 
-    Err(ManagerError::Custom(
-        "Request with dynamic retries reached its ceiling of 2 Megabytes.".to_string(),
-    ))
+    if max_response_bytes >= 2_000_000 {
+        return Err(ManagerError::Custom(
+            "Request with dynamic retries reached its ceiling of 2 MB.".to_string(),
+        ));
+    } else if rpc_changes >= 3 {
+        return Err(ManagerError::Custom(
+            "Request with dynamic retries reached its ceiling of 3 provider rotations.".to_string(),
+        ));
+    }
+    unreachable!()
 }
 
 /// On success, returns the nonce associated with the given address
 pub async fn get_nonce(rpc_canister: &Service, address: Address) -> ManagerResult<U256> {
     let account = address.to_string();
-    let rpc: RpcServices = get_rpc_services();
+    let rpc: RpcServices = get_ranked_rpc_providers();
     let args = GetTransactionCountArgs {
         address: account,
         block: BlockTag::Latest,
@@ -296,26 +336,18 @@ pub async fn get_nonce(rpc_canister: &Service, address: Address) -> ManagerResul
     let config = RpcConfig {
         response_size_estimate: Some(10_000),
         response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
-            total: Some(3),
-            min: 2,
+            total: Some(PROVIDER_COUNT),
+            min: PROVIDER_THRESHOLD,
         }),
     };
 
     let result = rpc_canister
-        .eth_get_transaction_count(rpc, Some(config), args)
+        .eth_get_transaction_count(rpc.clone(), Some(config), args)
         .await;
 
     let wrapped_number = extract_call_result::<MultiRpcResult<Nat>>(result)?;
-    let number = extract_multi_rpc_result(wrapped_number)?;
+    let number = extract_multi_rpc_result(rpc, wrapped_number)?;
     nat_to_u256(&number)
-}
-
-/// Extracts result from `MultiRpcResult`, if the threshold is met.
-pub fn extract_multi_rpc_result<T>(result: MultiRpcResult<T>) -> ManagerResult<T> {
-    match result {
-        MultiRpcResult::Consistent(response) => response.map_err(ManagerError::RpcResponseError),
-        MultiRpcResult::Inconsistent(_) => Err(ManagerError::NoConsensus),
-    }
 }
 
 /// Extracts the Ok or Err values of a canister call and returns them.
@@ -393,39 +425,6 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_multi_rpc_result_consistent_ok() {
-        let result: MultiRpcResult<String> = MultiRpcResult::Consistent(Ok("success".to_string()));
-        let extracted = extract_multi_rpc_result(result);
-        assert!(extracted.is_ok());
-        assert_eq!(extracted.unwrap(), "success".to_string());
-    }
-
-    #[test]
-    fn test_extract_multi_rpc_result_consistent_err() {
-        let rpc_err = RpcError::ProviderError(evm_rpc_types::ProviderError::NoPermission);
-        let result: MultiRpcResult<String> = MultiRpcResult::Consistent(Err(rpc_err.clone()));
-        let extracted = extract_multi_rpc_result(result);
-        assert!(extracted.is_err());
-        match extracted.unwrap_err() {
-            ManagerError::RpcResponseError(err) => {
-                assert_eq!(format!("{:?}", err), format!("{:?}", rpc_err));
-            }
-            _ => panic!("Expected RpcResponseError"),
-        }
-    }
-
-    #[test]
-    fn test_extract_multi_rpc_result_inconsistent() {
-        let result: MultiRpcResult<String> = MultiRpcResult::Inconsistent(vec![]);
-        let extracted = extract_multi_rpc_result(result);
-        assert!(extracted.is_err());
-        match extracted.unwrap_err() {
-            ManagerError::NoConsensus => {}
-            _ => panic!("Expected NoConsensus error"),
-        }
-    }
-
-    #[test]
     fn test_extract_call_result_ok() {
         let call_result: CallResult<(String,)> = Ok(("success".to_string(),));
         let extracted = extract_call_result(call_result);
@@ -446,12 +445,6 @@ mod tests {
             }
             _ => panic!("Expected CallResult error"),
         }
-    }
-
-    #[test]
-    fn test_get_rpc_services() {
-        let rpc_services = get_rpc_services();
-        assert_eq!(rpc_services, RpcServices::EthMainnet(None));
     }
 
     #[test]

@@ -26,3 +26,6 @@ dist/
 .env
 gitm.toml
 canister_ids.json
+
+*/xeth_deployer.sh
+*/markets.json

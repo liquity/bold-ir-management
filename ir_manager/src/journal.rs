@@ -6,61 +6,81 @@
 use std::borrow::Cow;
 
 use candid::{CandidType, Decode, Encode};
+use chrono::{DateTime, Utc};
 use ic_exports::ic_cdk::api::time;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
-use crate::{state::insert_journal_entry, utils::error::*};
+use crate::{state::insert_journal_collection, utils::error::*};
+
+#[derive(CandidType, Deserialize, Clone)]
+pub struct JournalCollection {
+    pub start_date_and_time: String,
+    pub end_date_and_time: String,
+    pub strategy: Option<u32>,
+    pub entries: Vec<JournalEntry>,
+}
 
 /// Journal entry
 #[derive(CandidType, Deserialize, Clone)]
 pub struct JournalEntry {
-    pub timestamp: u64,
+    pub date_and_time: String,
     pub entry: ManagerResult<()>,
-    pub strategy_id: Option<u32>,
-    pub turn: Option<u8>,
     pub note: Option<String>,
+    pub log_type: LogType,
+}
+
+/// Log type
+#[derive(PartialEq, CandidType, Deserialize, Clone)]
+pub enum LogType {
+    RateAdjustment,
+    ExecutionResult,
+    Info,
+    ProviderReputationChange,
+    Recharge,
 }
 
 /// Builder for journal entries
-impl JournalEntry {
-    /// Create a new instance of a journal entry
-    /// Fills the `timestamp` and `entry` fields
-    pub fn new(entry: ManagerResult<()>) -> Self {
+impl JournalCollection {
+    /// Create a new journal collection
+    pub fn open(strategy: Option<u32>) -> Self {
         Self {
-            timestamp: time(),
-            entry,
-            strategy_id: None,
-            turn: None,
-            note: None,
+            start_date_and_time: date_and_time(),
+            end_date_and_time: "".to_string(),
+            strategy,
+            // It will re-allocate only after the capacity is filled.
+            entries: Vec::with_capacity(16),
         }
     }
 
-    /// Fills the `strategy_id` field of the entry
-    pub fn strategy(&mut self, id: u32) -> &mut Self {
-        self.strategy_id = Some(id);
+    /// Closes a journal collection by committing it to the state.
+    pub fn close(&mut self) {
+        self.end_date_and_time = date_and_time();
+        insert_journal_collection(self);
+    }
+
+    /// Appends a new entry to the collection
+    pub fn append_note<S: AsRef<str>>(
+        &mut self,
+        entry: ManagerResult<()>,
+        log_type: LogType,
+        note: S,
+    ) -> &mut Self {
+        let journal_entry = JournalEntry::new(entry, log_type, Some(note.as_ref().to_string()));
+        self.entries.push(journal_entry);
         self
     }
 
-    /// Fills the `turn` field of the entry
-    pub fn turn(&mut self, turn: u8) -> &mut Self {
-        self.turn = Some(turn);
-        self
-    }
-
-    /// Fills the `note` field of the entry
-    pub fn note<S: AsRef<str>>(&mut self, text: S) -> &mut Self {
-        self.note = Some(text.as_ref().to_string());
-        self
-    }
-
-    /// Commits the entry to the stable storage vector
-    pub fn commit(&mut self) {
-        insert_journal_entry(self);
+    /// Checks if the collection has only one entry that is a reputation change.
+    pub fn is_reputation_change(&self) -> bool {
+        if self.entries.len() == 1 {
+            return matches!(self.entries[0].log_type, LogType::ProviderReputationChange);
+        }
+        false
     }
 }
 
-impl Storable for JournalEntry {
+impl Storable for JournalCollection {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
     }
@@ -70,7 +90,34 @@ impl Storable for JournalEntry {
     }
 
     const BOUND: Bound = Bound::Bounded {
-        max_size: 500,
+        max_size: 32_768, // 32 KB
         is_fixed_size: false,
     };
+}
+
+impl Drop for JournalCollection {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+impl JournalEntry {
+    /// Opens a new entry
+    fn new(entry: ManagerResult<()>, log_type: LogType, note: Option<String>) -> Self {
+        Self {
+            date_and_time: date_and_time(),
+            entry,
+            note,
+            log_type,
+        }
+    }
+}
+
+fn date_and_time() -> String {
+    let timestamp_s: i64 = time() as i64 / 1_000_000_000;
+
+    let datetime = DateTime::<Utc>::from_timestamp(timestamp_s, 0).expect("Invalid timestamp");
+
+    // Format the DateTime as "dd-mm-yyyy hh:mm:ss"
+    datetime.format("%d-%m-%Y %H:%M:%S").to_string()
 }
