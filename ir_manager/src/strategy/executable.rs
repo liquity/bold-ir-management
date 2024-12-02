@@ -414,6 +414,7 @@ impl ExecutableStrategy {
     }
 
     /// Runs the strategy by analyzing troves and calculating changes if necessary.
+    #[allow(clippy::too_many_arguments)]
     async fn run_strategy(
         &mut self,
         journal: &mut JournalCollection,

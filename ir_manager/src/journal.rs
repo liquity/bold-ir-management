@@ -74,10 +74,7 @@ impl JournalCollection {
     /// Checks if the collection has only one entry that is a reputation change.
     pub fn is_reputation_change(&self) -> bool {
         if self.entries.len() == 1 {
-            return match self.entries[0].log_type {
-                LogType::ProviderReputationChange => true,
-                _ => false,
-            };
+            return matches!(self.entries[0].log_type, LogType::ProviderReputationChange);
         }
         false
     }

@@ -200,7 +200,7 @@ impl IrManager {
                     // Shift all items to remove the oldest ones
                     for i in excess..len {
                         if let Some(item) = binding.get(i) {
-                            let _ = binding.set(i - excess, &item);
+                            binding.set(i - excess, &item);
                         }
                     }
 
