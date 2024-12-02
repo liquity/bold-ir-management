@@ -114,6 +114,12 @@ impl ExecutableStrategy {
             troves_index += max_count;
         }
 
+        let current_debt_in_front =
+            self.get_current_debt_in_front(troves.clone())
+                .ok_or(ManagerError::Custom(
+                    "No trove has delegated its rate adjustment to this manager.".to_string(),
+                ))?;
+
         // Fetch the redemption fee rate
         let redemption_fee = self.fetch_redemption_rate(block_tag.clone()).await?;
 
@@ -152,6 +158,7 @@ impl ExecutableStrategy {
             .run_strategy(
                 journal,
                 troves,
+                current_debt_in_front,
                 time_since_last_update,
                 self.settings.upfront_fee_period,
                 maximum_redeemable_against_collateral,
@@ -419,57 +426,50 @@ impl ExecutableStrategy {
         &mut self,
         journal: &mut JournalCollection,
         troves: Vec<DebtPerInterestRate>,
+        current_debt_in_front: U256,
         time_since_last_update: U256,
         upfront_fee_period: U256,
         maximum_redeemable_against_collateral: U256,
         target_percentage: U256,
         block_tag: BlockTag,
     ) -> ManagerResult<Option<(U256, U256)>> {
-        if let Some(current_debt_in_front) = self.get_current_debt_in_front(troves.clone()) {
-            journal.append_note(
-                Ok(()),
-                LogType::Info,
-                format!("current debt in front: {}", current_debt_in_front),
-            );
+        journal.append_note(
+            Ok(()),
+            LogType::Info,
+            format!("current debt in front: {}", current_debt_in_front),
+        );
 
-            // Calculate new rate
-            let new_rate = self
-                .calculate_new_rate(
-                    troves,
-                    target_percentage,
-                    maximum_redeemable_against_collateral,
-                )
-                .await?;
-
-            // Predict upfront fee
-            let upfront_fee = self.predict_upfront_fee(new_rate, block_tag).await?;
-
-            // Check conditions to execute the strategy
-            if self.increase_check(
-                journal,
-                current_debt_in_front,
-                maximum_redeemable_against_collateral,
+        // Calculate new rate
+        let new_rate = self
+            .calculate_new_rate(
+                troves,
                 target_percentage,
-            ) || (self.first_decrease_check(
-                journal,
-                current_debt_in_front,
                 maximum_redeemable_against_collateral,
-                target_percentage,
-            ) && self.second_decrease_check(
-                journal,
-                time_since_last_update,
-                upfront_fee_period,
-                new_rate,
-                upfront_fee,
-            )?) {
-                return Ok(Some((new_rate, upfront_fee)));
-            }
-        } else {
-            journal.append_note(
-                Ok(()),
-                LogType::Info,
-                "No trove has delegated its rate adjustment to this manager.",
-            );
+            )
+            .await?;
+
+        // Predict upfront fee
+        let upfront_fee = self.predict_upfront_fee(new_rate, block_tag).await?;
+
+        // Check conditions to execute the strategy
+        if self.increase_check(
+            journal,
+            current_debt_in_front,
+            maximum_redeemable_against_collateral,
+            target_percentage,
+        ) || (self.first_decrease_check(
+            journal,
+            current_debt_in_front,
+            maximum_redeemable_against_collateral,
+            target_percentage,
+        ) && self.second_decrease_check(
+            journal,
+            time_since_last_update,
+            upfront_fee_period,
+            new_rate,
+            upfront_fee,
+        )?) {
+            return Ok(Some((new_rate, upfront_fee)));
         }
 
         Ok(None)
