@@ -9,7 +9,7 @@ use alloy_primitives::Address;
 use evm_rpc_types::{EthSepoliaService, RpcService};
 use ic_stable_structures::{DefaultMemoryImpl, Vec as StableVec};
 
-use crate::{journal::JournalEntry, strategy::stale::StableStrategy};
+use crate::{journal::JournalCollection, strategy::stale::StableStrategy};
 
 thread_local! {
     /// Latest safe block
@@ -25,7 +25,7 @@ thread_local! {
     /// A counter that tracks EOA turns for minting ckETH
     pub static CKETH_EOA_TURN_COUNTER: Cell<u8> = Cell::new(0);
     /// Journal
-    pub static JOURNAL: RefCell<StableVec<JournalEntry, DefaultMemoryImpl>> = RefCell::new(
+    pub static JOURNAL: RefCell<StableVec<JournalCollection, DefaultMemoryImpl>> = RefCell::new(
         StableVec::init(DefaultMemoryImpl::default()).expect("Failed to create default memory.")
     );
     /// RPC Service Vec Deque
@@ -37,7 +37,7 @@ thread_local! {
     pub static RPC_REPUTATIONS: RefCell<Vec<(i64, EthSepoliaService)>> = RefCell::new(vec![(0, EthSepoliaService::Ankr), (0, EthSepoliaService::BlockPi), (0, EthSepoliaService::PublicNode), (0, EthSepoliaService::Sepolia), (0, EthSepoliaService::Alchemy)]);
 }
 
-/// Inserts a new journal entry
-pub fn insert_journal_entry(entry: &mut JournalEntry) {
+/// Inserts a new journal collection
+pub fn insert_journal_collection(entry: &mut JournalCollection) {
     let _ = JOURNAL.with_borrow_mut(|vec| vec.push(entry));
 }

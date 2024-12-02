@@ -3,8 +3,7 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::constants::MAX_RETRY_ATTEMPTS;
-use crate::journal::JournalEntry;
-use crate::journal::LogType;
+use crate::journal::JournalCollection;
 use crate::strategy::data::StrategyData;
 use crate::strategy::run::run_strategy;
 use crate::strategy::settings::StrategySettings;
@@ -137,21 +136,81 @@ impl IrManager {
         set_timer_interval(Duration::from_secs(86_400), move || {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
             spawn(async move {
+                let mut journal = JournalCollection::open(None);
                 for turn in 1..=*max_retry_attempts {
                     let result = recharge_cketh().await;
                     // log the result
-                    JournalEntry::new(result.clone(), crate::journal::LogType::Info)
-                        .turn(turn)
-                        .note("ckETH recharging cycle")
-                        .commit();
+                    journal.append_note(
+                        result.clone(),
+                        crate::journal::LogType::Recharge,
+                        format!("Turn {}/{}", turn, max_retry_attempts),
+                    );
 
                     if result.is_ok() {
                         break;
                     }
                 }
+                journal.close();
             });
         });
 
+        // Recurring timer (24h) that:
+        // - clears all reputation change logs and resets the reputations
+        // - checks if the logs have more than 300 items, if so, clear the surplus
+        set_timer_interval(Duration::from_secs(86_400), || {
+            JOURNAL.with(|journal| {
+                let mut binding = journal.borrow_mut();
+
+                // Initialize a new StableVec safely and return if initialization fails
+                let temp = if let Ok(vec) = ic_stable_structures::Vec::init(
+                    ic_stable_structures::DefaultMemoryImpl::default(),
+                ) {
+                    vec
+                } else {
+                    return; // Exit if initialization fails
+                };
+
+                for collection in binding.iter() {
+                    if !collection.is_reputation_change() {
+                        let _ = temp.push(&collection.clone());
+                    }
+                }
+
+                *binding = temp;
+            });
+
+            RPC_REPUTATIONS.with(|reputations| {
+                *reputations.borrow_mut() = vec![
+                    (0, evm_rpc_types::EthSepoliaService::Ankr),
+                    (0, evm_rpc_types::EthSepoliaService::BlockPi),
+                    (0, evm_rpc_types::EthSepoliaService::PublicNode),
+                    (0, evm_rpc_types::EthSepoliaService::Sepolia),
+                    (0, evm_rpc_types::EthSepoliaService::Alchemy),
+                ]
+            });
+
+            JOURNAL.with(|journal| {
+                let binding = journal.borrow_mut();
+
+                // Check if the journal has more than 300 items
+                let len = binding.len();
+                if len > 300 {
+                    let excess = len - 300;
+
+                    // Shift all items to remove the oldest ones
+                    for i in excess..len {
+                        if let Some(item) = binding.get(i) {
+                            let _ = binding.set(i - excess, &item);
+                        }
+                    }
+
+                    // Pop the remaining items to resize the vector
+                    for _ in 0..excess {
+                        binding.pop();
+                    }
+                }
+            });
+        });
         Ok(())
     }
 
@@ -191,8 +250,8 @@ impl IrManager {
     }
 
     #[query]
-    pub async fn get_logs(&self, depth: u64) -> ManagerResult<Vec<JournalEntry>> {
-        let entries = JOURNAL.with(|m| m.borrow().iter().collect::<Vec<JournalEntry>>());
+    pub async fn get_logs(&self, depth: u64) -> ManagerResult<Vec<JournalCollection>> {
+        let entries = JOURNAL.with(|m| m.borrow().iter().collect::<Vec<JournalCollection>>());
 
         Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
     }
@@ -202,33 +261,12 @@ impl IrManager {
         &self,
         depth: u64,
         strategy_key: u32,
-    ) -> ManagerResult<Vec<JournalEntry>> {
+    ) -> ManagerResult<Vec<JournalCollection>> {
         // Filter the journal entries by strategy_key
-        let entries: Vec<JournalEntry> = JOURNAL.with(|n| {
+        let entries: Vec<JournalCollection> = JOURNAL.with(|n| {
             n.borrow()
                 .iter()
-                .filter(|entry| entry.strategy_id == Some(strategy_key))
-                .collect()
-        });
-
-        // Limit the results to the desired depth
-        Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
-    }
-
-    #[query]
-    pub async fn get_filtered_strategy_logs(
-        &self,
-        depth: u64,
-        strategy_key: u32,
-        log_type: LogType,
-    ) -> ManagerResult<Vec<JournalEntry>> {
-        // Filter the journal entries by strategy_key
-        let entries: Vec<JournalEntry> = JOURNAL.with(|n| {
-            n.borrow()
-                .iter()
-                .filter(|entry| {
-                    entry.strategy_id == Some(strategy_key) && entry.log_type == log_type
-                })
+                .filter(|entry| entry.strategy == Some(strategy_key))
                 .collect()
         });
 
