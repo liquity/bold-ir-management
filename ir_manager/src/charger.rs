@@ -152,11 +152,15 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
         return Err(arithmetic_err("The calculated ETH/CXDR rate is zero."));
     }
     let attached_cycles = U256::from(msg_cycles_available());
-    let maximum_returned_ether_amount = u256_to_nat(
-        &attached_cycles
-            .saturating_mul(U256::from(rate))
-            .saturating_mul(scale()), // SCALE here is the decimals ckETH tokens have (10^18)
-    )?;
+    let max_returned_ether_amount_u256 = &attached_cycles
+        .checked_mul(U256::from(rate))
+        .and_then(|r| r.checked_mul(scale())) // SCALE here is the decimals ckETH tokens have (10^18)
+        .ok_or_else(|| {
+            arithmetic_err(
+                "Overflow occurred when calculating the maximum possible Ether to return.",
+            )
+        })?;
+    let maximum_returned_ether_amount = u256_to_nat(max_returned_ether_amount_u256)?;
 
     // first check if the balance permits the max transfer amount
     let cketh_balance = fetch_cketh_balance().await?;
