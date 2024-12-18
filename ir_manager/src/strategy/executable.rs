@@ -503,7 +503,9 @@ impl ExecutableStrategy {
             .iter()
             .filter(|t| t.interestBatchManager != self.settings.batch_manager)
         {
-            counted_debt += trove.debt;
+            counted_debt = counted_debt
+                .checked_add(trove.debt)
+                .ok_or_else(|| arithmetic_err("Counted debt overflowed."))?;
             if counted_debt > target_debt {
                 new_rate = trove
                     .interestRate
