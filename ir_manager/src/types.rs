@@ -4,7 +4,7 @@ use crate::strategy::stale::StableStrategy;
 
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
-use evm_rpc_types::EthSepoliaService;
+use evm_rpc_types::{EthMainnetService, EthSepoliaService};
 use serde::{Deserialize, Serialize};
 
 /// Derivation path for the tECDSA signatures
@@ -13,7 +13,10 @@ pub type DerivationPath = Vec<Vec<u8>>;
 /// Provider service to use
 // AUDIT: The following enums will be replaced by the Ethereum main-net providers.
 // AUDIT: Misconfiguration due to Sepolia types is out of scope.
+#[cfg(feature = "sepolia")]
 pub type ProviderService = EthSepoliaService;
+#[cfg(feature = "mainnet")]
+pub type ProviderService = EthMainnetService;
 
 #[derive(CandidType, Deserialize)]
 pub struct StrategyInput {

@@ -197,14 +197,27 @@ impl IrManager {
             });
 
             RPC_REPUTATIONS.with(|reputations| {
-                *reputations.borrow_mut() = vec![
+                #[cfg(feature = "sepolia")]
+                let providers = vec![
                     // AUDIT: The following enums will be replaced by the Ethereum main-net providers. Out of scope.
                     (0, evm_rpc_types::EthSepoliaService::Ankr),
                     (0, evm_rpc_types::EthSepoliaService::BlockPi),
                     (0, evm_rpc_types::EthSepoliaService::PublicNode),
                     (0, evm_rpc_types::EthSepoliaService::Sepolia),
                     (0, evm_rpc_types::EthSepoliaService::Alchemy),
-                ]
+                ];
+
+                #[cfg(feature = "mainnet")]
+                let providers = vec![
+                    // AUDIT: The following enums will be replaced by the Ethereum main-net providers. Out of scope.
+                    (0, evm_rpc_types::EthMainnetService::Ankr),
+                    (0, evm_rpc_types::EthMainnetService::BlockPi),
+                    (0, evm_rpc_types::EthMainnetService::PublicNode),
+                    (0, evm_rpc_types::EthMainnetService::Cloudflare),
+                    (0, evm_rpc_types::EthMainnetService::Alchemy),
+                ];
+
+                *reputations.borrow_mut() = providers;
             });
 
             JOURNAL.with(|journal| {
