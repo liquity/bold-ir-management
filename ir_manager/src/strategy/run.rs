@@ -42,12 +42,8 @@ pub async fn run_strategy(key: u32) {
                 ),
             );
 
-            // Handle success or failure for each strategy execution attempt
-            match result {
-                Ok(()) => break,
-                Err(_) => {
-                    executable_strategy.unlock(); // Unlock on failure
-                }
+            if result.is_ok() {
+                break;
             }
         }
     }

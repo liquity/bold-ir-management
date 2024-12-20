@@ -84,3 +84,6 @@ pub const PROVIDER_COUNT: u8 = 3;
 
 /// Number of providers needed to reach consensus
 pub const PROVIDER_THRESHOLD: u8 = 2;
+
+/// Timeout in milliseconds for strategy locks
+pub const STRATEGY_LOCK_TIMEOUT: u64 = 3600000;

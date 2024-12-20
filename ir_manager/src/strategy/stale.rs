@@ -5,7 +5,9 @@ use crate::{
     utils::error::{ManagerError, ManagerResult},
 };
 
-use super::{data::StrategyData, executable::ExecutableStrategy, settings::StrategySettings};
+use super::{
+    data::StrategyData, executable::ExecutableStrategy, lock::Lock, settings::StrategySettings,
+};
 
 /// Stale strategy struct
 #[derive(Clone, Default)]
@@ -15,7 +17,7 @@ pub struct StableStrategy {
     /// Mutable state
     pub data: StrategyData,
     /// Lock for the strategy. Determines if the strategy is currently being executed.
-    pub lock: bool,
+    pub lock: Lock,
 }
 
 impl StableStrategy {
