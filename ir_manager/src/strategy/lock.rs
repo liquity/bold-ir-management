@@ -11,9 +11,9 @@ use crate::{
 #[derive(Clone, Copy, Default)]
 pub struct Lock {
     /// Status of the lock. `true` represents locked and `false` unlocked
-    is_locked: bool,
+    pub is_locked: bool,
     /// Last locked timstamp in milliseconds
-    last_locked_at: Option<u64>,
+    pub last_locked_at: Option<u64>,
 }
 
 impl Lock {
