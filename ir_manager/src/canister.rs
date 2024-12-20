@@ -3,8 +3,7 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::constants::MAX_RETRY_ATTEMPTS;
-use crate::halt::is_functional;
-use crate::halt::update_halt_status;
+use crate::halt::{is_functional, Halt, update_halt_status};
 use crate::journal::JournalCollection;
 use crate::journal::StableJournalCollection;
 use crate::strategy::data::StrategyData;
@@ -300,6 +299,11 @@ impl IrManager {
 
         // Limit the results to the desired depth
         Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
+    }
+
+    #[query]
+    pub fn halt_status(&self) -> Halt {
+        HALT_STATE.with(|state| state.borrow().clone())
     }
 
     /// Generates the IDL for the canister interface.
