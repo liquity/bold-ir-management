@@ -29,3 +29,7 @@ icrc-ledger-types = "0.1.5"
 evm_rpc_types = "1.2.0"
 ic-stable-structures = "0.6.6"
 chrono = { version = "0.4.38", default-features = false, features = ["clock", "oldtime", "std"] }
+
+[dev-dependencies]
+proptest = "1.0.0"
+mockall = "0.13.1"
