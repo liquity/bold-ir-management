@@ -84,3 +84,23 @@ pub const PROVIDER_COUNT: u8 = 3;
 
 /// Number of providers needed to reach consensus
 pub const PROVIDER_THRESHOLD: u8 = 2;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cketh_ledger_is_correct() {
+        assert_eq!(cketh_ledger().to_text(), "ss2fx-dyaaa-aaaar-qacoq-cai".to_string());
+    }
+
+    #[test]
+    fn exchange_rate_canister_is_correct() {
+        assert_eq!(exchange_rate_canister().to_text(), "uf6dk-hyaaa-aaaaq-qaaaq-cai".to_string());
+    }
+
+    #[test]
+    fn scale_is_e18() {
+        assert_eq!(SCALE, 10_u128.pow(18));
+    }
+}
