@@ -3,6 +3,8 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::constants::MAX_RETRY_ATTEMPTS;
+use crate::halt::is_functional;
+use crate::halt::update_halt_status;
 use crate::journal::JournalCollection;
 use crate::journal::StableJournalCollection;
 use crate::strategy::data::StrategyData;
@@ -154,6 +156,7 @@ impl IrManager {
         set_timer_interval(Duration::from_secs(86_400), move || {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
             spawn(async move {
+                assert!(is_functional());
                 let mut journal = JournalCollection::open(None);
                 for turn in 1..=*max_retry_attempts {
                     let result = recharge_cketh().await;
@@ -175,6 +178,7 @@ impl IrManager {
         // - clears all reputation change logs and resets the reputations
         // - checks if the logs have more than 300 items, if so, clear the surplus
         set_timer_interval(Duration::from_secs(86_400), || {
+            assert!(is_functional());
             JOURNAL.with(|journal| {
                 let mut binding = journal.borrow_mut();
 
@@ -229,6 +233,11 @@ impl IrManager {
                 }
             });
         });
+
+        set_timer_interval(Duration::from_secs(86_400), || {
+            update_halt_status();
+        });
+
         Ok(())
     }
 
@@ -260,6 +269,7 @@ impl IrManager {
     /// Swaps ckETH by first checking the cycle balance, then transferring ckETH to the caller.
     #[update]
     pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
+        assert!(is_functional());
         // Ensure the cycle balance is above a certain threshold before proceeding
         let mut swap_lock = SwapLock::default();
         swap_lock.lock()?;

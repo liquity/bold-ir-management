@@ -10,5 +10,6 @@ mod state;
 mod strategy;
 mod types;
 mod utils;
+mod halt;
 
 pub use canister::IrManager;
