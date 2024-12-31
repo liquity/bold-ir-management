@@ -235,7 +235,7 @@ impl IrManager {
     }
 
     /// Retrieves a list of strategies currently stored in the state.
-    #[update]
+    #[query]
     pub fn get_strategies(&self) -> Vec<StrategyQueryData> {
         STRATEGY_STATE.with(|vector_data| {
             let binding = vector_data.borrow();
@@ -250,7 +250,7 @@ impl IrManager {
     }
 
     /// Returns the strategy EOA
-    #[update]
+    #[query]
     pub fn get_strategy_address(&self, index: u32) -> Option<String> {
         STRATEGY_STATE.with(|data| {
             data.borrow()
