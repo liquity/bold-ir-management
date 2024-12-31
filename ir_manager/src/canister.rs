@@ -3,6 +3,7 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::constants::MAX_RETRY_ATTEMPTS;
+use crate::constants::MINIMUM_ATTACHED_CYCLES;
 use crate::journal::JournalCollection;
 use crate::journal::StableJournalCollection;
 use crate::strategy::data::StrategyData;
@@ -20,6 +21,7 @@ use crate::{
 };
 use candid::Nat;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
+use ic_exports::ic_cdk::api::call::msg_cycles_available;
 use ic_exports::{
     candid::Principal,
     ic_cdk::{
@@ -232,16 +234,6 @@ impl IrManager {
         Ok(())
     }
 
-    /// Swaps ckETH by first checking the cycle balance, then transferring ckETH to the caller.
-    #[update]
-    pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
-        // Ensure the cycle balance is above a certain threshold before proceeding
-        let mut swap_lock = SwapLock::default();
-        swap_lock.lock()?;
-        check_threshold().await?;
-        transfer_cketh(caller()).await
-    }
-
     /// Retrieves a list of strategies currently stored in the state.
     #[query]
     pub fn get_strategies(&self) -> Vec<StrategyQueryData> {
@@ -265,6 +257,24 @@ impl IrManager {
                 .get(&index)
                 .and_then(|strategy| strategy.settings.eoa_pk.map(|pk| pk.to_string()))
         })
+    }
+
+    /// Swaps ckETH by first checking the cycle balance, then transferring ckETH to the caller.
+    #[update]
+    pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
+        // Ensure the caller has attached enough cycles
+        if msg_cycles_available() < MINIMUM_ATTACHED_CYCLES {
+            return Err(ManagerError::Custom(format!(
+                "The attached cycles amount ({}) is less than the minimum accepted amount ({})",
+                msg_cycles_available(),
+                MINIMUM_ATTACHED_CYCLES
+            )));
+        }
+        // Ensure the cycle balance is above a certain threshold before proceeding
+        let mut swap_lock = SwapLock::default();
+        swap_lock.lock()?;
+        check_threshold().await?;
+        transfer_cketh(caller()).await
     }
 
     #[query]
