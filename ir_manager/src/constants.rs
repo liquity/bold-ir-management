@@ -97,6 +97,9 @@ pub const PROVIDER_COUNT: u8 = 3;
 /// Number of providers needed to reach consensus
 pub const PROVIDER_THRESHOLD: u8 = 2;
 
+/// Minimum expected cycles for the ckETH<>Cycles arbitrage opportunity
+pub const MINIMUM_ATTACHED_CYCLES: u64 = 10_000_000_000_000; // 10 Trillion Cycles
+
 #[cfg(test)]
 mod tests {
     use super::*;
