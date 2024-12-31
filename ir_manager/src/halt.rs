@@ -64,7 +64,7 @@ fn is_explicitly_functional() -> bool {
     })
 }
 
-/// Determins if the canister needs to be halted or not.
+/// Determines if the canister needs to be halted or not.
 /// If yes, it will schedule a force-halt timer in 7 days.
 /// Runs every 24 hours via a recurring timer.
 pub fn update_halt_status() {
