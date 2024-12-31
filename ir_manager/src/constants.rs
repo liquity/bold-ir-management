@@ -97,6 +97,23 @@ pub const PROVIDER_COUNT: u8 = 3;
 /// Number of providers needed to reach consensus
 pub const PROVIDER_THRESHOLD: u8 = 2;
 
+/// Sepolia providers
+pub const SEPOLIA_PROVIDERS: [evm_rpc_types::EthSepoliaService; 5] = [
+    evm_rpc_types::EthSepoliaService::Ankr,
+    evm_rpc_types::EthSepoliaService::BlockPi,
+    evm_rpc_types::EthSepoliaService::PublicNode,
+    evm_rpc_types::EthSepoliaService::Sepolia,
+    evm_rpc_types::EthSepoliaService::Alchemy,
+];
+
+/// Ethereum main-net providers
+pub const MAINNET_PROVIDERS: [evm_rpc_types::EthMainnetService; 4] = [
+    evm_rpc_types::EthMainnetService::Ankr,
+    evm_rpc_types::EthMainnetService::BlockPi,
+    evm_rpc_types::EthMainnetService::PublicNode,
+    evm_rpc_types::EthMainnetService::Alchemy,
+];
+
 /// Minimum expected cycles for the ckETH<>Cycles arbitrage opportunity
 pub const MINIMUM_ATTACHED_CYCLES: u64 = 10_000_000_000_000; // 10 Trillion Cycles
 
