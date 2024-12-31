@@ -232,8 +232,18 @@ impl IrManager {
         Ok(())
     }
 
-    /// Retrieves a list of strategies currently stored in the state.
+    /// Swaps ckETH by first checking the cycle balance, then transferring ckETH to the caller.
     #[update]
+    pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
+        // Ensure the cycle balance is above a certain threshold before proceeding
+        let mut swap_lock = SwapLock::default();
+        swap_lock.lock()?;
+        check_threshold().await?;
+        transfer_cketh(caller()).await
+    }
+
+    /// Retrieves a list of strategies currently stored in the state.
+    #[query]
     pub fn get_strategies(&self) -> Vec<StrategyQueryData> {
         STRATEGY_STATE.with(|vector_data| {
             let binding = vector_data.borrow();
@@ -248,23 +258,13 @@ impl IrManager {
     }
 
     /// Returns the strategy EOA
-    #[update]
+    #[query]
     pub fn get_strategy_address(&self, index: u32) -> Option<String> {
         STRATEGY_STATE.with(|data| {
             data.borrow()
                 .get(&index)
                 .and_then(|strategy| strategy.settings.eoa_pk.map(|pk| pk.to_string()))
         })
-    }
-
-    /// Swaps ckETH by first checking the cycle balance, then transferring ckETH to the caller.
-    #[update]
-    pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
-        // Ensure the cycle balance is above a certain threshold before proceeding
-        let mut swap_lock = SwapLock::default();
-        swap_lock.lock()?;
-        check_threshold().await?;
-        transfer_cketh(caller()).await
     }
 
     #[query]
