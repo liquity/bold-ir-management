@@ -66,8 +66,8 @@ impl IrManager {
             name: String::from("key_1"),
         };
         let public_key_bytes =
-            get_canister_public_key(key_id, None, Some(derivation_path.clone())).await;
-        let eoa_pk = string_to_address(pubkey_bytes_to_address(&public_key_bytes))?;
+            get_canister_public_key(key_id, None, derivation_path.clone()).await?;
+        let eoa_pk = string_to_address(pubkey_bytes_to_address(&public_key_bytes)?)?;
         let rpc_canister = Service(strategy.rpc_principal);
 
         // Convert String addresses to Address ones
