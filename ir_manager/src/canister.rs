@@ -5,6 +5,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::cleanup::daily_cleanup;
 use crate::constants::MAX_RETRY_ATTEMPTS;
+use crate::halt::{is_functional, Halt, update_halt_status};
 use crate::constants::MINIMUM_ATTACHED_CYCLES;
 use crate::journal::JournalCollection;
 use crate::journal::StableJournalCollection;
@@ -160,6 +161,7 @@ impl IrManager {
         set_timer_interval(Duration::from_secs(86_400), move || {
             let max_retry_attempts = Arc::clone(&max_retry_attempts);
             spawn(async move {
+                assert!(is_functional());
                 let mut journal = JournalCollection::open(None);
                 for turn in 1..=*max_retry_attempts {
                     let result = recharge_cketh().await;
@@ -183,7 +185,11 @@ impl IrManager {
         set_timer_interval(Duration::from_secs(86_400), || {
             spawn(daily_cleanup());
         });
-
+      
+        set_timer_interval(Duration::from_secs(86_400), || {
+            update_halt_status();
+        });
+      
         Ok(())
     }
 
@@ -215,6 +221,8 @@ impl IrManager {
     /// Swaps ckETH by first checking the cycle balance, then transferring ckETH to the caller.
     #[update]
     pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
+        assert!(is_functional());
+      
         // Ensure the caller has attached enough cycles
         if msg_cycles_available() < MINIMUM_ATTACHED_CYCLES {
             return Err(ManagerError::Custom(format!(
@@ -223,7 +231,7 @@ impl IrManager {
                 MINIMUM_ATTACHED_CYCLES
             )));
         }
-        // Ensure the cycle balance is above a certain threshold before proceeding
+      
         let mut swap_lock = SwapLock::default();
         swap_lock.lock()?;
         check_threshold().await?;
@@ -253,6 +261,11 @@ impl IrManager {
 
         // Limit the results to the desired depth
         Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
+    }
+
+    #[query]
+    pub fn halt_status(&self) -> Halt {
+        HALT_STATE.with(|state| state.borrow().clone())
     }
 
     /// Generates the IDL for the canister interface.

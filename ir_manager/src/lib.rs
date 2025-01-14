@@ -13,5 +13,6 @@ pub mod state;
 pub mod strategy;
 pub mod types;
 pub mod utils;
+pub mod halt;
 
 pub use canister::IrManager;

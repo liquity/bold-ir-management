@@ -12,6 +12,8 @@ pub struct StrategyData {
     pub last_update: u64,
     /// The EOA's nonce
     pub eoa_nonce: u64,
+    /// Timestamp of the last successful exit of the strategy
+    pub last_ok_exit: u64
 }
 
 impl StrategyData {
@@ -30,6 +32,12 @@ impl StrategyData {
     /// Sets the EOA nonce for the strategy.
     pub fn eoa_nonce(&mut self, eoa_nonce: u64) -> &mut Self {
         self.eoa_nonce = eoa_nonce;
+        self
+    }
+
+    /// Sets Timestamp of the last successful exit of the strategy.
+    pub fn last_ok_exit(&mut self, time: u64) -> &mut Self {
+        self.last_ok_exit = time;
         self
     }
 }
