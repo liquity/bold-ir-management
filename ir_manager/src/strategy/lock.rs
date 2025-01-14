@@ -8,7 +8,7 @@ use crate::{
 };
 
 /// Lock with a built-in timeout mechanism
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 pub struct Lock {
     /// Status of the lock. `true` represents locked and `false` unlocked
     pub is_locked: bool,
