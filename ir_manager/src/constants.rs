@@ -141,18 +141,19 @@ pub const MINIMUM_ATTACHED_CYCLES: u64 = 10_000_000_000_000; // 10 Trillion Cycl
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
-    fn cketh_ledger_principal_matches() {
-        let principal = cketh_ledger().to_string();
-        let principal_2 = "ss2fx-dyaaa-aaaar-qacoq-cai";
-        assert_eq!(principal, principal_2);
+    fn cketh_ledger_is_correct() {
+        assert_eq!(cketh_ledger().to_text(), "ss2fx-dyaaa-aaaar-qacoq-cai".to_string());
     }
 
     #[test]
-    fn exchange_rate_canister_principal_matches() {
-        let principal = exchange_rate_canister().to_string();
-        let principal_2 = "uf6dk-hyaaa-aaaaq-qaaaq-cai";
-        assert_eq!(principal, principal_2);
+    fn exchange_rate_canister_is_correct() {
+        assert_eq!(exchange_rate_canister().to_text(), "uf6dk-hyaaa-aaaaq-qaaaq-cai".to_string());
+    }
+
+    #[test]
+    fn scale_is_e18() {
+        assert_eq!(SCALE, 10_u128.pow(18));
     }
 }
