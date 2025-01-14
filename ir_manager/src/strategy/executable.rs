@@ -19,7 +19,7 @@ use crate::{
     },
 };
 
-use super::{data::StrategyData, settings::StrategySettings};
+use super::{data::StrategyData, lock::Lock, settings::StrategySettings};
 
 #[derive(Clone, Default)]
 pub struct ExecutableStrategy {
@@ -28,7 +28,7 @@ pub struct ExecutableStrategy {
     /// Mutable state
     pub data: StrategyData,
     /// Lock for the strategy. Determines if the strategy is currently being executed.
-    pub lock: bool,
+    pub lock: Lock,
 }
 
 impl ExecutableStrategy {
@@ -45,19 +45,7 @@ impl ExecutableStrategy {
     /// Locks the strategy.
     /// Prevents concurrent execution of the strategy to ensure consistent state.
     fn lock(&mut self) -> ManagerResult<()> {
-        let state_lock = STRATEGY_STATE.with(|strategies| {
-            Ok(strategies
-                .borrow()
-                .get(&self.settings.key)
-                .cloned()
-                .ok_or(ManagerError::NonExistentValue)?
-                .lock)
-        })?;
-        if self.lock || state_lock {
-            // Already locked, indicating the strategy is being processed elsewhere
-            return Err(ManagerError::Locked);
-        }
-        self.lock = true;
+        self.lock.try_lock()?;
         self.apply_change();
         Ok(())
     }
@@ -65,7 +53,7 @@ impl ExecutableStrategy {
     /// Unlocks the strategy.
     /// Releases the lock to allow future executions.
     pub fn unlock(&mut self) {
-        self.lock = false;
+        self.lock.unlock();
         self.apply_change();
     }
 
@@ -503,7 +491,9 @@ impl ExecutableStrategy {
             .iter()
             .filter(|t| t.interestBatchManager != self.settings.batch_manager)
         {
-            counted_debt += trove.debt;
+            counted_debt = counted_debt
+                .checked_add(trove.debt)
+                .ok_or_else(|| arithmetic_err("Counted debt overflowed."))?;
             if counted_debt > target_debt {
                 new_rate = trove
                     .interestRate

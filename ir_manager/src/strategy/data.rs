@@ -41,3 +41,51 @@ impl StrategyData {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_primitives::U256;
+    use proptest::prelude::*;
+
+    #[test]
+    fn test_strategy_data_setters() {
+        let mut data = StrategyData::default();
+
+        let latest_rate = U256::from(12345u64);
+        let last_update = 1700000000u64; // Example Unix timestamp
+        let eoa_nonce = 42u64;
+
+        // Use setters
+        data.latest_rate(latest_rate)
+            .last_update(last_update)
+            .eoa_nonce(eoa_nonce);
+
+        // Check values
+        assert_eq!(data.latest_rate, latest_rate);
+        assert_eq!(data.last_update, last_update);
+        assert_eq!(data.eoa_nonce, eoa_nonce);
+    }
+
+    // Property-based testing for StrategyData
+    proptest! {
+        #[test]
+        fn test_strategy_data_proptest(
+            latest_rate in any::<u64>(),
+            last_update in any::<u64>(),
+            eoa_nonce in any::<u64>(),
+        ) {
+            let mut data = StrategyData::default();
+
+            let latest_rate = U256::from(latest_rate);
+
+            data.latest_rate(latest_rate)
+                .last_update(last_update)
+                .eoa_nonce(eoa_nonce);
+
+            prop_assert_eq!(data.latest_rate, latest_rate);
+            prop_assert_eq!(data.last_update, last_update);
+            prop_assert_eq!(data.eoa_nonce, eoa_nonce);
+        }
+    }
+}

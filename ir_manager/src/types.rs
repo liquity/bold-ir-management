@@ -1,5 +1,8 @@
 //! Commonly used types
 
+// This is allowed in this module because the sol! macro doesn't provide its own docs.
+#![allow(missing_docs)]
+
 use crate::strategy::stale::StableStrategy;
 
 use alloy_sol_types::sol;
@@ -11,10 +14,9 @@ use serde::{Deserialize, Serialize};
 pub type DerivationPath = Vec<Vec<u8>>;
 
 /// Provider service to use
-// AUDIT: The following enums will be replaced by the Ethereum main-net providers.
-// AUDIT: Misconfiguration due to Sepolia types is out of scope.
 pub type ProviderService = EthSepoliaService;
 
+/// Strategy input provided by the caller during the initialization phase
 #[derive(CandidType, Deserialize)]
 pub struct StrategyInput {
     /// Key in the Hashmap<u32, StrategyData> that is `STRATEGY_DATA`
@@ -37,13 +39,17 @@ pub struct StrategyInput {
     pub hint_helper: String,
 }
 
+/// Strategy data returned by query methods
 #[derive(CandidType)]
 pub struct StrategyQueryData {
+    /// Trove manager contract address for this strategy
     pub trove_manager: String,
     /// Batch manager contract address for this strategy
     pub batch_manager: String,
     /// Lock for the strategy. Determines if the strategy is currently being executed.
-    pub locked: bool,
+    pub is_locked: bool,
+    /// Last time this strategy was locked at (None if it's not locked)
+    pub last_locked_at: Option<u64>,
     /// Latest rate determined by the canister in the previous cycle
     pub latest_rate: String,
     /// Minimum target for this strategy
@@ -64,27 +70,35 @@ impl From<StableStrategy> for StrategyQueryData {
             last_update: value.data.last_update,
             trove_manager: value.settings.manager.to_string(),
             batch_manager: value.settings.batch_manager.to_string(),
-            locked: value.lock,
+            is_locked: value.lock.is_locked,
+            last_locked_at: value.lock.last_locked_at,
         }
     }
 }
 
+/// Response for the ckETH<>Cycles swaps
 #[derive(CandidType, Debug, Serialize, Deserialize)]
 pub struct SwapResponse {
+    /// The amount of accepted cycles
+    /// The canister will only accept the amount of cycles that it can compensate for with ckETH.
     pub accepted_cycles: Nat,
+    /// The amount of ckETH that is returned to the caller.
     pub returning_ether: Nat,
 }
 
+/// ICRC-1 subaccount type
 pub type Subaccount = [u8; 32];
 
-// Account representation of ledgers supporting the ICRC1 standard
+/// Account representation of ledgers supporting the ICRC1 standard
 #[derive(Serialize, CandidType, Deserialize, Clone, Debug, Copy)]
 pub struct Account {
+    /// Principal ID of the account owner
     pub owner: Principal,
+    /// Optional subaccount for the owner principal
     pub subaccount: Option<Subaccount>,
 }
 
-#[allow(dead_code)]
+/// The HTTPS response format for RPC requests.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EthCallResponse {
