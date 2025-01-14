@@ -47,7 +47,9 @@ pub struct StrategyQueryData {
     /// Batch manager contract address for this strategy
     pub batch_manager: String,
     /// Lock for the strategy. Determines if the strategy is currently being executed.
-    pub locked: bool,
+    pub is_locked: bool,
+    /// Last time this strategy was locked at (None if it's not locked)
+    pub last_locked_at: Option<u64>,
     /// Latest rate determined by the canister in the previous cycle
     pub latest_rate: String,
     /// Minimum target for this strategy
@@ -68,7 +70,8 @@ impl From<StableStrategy> for StrategyQueryData {
             last_update: value.data.last_update,
             trove_manager: value.settings.manager.to_string(),
             batch_manager: value.settings.batch_manager.to_string(),
-            locked: value.lock,
+            is_locked: value.lock.is_locked,
+            last_locked_at: value.lock.last_locked_at,
         }
     }
 }
