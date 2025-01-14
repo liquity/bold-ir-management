@@ -1,4 +1,5 @@
 //! The canister's public methods
+#![allow(missing_docs)]
 
 use std::{sync::Arc, time::Duration};
 
@@ -33,6 +34,7 @@ use ic_exports::{
     ic_cdk_timers::set_timer_interval,
 };
 
+/// The IrManager canister struct (a `canister-sdk` requirement)
 #[derive(Canister)]
 pub struct IrManager {
     #[id]
