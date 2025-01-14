@@ -1,3 +1,10 @@
+//! All strategy related implementations and types.
+//! Includes:
+//! - Executable strategies
+//! - Stable strategies
+//! - Settings and data types
+//! - Strategy runner
+
 pub(crate) mod data;
 pub(crate) mod run;
 pub(crate) mod settings;
