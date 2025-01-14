@@ -13,6 +13,7 @@ use ic_exports::ic_cdk::{
     api::{call::CallResult, is_controller},
     call, id, print,
 };
+use num_bigint::BigUint;
 
 use super::{error::*, evm_rpc::*, exchange::*};
 
@@ -83,6 +84,13 @@ pub fn nat_to_u256(n: &Nat) -> ManagerResult<U256> {
     Ok(U256::from_be_bytes(padded_bytes))
 }
 
+/// Converts values of type `U256` to `Nat`
+pub fn u256_to_nat(n: &U256) -> ManagerResult<Nat> {
+    let be_bytes = n.to_be_bytes::<32>();
+    let biguint = BigUint::from_bytes_be(&be_bytes);
+    Ok(Nat::from(biguint))
+}
+
 /// Returns the ckETH balance of the canister
 pub async fn fetch_cketh_balance() -> ManagerResult<Nat> {
     let ledger_principal = cketh_ledger();
@@ -97,7 +105,12 @@ pub async fn fetch_cketh_balance() -> ManagerResult<Nat> {
     match call_response {
         // The ckETH token similar to ETH will always have a decimal number of 18.
         // We can avoid calling the metadata function to get the decimal separately by using SCALE.
-        Ok(response) => Ok(response.0 / SCALE),
+        Ok(response) => {
+            if response.0 == Nat::from(0_u8) {
+                return Err(ManagerError::Custom("Insufficient ckETH balance.".to_string()));
+            }
+            Ok(response.0 / SCALE)
+        },
         Err(err) => Err(ManagerError::Custom(err.1)),
     }
 }

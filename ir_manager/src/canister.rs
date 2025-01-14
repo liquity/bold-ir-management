@@ -3,7 +3,9 @@
 
 use std::{sync::Arc, time::Duration};
 
+use crate::cleanup::daily_cleanup;
 use crate::constants::MAX_RETRY_ATTEMPTS;
+use crate::constants::MINIMUM_ATTACHED_CYCLES;
 use crate::journal::JournalCollection;
 use crate::journal::StableJournalCollection;
 use crate::strategy::data::StrategyData;
@@ -19,8 +21,10 @@ use crate::{
     state::*,
     types::{StrategyInput, StrategyQueryData, SwapResponse},
 };
+
 use candid::Nat;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
+use ic_exports::ic_cdk::api::call::msg_cycles_available;
 use ic_exports::{
     candid::Principal,
     ic_cdk::{
@@ -64,8 +68,8 @@ impl IrManager {
             name: String::from("key_1"),
         };
         let public_key_bytes =
-            get_canister_public_key(key_id, None, Some(derivation_path.clone())).await;
-        let eoa_pk = string_to_address(pubkey_bytes_to_address(&public_key_bytes))?;
+            get_canister_public_key(key_id, None, derivation_path.clone()).await?;
+        let eoa_pk = string_to_address(pubkey_bytes_to_address(&public_key_bytes)?)?;
         let rpc_canister = Service(strategy.rpc_principal);
 
         // Convert String addresses to Address ones
@@ -177,65 +181,14 @@ impl IrManager {
         // - clears all reputation change logs and resets the reputations
         // - checks if the logs have more than 300 items, if so, clear the surplus
         set_timer_interval(Duration::from_secs(86_400), || {
-            JOURNAL.with(|journal| {
-                let mut binding = journal.borrow_mut();
-
-                // Initialize a new StableVec safely and return if initialization fails
-                let temp = if let Ok(vec) = ic_stable_structures::Vec::init(
-                    ic_stable_structures::DefaultMemoryImpl::default(),
-                ) {
-                    vec
-                } else {
-                    return; // Exit if initialization fails
-                };
-
-                for collection in binding.iter() {
-                    if !collection.is_reputation_change() {
-                        let _ = temp.push(&collection.clone());
-                    }
-                }
-
-                *binding = temp;
-            });
-
-            RPC_REPUTATIONS.with(|reputations| {
-                *reputations.borrow_mut() = vec![
-                    // AUDIT: The following enums will be replaced by the Ethereum main-net providers. Out of scope.
-                    (0, evm_rpc_types::EthSepoliaService::Ankr),
-                    (0, evm_rpc_types::EthSepoliaService::BlockPi),
-                    (0, evm_rpc_types::EthSepoliaService::PublicNode),
-                    (0, evm_rpc_types::EthSepoliaService::Sepolia),
-                    (0, evm_rpc_types::EthSepoliaService::Alchemy),
-                ]
-            });
-
-            JOURNAL.with(|journal| {
-                let binding = journal.borrow_mut();
-
-                // Check if the journal has more than 300 items
-                let len = binding.len();
-                if len > 300 {
-                    let excess = len - 300;
-
-                    // Shift all items to remove the oldest ones
-                    for i in excess..len {
-                        if let Some(item) = binding.get(i) {
-                            binding.set(i - excess, &item);
-                        }
-                    }
-
-                    // Pop the remaining items to resize the vector
-                    for _ in 0..excess {
-                        binding.pop();
-                    }
-                }
-            });
+            spawn(daily_cleanup());
         });
+
         Ok(())
     }
 
     /// Retrieves a list of strategies currently stored in the state.
-    #[update]
+    #[query]
     pub fn get_strategies(&self) -> Vec<StrategyQueryData> {
         STRATEGY_STATE.with(|vector_data| {
             let binding = vector_data.borrow();
@@ -250,7 +203,7 @@ impl IrManager {
     }
 
     /// Returns the strategy EOA
-    #[update]
+    #[query]
     pub fn get_strategy_address(&self, index: u32) -> Option<String> {
         STRATEGY_STATE.with(|data| {
             data.borrow()
@@ -262,6 +215,14 @@ impl IrManager {
     /// Swaps ckETH by first checking the cycle balance, then transferring ckETH to the caller.
     #[update]
     pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
+        // Ensure the caller has attached enough cycles
+        if msg_cycles_available() < MINIMUM_ATTACHED_CYCLES {
+            return Err(ManagerError::Custom(format!(
+                "The attached cycles amount ({}) is less than the minimum accepted amount ({})",
+                msg_cycles_available(),
+                MINIMUM_ATTACHED_CYCLES
+            )));
+        }
         // Ensure the cycle balance is above a certain threshold before proceeding
         let mut swap_lock = SwapLock::default();
         swap_lock.lock()?;

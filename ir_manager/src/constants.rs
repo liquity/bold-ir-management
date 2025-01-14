@@ -84,23 +84,32 @@ pub fn cketh_threshold() -> Nat {
 /// Default max response bytes
 pub const DEFAULT_MAX_RESPONSE_BYTES: u64 = 8_000;
 
-/// Exchange rate canister's principal ID
-const EXCHANGE_RATE_CANISTER_RAW: &[u8] = b"uf6dk-hyaaa-aaaaq-qaaaq-cai";
+/// Exchange rate canister's principal ID as a constant string slice.
+const EXCHANGE_RATE_CANISTER_RAW: &str = "uf6dk-hyaaa-aaaaq-qaaaq-cai";
 
-/// Returns the principal ID for the exchange rate canister.
+/// Returns the Principal for the exchange rate canister.
+/// 
+/// # Panics
+/// This function will panic if the hardcoded principal string is invalid.
+/// The panic should be caught by the unit tests.
 pub fn exchange_rate_canister() -> Principal {
-    Principal::from_slice(EXCHANGE_RATE_CANISTER_RAW)
+    Principal::from_text(EXCHANGE_RATE_CANISTER_RAW)
+        .expect("Invalid principal ID for the exchange rate canister.")
 }
 
 /// ckETH smart contract on Ethereum mainnet
 pub const CKETH_HELPER: &str = "0x7574eB42cA208A4f6960ECCAfDF186D627dCC175";
 
-/// ckETH ledger canister's principal ID
-const CKETH_LEDGER_RAW: &[u8] = b"ss2fx-dyaaa-aaaar-qacoq-cai";
+const CKETH_LEDGER_RAW: &str = "ss2fx-dyaaa-aaaar-qacoq-cai";
 
-/// Returns the principal ID for the ckETH ledger canister.
+/// Returns the Principal for the ckETH ledger canister.
+/// 
+/// # Panics
+/// This function will panic if the hardcoded principal string is invalid.
+/// The panic should be caught by the unit tests.
 pub fn cketh_ledger() -> Principal {
-    Principal::from_slice(CKETH_LEDGER_RAW)
+    Principal::from_text(CKETH_LEDGER_RAW)
+    .expect("Invalid principal ID for the exchange rate canister.")
 }
 
 /// Number of providers to use
@@ -108,3 +117,42 @@ pub const PROVIDER_COUNT: u8 = 3;
 
 /// Number of providers needed to reach consensus
 pub const PROVIDER_THRESHOLD: u8 = 2;
+
+/// Sepolia providers
+pub const SEPOLIA_PROVIDERS: [evm_rpc_types::EthSepoliaService; 5] = [
+    evm_rpc_types::EthSepoliaService::Ankr,
+    evm_rpc_types::EthSepoliaService::BlockPi,
+    evm_rpc_types::EthSepoliaService::PublicNode,
+    evm_rpc_types::EthSepoliaService::Sepolia,
+    evm_rpc_types::EthSepoliaService::Alchemy,
+];
+
+/// Ethereum main-net providers
+pub const MAINNET_PROVIDERS: [evm_rpc_types::EthMainnetService; 4] = [
+    evm_rpc_types::EthMainnetService::Ankr,
+    evm_rpc_types::EthMainnetService::BlockPi,
+    evm_rpc_types::EthMainnetService::PublicNode,
+    evm_rpc_types::EthMainnetService::Alchemy,
+];
+
+/// Minimum expected cycles for the ckETH<>Cycles arbitrage opportunity
+pub const MINIMUM_ATTACHED_CYCLES: u64 = 10_000_000_000_000; // 10 Trillion Cycles
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn cketh_ledger_principal_matches() {
+        let principal = cketh_ledger().to_string();
+        let principal_2 = "ss2fx-dyaaa-aaaar-qacoq-cai";
+        assert_eq!(principal, principal_2);
+    }
+
+    #[test]
+    fn exchange_rate_canister_principal_matches() {
+        let principal = exchange_rate_canister().to_string();
+        let principal_2 = "uf6dk-hyaaa-aaaaq-qaaaq-cai";
+        assert_eq!(principal, principal_2);
+    }
+}

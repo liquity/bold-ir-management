@@ -18,13 +18,14 @@ use std::str::FromStr;
 
 use crate::{
     constants::{
-        cketh_fee, cketh_ledger, cketh_threshold, ether_recharge_value, CKETH_HELPER,
+        cketh_fee, cketh_ledger, cketh_threshold, ether_recharge_value, scale, CKETH_HELPER,
         CYCLES_DISCOUNT_PERCENTAGE, CYCLES_THRESHOLD, SCALE,
     },
     strategy::stale::StableStrategy,
     utils::{
         common::{
             extract_call_result, fetch_cketh_balance, fetch_ether_cycles_rate, get_rpc_service,
+            nat_to_u256, u256_to_nat,
         },
         error::*,
         evm_rpc::Service,
@@ -222,22 +223,24 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
     if rate == 0 {
         return Err(arithmetic_err("The calculated ETH/CXDR rate is zero."));
     }
-
-    let attached_cycles = msg_cycles_available() as u128;
-
-    // Calculate the maximum possible ckETH transfer amount.
-    let maximum_returned_ether_amount = Nat::from(
-        attached_cycles
-            .saturating_mul(rate as u128)
-            .saturating_mul(SCALE), // SCALE is 10^18, matching ckETH decimals.
-    );
+    let attached_cycles = U256::from(msg_cycles_available());
+    let max_returned_ether_amount_u256 = &attached_cycles
+        .checked_mul(U256::from(rate))
+        .and_then(|r| r.checked_mul(scale())) // SCALE here is the decimals ckETH tokens have (10^18)
+        .ok_or_else(|| {
+            arithmetic_err(
+                "Overflow occurred when calculating the maximum possible Ether to return.",
+            )
+        })?;
+    let maximum_returned_ether_amount = u256_to_nat(max_returned_ether_amount_u256)?;
 
     // Check the current balance of ckETH.
     let cketh_balance = fetch_cketh_balance().await?;
 
     // Determine the amount to transfer and cycles to accept.
     let (transfer_amount, cycles_to_accept) = if cketh_balance > maximum_returned_ether_amount {
-        (maximum_returned_ether_amount, attached_cycles)
+        // we are not worried about casting like this as `msg_cycles_available()` had returned a u64 before
+        (maximum_returned_ether_amount, attached_cycles.to::<u64>())
     } else {
         let cycles_to_accept = (cketh_balance.clone() / SCALE / rate)
             .0
@@ -247,10 +250,10 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
                     "Error while decoding the amount of cycles to accept to u64".to_string(),
                 )
             })?;
-        (cketh_balance, cycles_to_accept as u128)
+        (cketh_balance, cycles_to_accept)
     };
 
-    msg_cycles_accept(cycles_to_accept as u64);
+    msg_cycles_accept(cycles_to_accept);
 
     // Send ckETH to the receiver via the ledger.
     let ledger_principal = cketh_ledger();
