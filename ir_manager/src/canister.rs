@@ -45,9 +45,35 @@ pub struct IrManager {
 impl PreUpdate for IrManager {}
 
 impl IrManager {
-    /// Mints a new strategy with the provided input.
-    /// This function checks if the strategy key is already in use and if not, it creates a new strategy.
-    /// It also handles the necessary conversions for addresses and values.
+    /// Mints a new strategy with the provided configuration parameters.
+    /// 
+    /// This function creates a new Interest Rate Management strategy and initializes it with the provided settings.
+    /// The strategy gets assigned a unique EOA (Externally Owned Account) through tECDSA key derivation.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `strategy` - Configuration parameters for the new strategy including:
+    ///   - key: Unique identifier for the strategy
+    ///   - target_min: Minimum target for debt positioning
+    ///   - manager: Address of the Trove Manager contract
+    ///   - multi_trove_getter: Contract address for fetching multiple trove data
+    ///   - collateral_index: Index of the collateral type
+    ///   - rpc_principal: Principal ID of the EVM RPC canister
+    ///   - upfront_fee_period: Cooldown period for rate adjustments in seconds
+    ///   - collateral_registry: Address of the collateral registry contract
+    ///   - hint_helper: Address of the hint helper contract
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(String)` - The address of the newly generated EOA for this strategy
+    /// * `Err(ManagerError)` - If strategy creation fails due to:
+    ///   - Key already in use
+    ///   - Invalid addresses
+    ///   - tECDSA key generation failure
+    /// 
+    /// # Access Control
+    /// 
+    /// Only the canister controller can call this function.
     #[update]
     pub async fn mint_strategy(&self, strategy: StrategyInput) -> ManagerResult<String> {
         only_controller(caller())?;
@@ -112,8 +138,29 @@ impl IrManager {
         Ok(eoa_pk.to_string())
     }
 
-    /// Sets the batch manager for a given strategy key.
-    /// This function ensures that only the controller can call it and updates the strategy's settings.
+    /// Sets the batch manager contract address for a given strategy.
+    /// 
+    /// This function associates a batch manager contract with an existing strategy and 
+    /// initializes its current interest rate. Must be called after strategy minting
+    /// but before the strategy can begin executing.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `key` - The unique identifier of the existing strategy
+    /// * `batch_manager` - Ethereum address of the batch manager contract
+    /// * `current_rate` - Initial interest rate for the batch manager
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - If batch manager was successfully set
+    /// * `Err(ManagerError)` - If operation fails due to:
+    ///   - Strategy not found
+    ///   - Invalid batch manager address
+    ///   - Rate conversion error
+    /// 
+    /// # Access Control
+    /// 
+    /// Only the canister controller can call this function.
     #[update]
     pub async fn set_batch_manager(
         &self,
@@ -134,8 +181,31 @@ impl IrManager {
         })
     }
 
-    /// Starts timers for executing strategies and managing the canister's cycle balance.
-    /// Each strategy executes on a 1-hour interval, and cycle balance checks happen every 24 hours.
+    /// Starts all system timers for strategy execution and maintenance tasks.
+    /// 
+    /// This function initializes recurring timers for:
+    /// - Hourly strategy execution cycles
+    /// - Daily ckETH balance monitoring and recharging
+    /// - Daily provider reputation management and cleanup
+    /// - Daily halt condition evaluation
+    /// 
+    /// Each strategy immediately executes once when timers start, then begins its hourly cycle.
+    /// The recharge cycle monitors both cycle and ckETH balances, triggering recharge
+    /// operations when thresholds are reached.
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - If all timers were successfully started
+    /// * `Err(ManagerError)` - If timer initialization fails
+    /// 
+    /// # Access Control
+    /// 
+    /// Only the canister controller can call this function.
+    /// 
+    /// # Note
+    /// 
+    /// This should typically be called once after all strategies are configured
+    /// and before the canister is made immutable.
     #[update]
     pub async fn start_timers(&self) -> ManagerResult<()> {
         only_controller(caller())?;
@@ -193,7 +263,20 @@ impl IrManager {
         Ok(())
     }
 
-    /// Retrieves a list of strategies currently stored in the state.
+    /// Retrieves current data for all strategies in the system.
+    /// 
+    /// Returns information about each strategy including:
+    /// - Contract addresses (trove manager, batch manager)
+    /// - Lock status and timing
+    /// - Current interest rate
+    /// - Target minimums
+    /// - EOA public key
+    /// - Last update timestamp
+    /// 
+    /// # Returns
+    /// 
+    /// A vector of StrategyQueryData structs containing current strategy states.
+    /// Returns an empty vector if no strategies exist.
     #[query]
     pub fn get_strategies(&self) -> Vec<StrategyQueryData> {
         STRATEGY_STATE.with(|vector_data| {
@@ -208,7 +291,16 @@ impl IrManager {
         })
     }
 
-    /// Returns the strategy EOA
+    /// Retrieves the EOA address associated with a specific strategy.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `index` - The unique identifier of the strategy
+    /// 
+    /// # Returns
+    /// 
+    /// * `Some(String)` - The EOA address if the strategy exists and has an assigned EOA
+    /// * `None` - If strategy doesn't exist or has no EOA assigned
     #[query]
     pub fn get_strategy_address(&self, index: u32) -> Option<String> {
         STRATEGY_STATE.with(|data| {
@@ -218,7 +310,29 @@ impl IrManager {
         })
     }
 
-    /// Swaps ckETH by first checking the cycle balance, then transferring ckETH to the caller.
+    /// Facilitates ckETH<>Cycles arbitrage operations.
+    /// 
+    /// This function allows arbitrageurs to provide cycles to the canister in exchange
+    /// for discounted ckETH. The exchange includes:
+    /// - Verifying minimum cycle requirements
+    /// - Checking canister cycle balance thresholds
+    /// - Applying a discount on ckETH transfer
+    /// - Atomic swap execution with rollback on failure
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(SwapResponse)` - Details of the successful swap including:
+    ///   - accepted_cycles: Amount of cycles accepted
+    ///   - returning_ether: Amount of ckETH transferred
+    /// * `Err(ManagerError)` - If swap fails due to:
+    ///   - Insufficient cycles attached
+    ///   - Cycles balance above threshold
+    ///   - ckETH transfer failure
+    ///   - Lock acquisition failure
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the canister is not in a functional state.
     #[update]
     pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
         assert!(is_functional());
@@ -237,7 +351,23 @@ impl IrManager {
         check_threshold().await?;
         transfer_cketh(caller()).await
     }
-
+    
+    /// Retrieves recent system logs up to specified depth.
+    /// 
+    /// Returns the most recent journal collections containing logs of:
+    /// - Strategy executions
+    /// - Rate adjustments
+    /// - Recharge operations
+    /// - Provider reputation changes
+    /// 
+    /// # Arguments
+    /// 
+    /// * `depth` - Number of most recent journal collections to return
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(Vec<StableJournalCollection>)` - Vector of journal collections
+    /// * `Err(ManagerError)` - If log retrieval fails
     #[query]
     pub async fn get_logs(&self, depth: u64) -> ManagerResult<Vec<StableJournalCollection>> {
         let entries = JOURNAL.with(|m| m.borrow().iter().collect::<Vec<StableJournalCollection>>());
@@ -245,6 +375,20 @@ impl IrManager {
         Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
     }
 
+    /// Retrieves logs for a specific strategy up to specified depth.
+    /// 
+    /// Returns journal collections filtered to only include entries related
+    /// to the specified strategy.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `depth` - Number of most recent journal collections to return
+    /// * `strategy_key` - Unique identifier of the strategy
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(Vec<StableJournalCollection>)` - Vector of filtered journal collections
+    /// * `Err(ManagerError)` - If log retrieval fails
     #[query]
     pub async fn get_strategy_logs(
         &self,
@@ -263,13 +407,29 @@ impl IrManager {
         Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
     }
 
+    /// Returns the current halt status of the canister.
+    /// 
+    /// The halt status indicates whether the canister is:
+    /// - Functional: Operating normally
+    /// - HaltingInProgress: In 7-day warning period before halt
+    /// - Halted: Permanently stopped due to system conditions
+    /// 
+    /// # Returns
+    /// 
+    /// Current Halt struct containing status and optional message
     #[query]
     pub fn halt_status(&self) -> Halt {
         HALT_STATE.with(|state| state.borrow().clone())
     }
 
-    /// Generates the IDL for the canister interface.
-    /// This function uses the `generate_idl!()` macro to create the IDL.
+    /// Generates the canister interface IDL.
+    /// 
+    /// Creates a Candid interface description for all public canister methods.
+    /// Used for canister-to-canister communication and API documentation.
+    /// 
+    /// # Returns
+    /// 
+    /// Generated Candid IDL for the canister
     pub fn idl() -> Idl {
         generate_idl!()
     }
