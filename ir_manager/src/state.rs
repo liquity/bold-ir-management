@@ -9,9 +9,11 @@ use alloy_primitives::Address;
 use evm_rpc_types::{EthMainnetService, EthSepoliaService, RpcService};
 use ic_stable_structures::{DefaultMemoryImpl, Vec as StableVec};
 
-use crate::{journal::StableJournalCollection, strategy::stale::StableStrategy};
+use crate::{halt::Halt, journal::StableJournalCollection, strategy::stale::StableStrategy};
 
 thread_local! {
+    /// Halt state tracking the functionality status of the canister
+    pub static HALT_STATE: RefCell<Halt> = RefCell::new(Halt::default());
     /// Latest safe block
     pub static LAST_SAFE_BLOCK: Cell<u128> = Cell::new(0);
     /// Swap ckETH Lock

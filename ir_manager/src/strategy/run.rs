@@ -1,8 +1,5 @@
 use crate::{
-    constants::MAX_RETRY_ATTEMPTS,
-    journal::{JournalCollection, LogType},
-    state::STRATEGY_STATE,
-    utils::error::ManagerError,
+    constants::MAX_RETRY_ATTEMPTS, halt::is_functional, journal::{JournalCollection, LogType}, state::STRATEGY_STATE, utils::error::ManagerError
 };
 
 use super::executable::ExecutableStrategy;
@@ -10,6 +7,7 @@ use super::executable::ExecutableStrategy;
 /// Runs the strategy by creating an executable instance of it that implements the drop trait.
 /// Starts a new log collection.
 pub async fn run_strategy(key: u32) {
+    assert!(is_functional());
     let mut journal = JournalCollection::open(Some(key));
 
     // Create an executable instance of the strategy
@@ -42,12 +40,8 @@ pub async fn run_strategy(key: u32) {
                 ),
             );
 
-            // Handle success or failure for each strategy execution attempt
-            match result {
-                Ok(()) => break,
-                Err(_) => {
-                    executable_strategy.unlock(); // Unlock on failure
-                }
+            if result.is_ok() {
+                break;
             }
         }
     }
