@@ -20,7 +20,10 @@ pub fn scale() -> U256 {
 }
 
 /// Chain ID
-pub const CHAIN_ID: u64 = 11155111; // Sepolia testnet
+#[cfg(feature = "sepolia")]
+pub const CHAIN_ID: u64 = 11155111;
+#[cfg(feature = "mainnet")]
+pub const CHAIN_ID: u64 = 1;
 
 /// Tolerance margin up formula constant
 const TOLERANCE_MARGIN_UP_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
@@ -98,8 +101,11 @@ pub fn exchange_rate_canister() -> Principal {
 }
 
 /// ckETH smart contract on Ethereum mainnet
+#[cfg(feature = "mainnet")]
 pub const CKETH_HELPER: &str = "0x7574eB42cA208A4f6960ECCAfDF186D627dCC175";
 
+/// ckETH ledger canister's principal ID
+#[cfg(feature = "mainnet")]
 const CKETH_LEDGER_RAW: &str = "ss2fx-dyaaa-aaaar-qacoq-cai";
 
 /// Returns the Principal for the ckETH ledger canister.

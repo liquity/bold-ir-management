@@ -7,14 +7,19 @@ use crate::strategy::stale::StableStrategy;
 
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
-use evm_rpc_types::EthSepoliaService;
+use evm_rpc_types::{EthMainnetService, EthSepoliaService};
 use serde::{Deserialize, Serialize};
 
 /// Derivation path for the tECDSA signatures
 pub type DerivationPath = Vec<Vec<u8>>;
 
 /// Provider service to use
+#[cfg(feature = "sepolia")]
 pub type ProviderService = EthSepoliaService;
+
+/// Provider service to use
+#[cfg(feature = "mainnet")]
+pub type ProviderService = EthMainnetService;
 
 /// Strategy input provided by the caller during the initialization phase
 #[derive(CandidType, Deserialize)]

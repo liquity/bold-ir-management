@@ -6,7 +6,7 @@ use std::{
 };
 
 use alloy_primitives::Address;
-use evm_rpc_types::{EthSepoliaService, RpcService};
+use evm_rpc_types::{EthMainnetService, EthSepoliaService, RpcService};
 use ic_stable_structures::{DefaultMemoryImpl, Vec as StableVec};
 
 use crate::{halt::Halt, journal::StableJournalCollection, strategy::stale::StableStrategy};
@@ -40,7 +40,10 @@ thread_local! {
     /// Reputation-based ranking list of all providers
     // AUDIT: The following enums will be replaced by the Ethereum main-net providers.
     // AUDIT: Misconfiguration due to Sepolia types is out of scope.
+    #[cfg(feature = "sepolia")]
     pub static RPC_REPUTATIONS: RefCell<Vec<(i64, EthSepoliaService)>> = RefCell::new(vec![(0, EthSepoliaService::Ankr), (0, EthSepoliaService::BlockPi), (0, EthSepoliaService::PublicNode), (0, EthSepoliaService::Sepolia), (0, EthSepoliaService::Alchemy)]);
+    #[cfg(feature = "mainnet")]
+    pub static RPC_REPUTATIONS: RefCell<Vec<(i64, EthMainnetService)>> = RefCell::new(vec![(0, EthMainnetService::Ankr), (0, EthMainnetService::BlockPi), (0, EthMainnetService::PublicNode), (0, EthMainnetService::Cloudflare), (0, EthMainnetService::Alchemy)]);
 }
 
 /// Inserts a new journal collection
