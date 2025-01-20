@@ -10,20 +10,28 @@ import {BatchId} from "./Types/BatchId.sol";
 
 /**
  * @title Liquity V2 Autonomous Interest Rate Manager
- * @dev Allows for BOLD<>ETH conversions with a discounted rate and the distribution of the collected ether to the corresponding EOA.
+ * @dev Enables BOLD<>ETH conversions at a discounted rate and manages the redistribution of collected Ether.
+ * All calculations, including fees and rates, utilize fixed-point arithmetic with 18 decimal places (e18).
  */
 contract BatchManager {
-    uint256 immutable discountRate;
-    address immutable batchManagerEOA;
+    uint256 immutable discountRate; // Discount rate applied to BOLD conversions, expressed in e18.
+    address immutable batchManagerEOA; // Address of the entity authorized to manage batches.
 
-    IBorrowerOperations immutable borrowerOperations;
-    ITroveManager immutable troveManager;
-    IBoldToken immutable boldToken;
-    IWETHPriceFeed immutable wethPriceFeed;
-    ISortedTroves immutable sortedTroves;
+    IBorrowerOperations immutable borrowerOperations; // Interface for borrower-related operations.
+    ITroveManager immutable troveManager; // Interface for managing troves.
+    IBoldToken immutable boldToken; // Interface for the BOLD token.
+    IWETHPriceFeed immutable wethPriceFeed; // Interface for fetching the WETH/USD price.
+    ISortedTroves immutable sortedTroves; // Interface for managing sorted troves.
 
-    // event for EVM logging
-    event initialized(
+    /**
+     * @notice Emitted when the BatchManager is initialized.
+     * @param batchManagerEOA Address of the batch manager EOA.
+     * @param boldToken Address of the BOLD token contract.
+     * @param troveManager Address of the TroveManager contract.
+     * @param borrowerOperations Address of the BorrowerOperations contract.
+     * @param wethPriceFeed Address of the WETH price feed contract.
+     */
+    event Initialized(
         address batchManagerEOA,
         address boldToken,
         address troveManager,
@@ -31,14 +39,28 @@ contract BatchManager {
         address wethPriceFeed
     );
 
-    // modifier to check if caller is the batch manaager
+    /**
+     * @notice Restricts function access to the batch manager EOA.
+     */
     modifier onlyBatchManagerEOA() {
         require(msg.sender == batchManagerEOA, "Caller is not batch manager.");
         _;
     }
 
     /**
-     * @dev Set contract deployer as owner
+     * @notice Initializes the BatchManager contract and registers it with BorrowerOperations.
+     * @param _batchManagerEOA Address of the batch manager EOA.
+     * @param _troveManager Address of the TroveManager contract.
+     * @param _borrowerOperations Address of the BorrowerOperations contract.
+     * @param _boldToken Address of the BOLD token contract.
+     * @param _wethPricefeed Address of the WETH price feed contract.
+     * @param _sortedTroves Address of the SortedTroves contract.
+     * @param minInterestRate Minimum interest rate (e18) the batch manager can set.
+     * @param maxInterestRate Maximum interest rate (e18) the batch manager can set.
+     * @param currentInterestRate Current interest rate (e18) to initialize the batch.
+     * @param fee Fee applied to operations (e18).
+     * @param minInterestRateChangePeriod Minimum period for interest rate changes.
+     * @param _discountRate Discount rate for BOLD conversions (e18).
      */
     constructor(
         address _batchManagerEOA,
@@ -62,7 +84,6 @@ contract BatchManager {
         sortedTroves = _sortedTroves;
         discountRate = _discountRate;
 
-        // The contract needs to register itself as a batch manager
         borrowerOperations.registerBatchManager(
             minInterestRate,
             maxInterestRate,
@@ -71,7 +92,7 @@ contract BatchManager {
             minInterestRateChangePeriod
         );
 
-        emit initialized(
+        emit Initialized(
             batchManagerEOA,
             address(boldToken),
             address(troveManager),
@@ -81,40 +102,33 @@ contract BatchManager {
     }
 
     /**
-     * @dev Claim discounted BOLD in exchange for Ether
+     * @notice Claims discounted BOLD in exchange for Ether.
+     * The amount of BOLD is calculated based on the WETH/USD price and the discount rate.
      */
     function claimBOLD() external payable {
-        // check current weth/usd rate
-        uint256 rate = wethPriceFeed.fetchPrice();
+        uint256 rate = wethPriceFeed.fetchPrice(); // Fetch the current WETH/USD rate.
+        uint256 boldHoldings = boldToken.balanceOf(address(this)); // Check the contract's current BOLD balance.
+        uint256 expectedBold = (msg.value * rate) / (1 ether - discountRate); // Calculate the required BOLD amount.
 
-        // check current bold holdings
-        uint256 boldHoldings = boldToken.balanceOf(address(this));
-        uint256 expectedBold = (msg.value * rate) / (1 ether - discountRate);
+        require(
+            boldHoldings + troveManager.getLatestBatchData(address(this)).accruedManagementFee >= expectedBold,
+            "Insufficient BOLD for the given Ether."
+        );
 
-        if (boldHoldings >= expectedBold) {
-            // we have enough bold
-            boldToken.transfer(msg.sender, expectedBold);
-            return;
-        }
-        
-        uint256 accruedBold = troveManager
-            .getLatestBatchData(address(this))
-            .accruedManagementFee;
-        
-        require(accruedBold + boldHoldings >= expectedBold, "The contract doesn't have enough BOLD for this amount of Ether.");
-        
-        if (accruedBold + boldHoldings >= expectedBold) {
-            (uint256 head, ) = sortedTroves.batches(
-                BatchId.wrap(address(this))
-            );
+        if (boldHoldings < expectedBold) {
+            (uint256 head, ) = sortedTroves.batches(BatchId.wrap(address(this)));
             borrowerOperations.applyPendingDebt(head, 0, 0);
-            boldToken.transfer(msg.sender, expectedBold);
-            return;
         }
+
+        boldToken.transfer(msg.sender, expectedBold); // Transfer BOLD to the sender.
     }
 
     /**
-     * @dev Proxy for setting the new rate
+     * @notice Updates the annual interest rate for the batch manager.
+     * @param _newAnnualInterestRate New interest rate (e18).
+     * @param _upperHint Upper hint for batch placement.
+     * @param _lowerHint Lower hint for batch placement.
+     * @param _maxUpfrontFee Maximum fee allowed for upfront operations.
      */
     function setNewRate(
         uint128 _newAnnualInterestRate,
@@ -131,7 +145,8 @@ contract BatchManager {
     }
 
     /**
-     * @dev Returns the batch manager EOA
+     * @notice Returns the address of the batch manager EOA.
+     * @return Address of the batch manager EOA.
      */
     function ManagerEOA() external view returns (address) {
         return batchManagerEOA;
