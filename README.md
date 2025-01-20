@@ -6,6 +6,77 @@ The BOLD Interest Rate (IR) Manager is an Internet Computer canister that orches
 
 The system employs a multi-strategy approach where each strategy encapsulates rate management logic for a specific trove subset. These strategies operate autonomously through a cyclic execution model, evaluating rate adjustment conditions hourly while maintaining safeguards against concurrent modifications.
 
+## Calculations
+
+In Liquity V2, borrowers incur the following fees:
+
+- [Interest rate](https://github.com/liquity/bold/blob/main/README.md#borrowing-and-interest-rates): a recurrent rate set by the borrower and charged on their current debt
+- [Premature adjustment fee](https://github.com/liquity/bold/blob/main/README.md#premature-adjustment-fees): a one-off fee corresponding to 1 week of the average interest rate of the respective collateral market, charged on the debt whenever the borrower adjusts their interest rate within less than 7 days since the last adjustment ("cooling off period"). The same fee is charged when a new Trove is opened or when its debt is increased ([see](https://github.com/liquity/bold/blob/main/README.md#upfront-borrowing-fees))
+
+> [!NOTE]
+> In addition to these fees, borrowers delegating to a batch manager may also be charged a management fee. [see](https://github.com/liquity/bold/blob/main/README.md#batch-management-fee)!
+
+An optimal interest rate strategy should minimize the costs of borrowing by striking a balance between the interest rate and its adjustment frequency as well as the redemption risk ([see](https://github.com/liquity/bold/blob/main/README.md#bold-redemptions) on redemptions in Liquity V2).
+
+The autonomous management system targets a specific debt percentage to be in front (i.e. to be redeemed first) of all the Troves participating in the strategy. To determine the debt in front, the system calculates the percentage of redemptions hitting the respective collateral branch and uses it to loop over the list of Troves in the branch, ordered by interest rate from lowest to highest.
+
+### Key Terms and Parameters
+
+- $d$: Debt that needs to be redeemed first until you are hit.
+- $f$: Redemption fee.
+- $D_{\min}$: Minimum target debt (e.g., 5\%).
+- $M_u$, $M_d$: Tolerance margins for upward and downward deviations (e.g., 0.25).
+- $T_d$: Upfront fee period in time steps (e.g., 7 days).
+- $t$: Number of time steps since the last update.
+- $r_{\text{curr}}$, $r_{\text{new}}$, $r_{\text{avg}}$: Current, new, and average interest rates.
+
+The base debt $D_{\min}$ is a parameter preset for each strategy and determines the target range for the debt in front, along with tolerance margins for up and down deviations ($M_u$ and $M_d$) defined as system-wide constants. The system thus aims to adjust the interest rate to achieve the midpoint of the target range when the debt in front gets out of range, by increasing or decreasing the rate as needed.
+
+The system employs the following mathematical foundations for its decisions:
+
+$$
+d < (1 - M_d) \cdot \text{TargetAmount}
+$$
+
+When the debt in front becomes larger than the upper bound of the target range, the interest rate is adjusted if both of these conditions hold:
+
+$$
+d > (1 + M_u) \cdot \text{TargetAmount}
+$$
+$$
+\left( 1 - \frac{t}{T} \right) (r_{\text{curr}} - r_{\text{new}}) > r_{\text{avg}} \quad \lor \quad t > T
+$$
+
+The second condition minimizes premature adjustment costs by only reducing rates when either the last adjustment was more than seven days ago or when the potential savings exceed the adjustment fee. The adjustment fee equals the size-weighted average interest paid by all borrowers in the same collateral branch.
+
+The new interest rate calculation aims to achieve a debt in front corresponding to the target range's midpoint:
+
+$$
+r_{\text{new}} = \text{calculateRate}(F) + \text{1 bip}
+$$
+
+### Target Percentage and Amount
+
+The **TargetPercentage** is defined as:
+
+$$
+\text{TargetPercentage} = 2 D_{\min} \cdot \frac{\frac{f}{0.005}}{1 + \frac{f}{0.005}}
+$$
+
+The **TargetAmount** is defined as:
+
+$$
+\text{TargetAmount} = \text{TargetPercentage} \cdot \text{MaximumRedeemableAgainstCollateral}
+$$
+
+### Maximum Redeemable Against Collateral
+
+The maximum redeemable amount is calculated as:
+
+$$
+\text{MaximumRedeemableAgainstCollateral} = \left( \frac{\text{UnbackedPortion}}{\text{TotalUnbacked}} \right) \cdot \text{TotalDebt}
+$$
+
 ## Core Architecture
 
 ### Strategy Implementation
@@ -170,46 +241,3 @@ The system is designed for immutable deployment:
    - Permanent autonomy establishment
 
 The combination of these mechanisms ensures the system operates autonomously while maintaining security and reliability. The progressive halting system provides a safety net against systemic failures, while the automatic retry and recovery mechanisms handle transient issues.
-
-
-## Calculations
-
-In Liquity V2, borrowers incur the following fees:
-
-- [Interest rate](https://github.com/liquity/bold/blob/main/README.md#borrowing-and-interest-rates): a recurrent rate set by the borrower and charged on their current debt
-- [Premature adjustment fee](https://github.com/liquity/bold/blob/main/README.md#premature-adjustment-fees): a one-off fee corresponding to 1 week of the average interest rate of the respective collateral market, charged on the debt whenever the borrower adjusts their interest rate within less than 7 days since the last adjustment ("cooling off period"). The same fee is charged when a new Trove is opened or when its debt is increased ([see](https://github.com/liquity/bold/blob/main/README.md#upfront-borrowing-fees))
-
-> [!NOTE]
-> In addition to these fees, borrowers delegating to a batch manager may also be charged a management fee. [see](https://github.com/liquity/bold/blob/main/README.md#batch-management-fee)!
-
-An optimal interest rate strategy should minimize the costs of borrowing by striking a balance between the interest rate and its adjustment frequency as well as the redemption risk ([see](https://github.com/liquity/bold/blob/main/README.md#bold-redemptions) on redemptions in Liquity V2).
-
-The autonomous management system targets a specific debt percentage to be in front (i.e. to be redeemed first) of all the Troves participating in the strategy. To determine the debt in front, the system calculates the percentage of redemptions hitting the respective collateral branch and uses it to loop over the list of Troves in the branch, ordered by interest rate from lowest to highest.
-
-The base debt D<sub>min</sub> is a parameter preset for each strategy and determines the target range for the debt in front, along with tolerance margins for up and down deviations (M<sub>u</sub> and M<sub>d</sub>) defined as system-wide constants. The system thus aims to adjust the interest rate to achieve the mid point of the target range when the debt in front gets out of range, by increasing or decreasing the rate as needed.
-
-The system employs the following mathematical foundations for its decisions:
-
-![Increase Check](./assets/update_condition.png)
-
-When the debt in front becomes larger than the upper bound of the target range, the interest rate is adjusted if both of these conditions hold:
-
-![First Decrease Check](./assets/first_decrease_condition.png)
-
-![Second Decrease Check](./assets/second_decrease_condition.png)
-
-The second condition minimizes premature adjustment costs by only reducing rates when either the last adjustment was more than seven days ago or when the potential savings exceed the adjustment fee. The adjustment fee equals the size-weighted average interest paid by all borrowers in the same collateral branch.
-
-The new interest rate calculation aims to achieve a debt in front corresponding to the target range's mid point:
-
-![New Rate Calculation](./assets/new_rate.png)
-
-The system uses these key terms and parameters:
-
-![Definitions](./assets/definitions.png)
-
-![Maximum Redemption Collateral](./assets/maximumRedemptionCollateral.png)
-
-![TargetPercentage](./assets/targetPercentage.png)
-
-![TargetAmount](./assets/targetAmount.png)
