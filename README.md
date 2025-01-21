@@ -63,6 +63,8 @@ $$
 \text{TargetPercentage} = 2 D_{\min} \cdot \frac{\frac{f}{0.005}}{1 + \frac{f}{0.005}}
 $$
 
+The system uses the current redemption fee, $$f$$, as a proxy for past redemption activity and an indicator of short-term redemption risk. To provide a larger buffer, **TargetPercentage** increases with redemption volume and gradually returns to its default value $$D_{\min}$$ as $$f$$ decays to the minimum interest rate of 0.5% when redemptions cease.
+
 The **TargetAmount** is defined as:
 
 $$
