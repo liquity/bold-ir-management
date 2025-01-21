@@ -73,7 +73,7 @@ $$
 
 ### Maximum Redeemable Against Collateral
 
-The maximum redeemable amount is calculated as:
+In accordance with Liquity V2's [redemption routing mechanism](https://github.com/liquity/bold/blob/main/README.md#redemption-routing), the maximum redeemable amount against a certain collateral is calculated as:
 
 $$
 \text{MaximumRedeemableAgainstCollateral} = \left( \frac{\text{UnbackedPortion}}{\text{TotalUnbacked}} \right) \cdot \text{TotalDebt}
