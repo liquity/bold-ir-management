@@ -23,7 +23,8 @@ The autonomous management system targets a specific debt percentage to be in fro
 ### Key Terms and Parameters
 
 - $d$: Debt that needs to be redeemed first until you are hit.
-- $f$: Redemption fee.
+- $f$: Current redemption fee.
+- $f_{\min}$: Minimum redemption fee (set to 0.5%).
 - $D_{\min}$: Minimum target debt (e.g., 5\%).
 - $M_u$, $M_d$: Tolerance margins for upward and downward deviations (e.g., 0.25).
 - $T_d$: Upfront fee period in time steps (e.g., 7 days).
@@ -60,7 +61,7 @@ $$
 The **TargetPercentage** is defined as:
 
 $$
-\text{TargetPercentage} = 2 D_{\min} \cdot \frac{\frac{f}{0.005}}{1 + \frac{f}{0.005}}
+\text{TargetPercentage} = 2 D_{\min} \frac{f}{f + f_{\min}} 
 $$
 
 The system uses the current redemption fee, $$f$$, as a proxy for past redemption activity and an indicator of short-term redemption risk. To provide a larger buffer, **TargetPercentage** increases with redemption volume and gradually returns to its default value $$D_{\min}$$ as $$f$$ decays to the minimum interest rate of 0.5% when redemptions cease.
