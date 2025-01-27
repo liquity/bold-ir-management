@@ -22,6 +22,7 @@ pub fn scale() -> U256 {
 /// Chain ID
 #[cfg(feature = "sepolia")]
 pub const CHAIN_ID: u64 = 11155111;
+/// Chain ID
 #[cfg(feature = "mainnet")]
 pub const CHAIN_ID: u64 = 1;
 
@@ -91,7 +92,7 @@ pub const DEFAULT_MAX_RESPONSE_BYTES: u64 = 8_000;
 const EXCHANGE_RATE_CANISTER_RAW: &str = "uf6dk-hyaaa-aaaaq-qaaaq-cai";
 
 /// Returns the Principal for the exchange rate canister.
-/// 
+///
 /// # Panics
 /// This function will panic if the hardcoded principal string is invalid.
 /// The panic should be caught by the unit tests.
@@ -109,13 +110,13 @@ pub const CKETH_HELPER: &str = "0x7574eB42cA208A4f6960ECCAfDF186D627dCC175";
 const CKETH_LEDGER_RAW: &str = "ss2fx-dyaaa-aaaar-qacoq-cai";
 
 /// Returns the Principal for the ckETH ledger canister.
-/// 
+///
 /// # Panics
 /// This function will panic if the hardcoded principal string is invalid.
 /// The panic should be caught by the unit tests.
 pub fn cketh_ledger() -> Principal {
     Principal::from_text(CKETH_LEDGER_RAW)
-    .expect("Invalid principal ID for the exchange rate canister.")
+        .expect("Invalid principal ID for the exchange rate canister.")
 }
 
 /// Number of providers to use
@@ -153,12 +154,18 @@ mod tests {
 
     #[test]
     fn cketh_ledger_is_correct() {
-        assert_eq!(cketh_ledger().to_text(), "ss2fx-dyaaa-aaaar-qacoq-cai".to_string());
+        assert_eq!(
+            cketh_ledger().to_text(),
+            "ss2fx-dyaaa-aaaar-qacoq-cai".to_string()
+        );
     }
 
     #[test]
     fn exchange_rate_canister_is_correct() {
-        assert_eq!(exchange_rate_canister().to_text(), "uf6dk-hyaaa-aaaaq-qaaaq-cai".to_string());
+        assert_eq!(
+            exchange_rate_canister().to_text(),
+            "uf6dk-hyaaa-aaaaq-qaaaq-cai".to_string()
+        );
     }
 
     #[test]

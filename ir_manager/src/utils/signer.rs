@@ -24,7 +24,7 @@ pub async fn get_canister_public_key(
 ) -> ManagerResult<Vec<u8>> {
     let call_result = ecdsa_public_key(EcdsaPublicKeyArgument {
         canister_id,
-        derivation_path: derivation_path,
+        derivation_path,
         key_id,
     })
     .await;
@@ -100,7 +100,7 @@ fn y_parity(prehash: &FixedBytes<32>, sig: &[u8], pubkey: &[u8]) -> ManagerResul
         .map_err(|err| {
             ManagerError::DecodingError(format!("failed to recover from prehash: {:#?}", err))
         })?;
-        
+
         if recovered_key == orig_key {
             return Ok(Parity::Eip155(parity as u64));
         }

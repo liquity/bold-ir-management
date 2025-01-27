@@ -6,14 +6,14 @@
 
 pub mod canister;
 pub mod charger;
+pub mod cleanup;
 pub mod constants;
+pub mod halt;
 pub mod journal;
 pub mod providers;
 pub mod state;
 pub mod strategy;
 pub mod types;
 pub mod utils;
-pub mod halt;
-pub mod cleanup;
 
 pub use canister::IrManager;

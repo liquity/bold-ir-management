@@ -106,11 +106,13 @@ pub async fn fetch_cketh_balance() -> ManagerResult<Nat> {
         // The ckETH token similar to ETH will always have a decimal number of 18.
         // We can avoid calling the metadata function to get the decimal separately by using SCALE.
         Ok(response) => {
-            if response.0 == Nat::from(0_u8) {
-                return Err(ManagerError::Custom("Insufficient ckETH balance.".to_string()));
+            if response.0 == 0_u8 {
+                return Err(ManagerError::Custom(
+                    "Insufficient ckETH balance.".to_string(),
+                ));
             }
             Ok(response.0 / SCALE)
-        },
+        }
         Err(err) => Err(ManagerError::Custom(err.1)),
     }
 }

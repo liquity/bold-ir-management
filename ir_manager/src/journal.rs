@@ -263,7 +263,11 @@ mod tests {
         let log_type = LogType::ProviderReputationChange;
         let note = "Reputation increased";
 
-        let entry = JournalEntry::new(ManagerResult::Ok(()), log_type.clone(), Some(note.to_string()));
+        let entry = JournalEntry::new(
+            ManagerResult::Ok(()),
+            log_type.clone(),
+            Some(note.to_string()),
+        );
 
         assert_eq!(entry.log_type, log_type);
         assert_eq!(entry.note.as_deref(), Some(note));
@@ -324,8 +328,14 @@ mod tests {
         let bytes = stable_collection.to_bytes();
         let decoded = StableJournalCollection::from_bytes(bytes);
 
-        assert_eq!(decoded.start_date_and_time, stable_collection.start_date_and_time);
-        assert_eq!(decoded.end_date_and_time, stable_collection.end_date_and_time);
+        assert_eq!(
+            decoded.start_date_and_time,
+            stable_collection.start_date_and_time
+        );
+        assert_eq!(
+            decoded.end_date_and_time,
+            stable_collection.end_date_and_time
+        );
         assert_eq!(decoded.strategy, stable_collection.strategy);
         assert_eq!(decoded.entries.len(), 1);
         assert_eq!(decoded.entries[0].log_type, LogType::RateAdjustment);
@@ -351,11 +361,7 @@ mod tests {
             Some("Reputation update".to_string()),
         );
 
-        let entry2 = JournalEntry::new(
-            ManagerResult::Ok(()),
-            LogType::ExecutionResult,
-            None,
-        );
+        let entry2 = JournalEntry::new(ManagerResult::Ok(()), LogType::ExecutionResult, None);
 
         let collection = StableJournalCollection {
             start_date_and_time: "01-01-2024 10:00:00".to_string(),

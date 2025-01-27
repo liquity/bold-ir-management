@@ -167,7 +167,7 @@ fn schedule_halt(message: String) {
 /// Check if a given timestamp (milliseconds) is older than the given number of days
 fn is_older_than(timestamp_ms: u64, days: u64) -> bool {
     // Get current time in milliseconds
-    let current_time_ms = (time() / 1_000_000) as u64;
+    let current_time_ms = time() / 1_000_000;
 
     // Define the threshold
     let threshold = current_time_ms - Duration::days(days as i64).num_milliseconds() as u64;

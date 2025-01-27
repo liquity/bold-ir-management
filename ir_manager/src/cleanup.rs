@@ -1,3 +1,39 @@
+//! Cleanup functionality for managing system state and provider reputations.
+//!
+//! This module provides functionality for periodic cleanup operations including:
+//! - Journal log management and pruning
+//! - RPC provider reputation resets and randomization
+//! - System state maintenance
+//!
+//! The cleanup operations help maintain system performance and ensure fair provider selection
+//! by periodically resetting reputations and removing excess logs.
+//!
+//! # Examples
+//!
+//! ```
+//! // Perform a complete daily cleanup
+//! daily_cleanup().await;
+//!
+//! // Clean up just the journal logs
+//! journal_cleanup();
+//!
+//! // Reset and randomize provider reputations
+//! reputations_cleanup().await?;
+//! ```
+//!
+//! # Architecture
+//!
+//! The cleanup system operates on three main components:
+//!
+//! 1. **Journal Management**: Removes excess logs and reputation change entries while maintaining
+//!    the most recent 300 entries.
+//!
+//! 2. **Provider Reputations**: Periodically resets and randomizes provider rankings to ensure
+//!    fair selection and prevent gaming of the reputation system.
+//!
+//! 3. **State Cleanup**: Maintains system state by removing stale data and ensuring data structures
+//!    stay within size limits.
+
 use ic_exports::ic_cdk::api::management_canister::main::raw_rand;
 use rand::seq::SliceRandom;
 use rand_chacha::rand_core::SeedableRng;
@@ -14,7 +50,15 @@ use crate::utils::common::extract_call_result;
 use crate::utils::error::ManagerError;
 use crate::utils::error::ManagerResult;
 
-/// Cleans up the journal and the reputations leaderboard
+/// Performs daily cleanup tasks including journal pruning and reputation resets.
+///
+/// This function orchestrates the complete cleanup process by:
+/// - Cleaning up the journal logs
+/// - Resetting provider reputations
+/// - Logging the cleanup operations
+///
+/// The function creates a new journal collection to log the cleanup process and
+/// its results.
 pub async fn daily_cleanup() {
     // Create a new journal collection
     let mut journal = JournalCollection::open(None);
@@ -44,9 +88,19 @@ pub async fn daily_cleanup() {
     journal.append_note(Ok(()), LogType::Info, "Finished the cleanup successfully.");
 }
 
-/// Cleans up the reputations leaderboard by:
-/// 1- Shuffling the new leaderboard using a PRNG seed
-/// 2- Assigning as each provider's new reputation
+/// Resets and randomizes the RPC provider reputation rankings.
+///
+/// This function:
+/// 1. Creates a new randomized ordering of providers using a secure RNG seed from the IC
+/// 2. Resets all provider reputations to zero
+/// 3. Updates the global reputation state with the new rankings
+///
+/// # Returns
+/// - `Ok(())` if the cleanup succeeds
+/// - `Err(ManagerError)` if there are issues with seed generation or state updates
+///
+/// # Errors
+/// - Returns `ManagerError::DecodingError` if the random seed cannot be properly formatted
 pub async fn reputations_cleanup() -> ManagerResult<()> {
     #[cfg(feature = "sepolia")]
     let mut providers = SEPOLIA_PROVIDERS.to_vec();
@@ -82,9 +136,14 @@ pub async fn reputations_cleanup() -> ManagerResult<()> {
     Ok(())
 }
 
-/// Cleans up the journal by:
-/// 1 - Removing all provider reputation change logs
-/// 2 - Removing any surplus of logs
+/// Manages the cleanup of the system journal logs.
+///
+/// This function performs two main cleanup operations:
+/// 1. Removes all provider reputation change log entries
+/// 2. Trims the journal to the most recent 300 entries if it exceeds that size
+///
+/// The cleanup process maintains only essential logs while preventing unbounded
+/// growth of the journal storage.
 pub fn journal_cleanup() {
     crate::state::JOURNAL.with(|journal| {
         let mut binding = journal.borrow_mut();
