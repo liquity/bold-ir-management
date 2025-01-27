@@ -12,7 +12,7 @@ use crate::journal::StableJournalCollection;
 use crate::strategy::data::StrategyData;
 use crate::strategy::run::run_strategy;
 use crate::strategy::settings::StrategySettings;
-use crate::strategy::stale::StableStrategy;
+use crate::strategy::stable::StableStrategy;
 use crate::utils::common::*;
 use crate::utils::error::*;
 use crate::utils::evm_rpc::Service;

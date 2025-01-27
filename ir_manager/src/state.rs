@@ -5,11 +5,15 @@ use std::{
     collections::{HashMap, VecDeque},
 };
 
+#[cfg(feature = "mainnet")]
+use evm_rpc_types::EthMainnetService;
+#[cfg(feature = "sepolia")]
+use evm_rpc_types::EthSepoliaService;
 use alloy_primitives::Address;
-use evm_rpc_types::{EthMainnetService, EthSepoliaService, RpcService};
+use evm_rpc_types::RpcService;
 use ic_stable_structures::{DefaultMemoryImpl, Vec as StableVec};
 
-use crate::{halt::Halt, journal::StableJournalCollection, strategy::stale::StableStrategy};
+use crate::{halt::Halt, journal::StableJournalCollection, strategy::stable::StableStrategy};
 
 thread_local! {
     /// Halt state tracking the functionality status of the canister

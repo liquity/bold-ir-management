@@ -21,7 +21,7 @@ use crate::{
         cketh_fee, cketh_ledger, cketh_threshold, ether_recharge_value, scale, CKETH_HELPER,
         CYCLES_DISCOUNT_PERCENTAGE, CYCLES_THRESHOLD, SCALE,
     },
-    strategy::stale::StableStrategy,
+    strategy::stable::StableStrategy,
     utils::{
         common::{
             extract_call_result, fetch_cketh_balance, fetch_ether_cycles_rate, get_rpc_service,

@@ -3,11 +3,14 @@
 // This is allowed in this module because the sol! macro doesn't provide its own docs.
 #![allow(missing_docs)]
 
-use crate::strategy::stale::StableStrategy;
+use crate::strategy::stable::StableStrategy;
 
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
-use evm_rpc_types::{EthMainnetService, EthSepoliaService};
+#[cfg(feature = "mainnet")]
+use evm_rpc_types::EthMainnetService;
+#[cfg(feature = "sepolia")]
+use evm_rpc_types::EthSepoliaService;
 use serde::{Deserialize, Serialize};
 
 /// Derivation path for the tECDSA signatures

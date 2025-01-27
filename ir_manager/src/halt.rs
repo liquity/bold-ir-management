@@ -6,7 +6,7 @@ use ic_exports::{ic_cdk::api::time, ic_cdk_timers::set_timer};
 
 use crate::{
     state::{HALT_STATE, STRATEGY_STATE},
-    strategy::stale::StableStrategy,
+    strategy::stable::StableStrategy,
 };
 
 /// Halt struct containing reasoning and status
