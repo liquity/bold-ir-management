@@ -29,9 +29,20 @@ pub struct ExecutableStrategy {
     pub data: StrategyData,
     /// Lock for the strategy. Determines if the strategy is currently being executed.
     pub lock: Lock,
+    /// Tracks if the lock acquisition was successful for the drop trait implementation
+    acquired_lock: bool,
 }
 
 impl ExecutableStrategy {
+    pub fn new(settings: StrategySettings, data: StrategyData, lock: Lock) -> ExecutableStrategy {
+        ExecutableStrategy {
+            settings,
+            data,
+            lock,
+            acquired_lock: false,
+        }
+    }
+
     /// Replaces the strategy data in the HashMap
     /// This function updates the state of the strategy in the HashMap
     fn apply_change(&self) {
@@ -45,15 +56,16 @@ impl ExecutableStrategy {
     /// Locks the strategy.
     /// Prevents concurrent execution of the strategy to ensure consistent state.
     fn lock(&mut self) -> ManagerResult<()> {
-        self.lock.try_lock()?;
-        self.apply_change();
-        Ok(())
+        self.lock.try_lock().map(|_| {
+            self.acquired_lock = true;
+            self.apply_change();
+        })
     }
 
     /// Unlocks the strategy.
     /// Releases the lock to allow future executions.
     pub fn unlock(&mut self) {
-        self.lock.unlock();
+        self.lock.unlock(self.acquired_lock);
         self.apply_change();
     }
 

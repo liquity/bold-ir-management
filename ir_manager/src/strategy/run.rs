@@ -1,5 +1,9 @@
 use crate::{
-    constants::MAX_RETRY_ATTEMPTS, halt::is_functional, journal::{JournalCollection, LogType}, state::STRATEGY_STATE, utils::error::ManagerError
+    constants::MAX_RETRY_ATTEMPTS,
+    halt::is_functional,
+    journal::{JournalCollection, LogType},
+    state::STRATEGY_STATE,
+    utils::error::ManagerError,
 };
 
 use super::executable::ExecutableStrategy;

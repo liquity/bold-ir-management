@@ -13,7 +13,7 @@ pub struct StrategyData {
     /// The EOA's nonce
     pub eoa_nonce: u64,
     /// Timestamp of the last successful exit of the strategy
-    pub last_ok_exit: u64
+    pub last_ok_exit: u64,
 }
 
 impl StrategyData {

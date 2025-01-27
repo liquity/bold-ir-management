@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{
-    data::StrategyData, executable::ExecutableStrategy, lock::{Lock, StableLock},
+    data::StrategyData, executable::ExecutableStrategy, lock::StableLock,
     settings::StrategySettings,
 };
 
@@ -55,11 +55,11 @@ impl StableStrategy {
 
 impl From<&StableStrategy> for ExecutableStrategy {
     fn from(value: &StableStrategy) -> Self {
-        ExecutableStrategy {
-            settings: value.settings.clone(),
-            data: value.data.clone(),
-            lock: value.lock.clone().into(),
-        }
+        ExecutableStrategy::new(
+            value.settings.clone(),
+            value.data.clone(),
+            value.lock.clone().into(),
+        )
     }
 }
 
@@ -222,6 +222,9 @@ mod tests {
         assert_eq!(stable_strategy.settings.batch_manager, batch_manager);
         assert_eq!(stable_strategy.data.latest_rate, latest_rate);
         assert_eq!(stable_strategy.data.last_update, last_update);
-        assert!(!stable_strategy.lock, "Lock should be set to false");
+        assert!(
+            !stable_strategy.lock.is_locked,
+            "Lock should be set to false"
+        );
     }
 }

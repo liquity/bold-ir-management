@@ -32,16 +32,26 @@ impl Lock {
         if !self.is_locked {
             self.is_locked = true;
             self.last_locked_at = Some(current_time);
-            return Ok(());
+            Ok(())
         } else {
-            return Err(ManagerError::Locked);
+            Err(ManagerError::Locked)
         }
     }
 
     /// Sets the lock status to `unlocked`/`false`
-    pub fn unlock(&mut self) -> &mut Self {
-        self.is_locked = false;
-        self.last_locked_at = None;
+    pub fn unlock(&mut self, acquired_lock: bool) -> &mut Self {
+        if acquired_lock {
+            self.is_locked = false;
+            self.last_locked_at = None;
+        } else if let Some(last_locked_at) = self.last_locked_at {
+            let current_time = time() / 1_000_000_000; // current time in millis
+
+            if self.is_locked && current_time - last_locked_at > STRATEGY_LOCK_TIMEOUT {
+                self.is_locked = false;
+                self.last_locked_at = None;
+            }
+        }
+
         self
     }
 }
