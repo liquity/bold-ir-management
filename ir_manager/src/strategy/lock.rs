@@ -45,3 +45,34 @@ impl Lock {
         self
     }
 }
+
+/// Stable version of the lock with a built-in timeout mechanism.
+/// #### Usage
+/// Only used by `StableStrategy`
+/// #### Implementation Note
+/// Does not implement the `Drop` trait and `try_lock` and `unlock` methods.
+#[derive(Clone, Default)]
+pub struct StableLock {
+    /// Status of the lock. `true` represents locked and `false` unlocked
+    pub is_locked: bool,
+    /// Last locked timstamp in milliseconds
+    pub last_locked_at: Option<u64>,
+}
+
+impl From<StableLock> for Lock {
+    fn from(value: StableLock) -> Self {
+        Self {
+            is_locked: value.is_locked,
+            last_locked_at: value.last_locked_at,
+        }
+    }
+}
+
+impl From<Lock> for StableLock {
+    fn from(value: Lock) -> Self {
+        Self {
+            is_locked: value.is_locked,
+            last_locked_at: value.last_locked_at,
+        }
+    }
+}

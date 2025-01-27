@@ -6,7 +6,8 @@ use crate::{
 };
 
 use super::{
-    data::StrategyData, executable::ExecutableStrategy, lock::Lock, settings::StrategySettings,
+    data::StrategyData, executable::ExecutableStrategy, lock::{Lock, StableLock},
+    settings::StrategySettings,
 };
 
 /// Stale strategy struct
@@ -17,7 +18,7 @@ pub struct StableStrategy {
     /// Mutable state
     pub data: StrategyData,
     /// Lock for the strategy. Determines if the strategy is currently being executed.
-    pub lock: Lock,
+    pub lock: StableLock,
 }
 
 impl StableStrategy {
@@ -57,7 +58,7 @@ impl From<&StableStrategy> for ExecutableStrategy {
         ExecutableStrategy {
             settings: value.settings.clone(),
             data: value.data.clone(),
-            lock: value.lock,
+            lock: value.lock.clone().into(),
         }
     }
 }
@@ -67,7 +68,7 @@ impl From<&ExecutableStrategy> for StableStrategy {
         StableStrategy {
             settings: value.settings.clone(),
             data: value.data.clone(),
-            lock: value.lock,
+            lock: value.lock.clone().into(),
         }
     }
 }
@@ -76,11 +77,9 @@ impl From<&ExecutableStrategy> for StableStrategy {
 mod tests {
     use super::*;
     use crate::{
-        state::STRATEGY_STATE,
+        state::STRATEGY_STATE, strategy::data::StrategyData,
+        strategy::executable::ExecutableStrategy, strategy::settings::StrategySettings,
         utils::error::ManagerError,
-        strategy::data::StrategyData,
-        strategy::settings::StrategySettings,
-        strategy::executable::ExecutableStrategy,
     };
     use alloy_primitives::{Address, U256};
     use std::collections::HashMap;
@@ -134,7 +133,10 @@ mod tests {
         // Verify the strategy is in the state
         STRATEGY_STATE.with(|state| {
             let borrowed_state = state.borrow();
-            assert!(borrowed_state.contains_key(&key), "Strategy should be in the state");
+            assert!(
+                borrowed_state.contains_key(&key),
+                "Strategy should be in the state"
+            );
         });
     }
 
@@ -156,7 +158,10 @@ mod tests {
         let result = stable_strategy_2.mint();
         assert!(result.is_err(), "Minting should fail for duplicate key");
         if let Err(ManagerError::Custom(message)) = result {
-            assert!(message.contains("already mined"), "Error message should indicate duplicate key");
+            assert!(
+                message.contains("already mined"),
+                "Error message should indicate duplicate key"
+            );
         }
     }
 
