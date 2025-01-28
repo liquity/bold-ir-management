@@ -27,7 +27,8 @@ pub const CHAIN_ID: u64 = 11155111;
 pub const CHAIN_ID: u64 = 1;
 
 /// Tolerance margin up formula constant
-const TOLERANCE_MARGIN_UP_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
+// const TOLERANCE_MARGIN_UP_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
+const TOLERANCE_MARGIN_UP_RAW: u128 = 1 * SCALE / 100; // 1*10^16 => 1%
 
 /// Returns the tolerance margin for upward adjustments as a `U256`.
 pub fn tolerance_margin_up() -> U256 {
@@ -35,7 +36,8 @@ pub fn tolerance_margin_up() -> U256 {
 }
 
 /// Tolerance margin down formula constant
-const TOLERANCE_MARGIN_DOWN_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
+// const TOLERANCE_MARGIN_DOWN_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
+const TOLERANCE_MARGIN_DOWN_RAW: u128 = 1 * SCALE / 100; // 1*10^16 => 1%
 
 /// Returns the tolerance margin for downward adjustments as a `U256`.
 pub fn tolerance_margin_down() -> U256 {
@@ -129,7 +131,8 @@ pub const PROVIDER_THRESHOLD: u8 = 2;
 pub const STRATEGY_LOCK_TIMEOUT: u64 = 3600000;
 
 /// Sepolia providers
-pub const SEPOLIA_PROVIDERS: [evm_rpc_types::EthSepoliaService; 5] = [
+#[cfg(feature = "sepolia")]
+pub const PROVIDERS: [evm_rpc_types::EthSepoliaService; 5] = [
     evm_rpc_types::EthSepoliaService::Ankr,
     evm_rpc_types::EthSepoliaService::BlockPi,
     evm_rpc_types::EthSepoliaService::PublicNode,
@@ -138,7 +141,8 @@ pub const SEPOLIA_PROVIDERS: [evm_rpc_types::EthSepoliaService; 5] = [
 ];
 
 /// Ethereum main-net providers
-pub const MAINNET_PROVIDERS: [evm_rpc_types::EthMainnetService; 4] = [
+#[cfg(feature = "mainnet")]
+pub const PROVIDERS: [evm_rpc_types::EthMainnetService; 4] = [
     evm_rpc_types::EthMainnetService::Ankr,
     evm_rpc_types::EthMainnetService::BlockPi,
     evm_rpc_types::EthMainnetService::PublicNode,

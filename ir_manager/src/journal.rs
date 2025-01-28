@@ -19,7 +19,9 @@
 use std::borrow::Cow;
 
 use candid::{CandidType, Decode, Encode};
+#[cfg(not(test))]
 use chrono::{DateTime, Utc};
+#[cfg(not(test))]
 use ic_exports::ic_cdk::api::time;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;

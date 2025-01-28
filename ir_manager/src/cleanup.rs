@@ -38,10 +38,7 @@ use ic_exports::ic_cdk::api::management_canister::main::raw_rand;
 use rand::seq::SliceRandom;
 use rand_chacha::rand_core::SeedableRng;
 
-#[cfg(feature = "mainnet")]
-use crate::constants::MAINNET_PROVIDERS;
-#[cfg(feature = "sepolia")]
-use crate::constants::SEPOLIA_PROVIDERS;
+use crate::constants::PROVIDERS;
 use crate::journal::JournalCollection;
 use crate::journal::LogType;
 use crate::state::JOURNAL;
@@ -102,10 +99,7 @@ pub async fn daily_cleanup() {
 /// # Errors
 /// - Returns `ManagerError::DecodingError` if the random seed cannot be properly formatted
 pub async fn reputations_cleanup() -> ManagerResult<()> {
-    #[cfg(feature = "sepolia")]
-    let mut providers = SEPOLIA_PROVIDERS.to_vec();
-    #[cfg(feature = "mainnet")]
-    let mut providers = MAINNET_PROVIDERS.to_vec();
+    let mut providers = PROVIDERS.to_vec();
 
     // Create a seeded RNG using IC timestamp
     let call_result = raw_rand().await;

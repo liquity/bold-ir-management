@@ -144,18 +144,18 @@ pub fn extract_multi_rpc_result<T: Debug>(
                 #[cfg(feature = "sepolia")]
                 if let evm_rpc_types::RpcService::EthSepolia(eth_sepolia_service) = provider {
                     if result.is_ok() {
-                        increment_provider_score(eth_sepolia_service);
+                        increment_provider_score(&eth_sepolia_service);
                     } else {
-                        decrement_provider_score(eth_sepolia_service);
+                        decrement_provider_score(&eth_sepolia_service);
                     }
                 }
 
                 #[cfg(feature = "mainnet")]
                 if let evm_rpc_types::RpcService::EthMainnet(eth_mainnet_service) = provider {
                     if result.is_ok() {
-                        increment_provider_score(eth_mainnet_service);
+                        increment_provider_score(&eth_mainnet_service);
                     } else {
-                        decrement_provider_score(eth_mainnet_service);
+                        decrement_provider_score(&eth_mainnet_service);
                     }
                 }
             });
