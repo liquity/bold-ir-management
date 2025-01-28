@@ -31,3 +31,5 @@ canister_ids.json
 */markets.json
 
 *.old
+
+deploy.sh

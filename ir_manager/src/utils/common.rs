@@ -19,8 +19,8 @@ use super::{error::*, evm_rpc::*, exchange::*};
 
 use crate::{
     constants::{
-        cketh_ledger, exchange_rate_canister, DEFAULT_MAX_RESPONSE_BYTES, PROVIDER_COUNT,
-        PROVIDER_THRESHOLD, SCALE,
+        cketh_ledger, exchange_rate_canister, DEFAULT_MAX_RESPONSE_BYTES, MAX_RETRY_ATTEMPTS,
+        PROVIDER_COUNT, PROVIDER_THRESHOLD, SCALE,
     },
     providers::{extract_multi_rpc_result, get_ranked_rpc_provider, get_ranked_rpc_providers},
     state::{LAST_SAFE_BLOCK, RPC_SERVICE},
@@ -170,26 +170,38 @@ pub fn decode_abi_response<T, F: SolCall<Return = T>>(hex_data: String) -> Manag
 }
 
 pub async fn get_block_tag(rpc_canister: &Service, latest: bool) -> ManagerResult<BlockTag> {
-    let rpc = get_ranked_rpc_provider();
-    let rpc_config = RpcConfig {
-        response_size_estimate: Some(2000),
-        response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
-            total: Some(1),
-            min: 1,
-        }),
-    };
+    let mut result = None;
 
-    let tag = if latest {
-        BlockTag::Latest
-    } else {
-        BlockTag::Safe
-    };
+    for _ in 1..=MAX_RETRY_ATTEMPTS {
+        let rpc = get_ranked_rpc_provider();
+        let rpc_config = RpcConfig {
+            response_size_estimate: Some(2000),
+            response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
+                total: Some(1),
+                min: 1,
+            }),
+        };
 
-    let call_result = rpc_canister
-        .get_block_by_number(rpc.clone(), Some(rpc_config), tag)
-        .await;
-    let rpc_result = extract_call_result(call_result)?;
-    let result = extract_multi_rpc_result(rpc, rpc_result)?;
+        let tag = if latest {
+            BlockTag::Latest
+        } else {
+            BlockTag::Safe
+        };
+
+        let call_result = rpc_canister
+            .get_block_by_number(rpc.clone(), Some(rpc_config), tag)
+            .await;
+        let rpc_result = extract_call_result(call_result)?;
+        let current_result = extract_multi_rpc_result(rpc, rpc_result);
+
+        if let Ok(r) = current_result {
+            result = Some(r);
+            break;
+        }
+    }
+
+    let result = result
+        .ok_or_else(|| ManagerError::Custom("Failed to get block after max retries".to_string()))?;
 
     if !latest {
         // As a sanity check, we expect that the new block height > last queried height
