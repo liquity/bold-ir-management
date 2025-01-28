@@ -39,7 +39,7 @@ impl Lock {
     }
 
     /// Sets the lock status to `unlocked`/`false`
-    pub fn unlock(&mut self, acquired_lock: bool) -> &mut Self {
+    pub fn try_unlock(&mut self, acquired_lock: bool) -> &mut Self {
         if acquired_lock {
             self.is_locked = false;
             self.last_locked_at = None;
@@ -60,7 +60,7 @@ impl Lock {
 /// #### Usage
 /// Only used by `StableStrategy`
 /// #### Implementation Note
-/// Does not implement the `Drop` trait and `try_lock` and `unlock` methods.
+/// Does not implement the `Drop` trait and `try_lock` and `try_unlock` methods.
 #[derive(Clone, Default)]
 pub struct StableLock {
     /// Status of the lock. `true` represents locked and `false` unlocked

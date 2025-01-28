@@ -65,7 +65,7 @@ impl ExecutableStrategy {
     /// Unlocks the strategy.
     /// Releases the lock to allow future executions.
     pub fn unlock(&mut self) {
-        self.lock.unlock(self.acquired_lock);
+        self.lock.try_unlock(self.acquired_lock);
         self.apply_change();
     }
 
@@ -114,11 +114,17 @@ impl ExecutableStrategy {
             troves_index += max_count;
         }
 
-        let current_debt_in_front =
-            self.get_current_debt_in_front(troves.clone())
-                .ok_or(ManagerError::Custom(
-                    "No trove has delegated its rate adjustment to this manager.".to_string(),
-                ))?;
+        let current_debt_in_front = match self.get_current_debt_in_front(troves.clone()) {
+            Some(debt) => debt,
+            None => {
+                journal.append_note(
+                    Ok(()),
+                    LogType::Info,
+                    "No trove has delegated to this batch manager.",
+                );
+                return Ok(());
+            }
+        };
 
         // Fetch the redemption fee rate
         let redemption_fee = self.fetch_redemption_rate(block_tag.clone()).await?;
