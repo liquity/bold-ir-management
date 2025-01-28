@@ -30,17 +30,17 @@ pub async fn run_strategy(key: u32) {
     if let Some(mut executable_strategy) = strategy {
         journal.append_note(Ok(()), LogType::Info, "Executable strategy is created.");
 
-        for turn in 0..MAX_RETRY_ATTEMPTS {
+        for turn in 1..=MAX_RETRY_ATTEMPTS {
             let result = executable_strategy.execute(&mut journal).await;
+            executable_strategy.unlock();
 
             // log the result
             journal.append_note(
                 result.clone(),
                 LogType::ExecutionResult,
                 format!(
-                    "Strategy execution attempt is finished. Attempt {}/{}",
-                    turn,
-                    MAX_RETRY_ATTEMPTS - 1
+                    "Strategy execution attempt is finished. Attempts remaining: {}",
+                    MAX_RETRY_ATTEMPTS - turn
                 ),
             );
 
@@ -49,6 +49,4 @@ pub async fn run_strategy(key: u32) {
             }
         }
     }
-    // The executable strategy will go out of scope by this line, in any way possible.
-    // When it goes out of scope, Drop is called and the stable strategy will be unlocked.
 }
