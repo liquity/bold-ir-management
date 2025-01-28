@@ -1,3 +1,9 @@
+type Halt = record { status : HaltStatus; message : opt text };
+type HaltStatus = variant {
+  Functional;
+  Halted : record { halted_at : nat64 };
+  HaltingInProgress : record { halts_at : nat64 };
+};
 type HttpOutcallError = variant {
   IcError : record { code : RejectionCode; message : text };
   InvalidHttpJsonRpcResponse : record {
@@ -79,21 +85,23 @@ type StrategyInput = record {
   collateral_registry : text;
 };
 type StrategyQueryData = record {
-  locked : bool;
   batch_manager : text;
   latest_rate : text;
   eoa_pk : opt text;
   target_min : text;
   last_update : nat64;
+  last_locked_at : opt nat64;
   trove_manager : text;
+  is_locked : bool;
 };
 type SwapResponse = record { returning_ether : nat; accepted_cycles : nat };
 type ValidationError = variant { Custom : text; InvalidHex : text };
 service : {
   get_logs : (nat64) -> (Result_1) query;
-  get_strategies : () -> (vec StrategyQueryData);
-  get_strategy_address : (nat32) -> (opt text);
+  get_strategies : () -> (vec StrategyQueryData) query;
+  get_strategy_address : (nat32) -> (opt text) query;
   get_strategy_logs : (nat64, nat32) -> (Result_1) query;
+  halt_status : () -> (Halt) query;
   mint_strategy : (StrategyInput) -> (Result_2);
   set_batch_manager : (nat32, text, nat) -> (Result);
   start_timers : () -> (Result);

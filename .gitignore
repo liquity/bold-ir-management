@@ -29,3 +29,5 @@ canister_ids.json
 
 */xeth_deployer.sh
 */markets.json
+
+*.old

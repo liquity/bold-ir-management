@@ -24,8 +24,7 @@ use crate::{
     strategy::stable::StableStrategy,
     utils::{
         common::{
-            extract_call_result, fetch_cketh_balance, fetch_ether_cycles_rate, get_rpc_service,
-            nat_to_u256, u256_to_nat,
+            extract_call_result, fetch_cketh_balance, fetch_ether_cycles_rate, get_rpc_service, u256_to_nat,
         },
         error::*,
         evm_rpc::Service,
