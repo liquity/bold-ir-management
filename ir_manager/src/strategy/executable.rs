@@ -89,11 +89,15 @@ impl ExecutableStrategy {
         // Fetch the entire system debt from the blockchain
         let entire_system_debt: U256 = self.fetch_entire_system_debt(block_tag.clone()).await?;
 
+        print(format!("entire_system_debt: {}", entire_system_debt));
         // Fetch the unbacked portion price and redeemability status
         let unbacked_portion_price_and_redeemability = self
             .fetch_unbacked_portion_price_and_redeemablity(None, block_tag.clone())
             .await?;
-
+        print(format!(
+            "unbacked_portion_price_and_redeemability._0: {}",
+            unbacked_portion_price_and_redeemability._0
+        ));
         // Fetch and collect troves
         let mut troves: Vec<DebtPerInterestRate> = vec![];
         let mut troves_index = U256::from(0);
@@ -129,6 +133,7 @@ impl ExecutableStrategy {
         // Fetch the redemption fee rate
         let redemption_fee = self.fetch_redemption_rate(block_tag.clone()).await?;
 
+        print(format!("Redemption fee: {}", redemption_fee));
         // Calculate the total unbacked collateral
         let total_unbacked = self
             .fetch_total_unbacked(
@@ -136,13 +141,17 @@ impl ExecutableStrategy {
                 block_tag.clone(),
             )
             .await?;
-
+        print(format!("total unbacked: {}", total_unbacked));
         // Calculate redemption split and maximum redeemable against collateral
         let maximum_redeemable_against_collateral = unbacked_portion_price_and_redeemability
             ._0
             .saturating_mul(entire_system_debt)
             .checked_div(total_unbacked)
             .ok_or(arithmetic_err("Total unbacked was 0."))?;
+        print(format!(
+            "max redeemable against collateral: {}",
+            maximum_redeemable_against_collateral
+        ));
 
         let target_percentage_numerator = self
             .settings
@@ -156,8 +165,17 @@ impl ExecutableStrategy {
             .checked_div(target_percentage_denominator)
             .ok_or(arithmetic_err("Target percentage's denominator was zero."))?;
 
-        // AUDIT: This will be removed post-audit.
-        journal.append_note(Ok(()), LogType::Info, format!("target_percentage({}) || numerator({})=(2*2*10^17)*redemption_fee, redemption_fee {} || 5*10^15 + redemption_fee {}", target_percentage, target_percentage_numerator, redemption_fee, target_percentage_denominator));
+        journal.append_note(
+            Ok(()),
+            LogType::Info,
+            format!(
+                "target_percentage({}), numerator({}), redemption_fee({}), denominator ({})",
+                target_percentage,
+                target_percentage_numerator,
+                redemption_fee,
+                target_percentage_denominator
+            ),
+        );
 
         // Execute the strategy logic based on calculated values and collected troves
         let strategy_result = self
@@ -504,6 +522,8 @@ impl ExecutableStrategy {
         let mut counted_debt = U256::from(0);
         let mut new_rate = U256::from(0);
         let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
+
+        print(format!("target_debt: {}", target_debt));
 
         for trove in troves
             .iter()
