@@ -324,18 +324,27 @@ impl ExecutableStrategy {
 
     /// Returns the debt of the entire system across all markets if successful.
     async fn fetch_entire_system_debt(&self, block_tag: BlockTag) -> ManagerResult<U256> {
-        let rpc_canister_response = call_with_dynamic_retries(
-            &self.settings.rpc_canister,
-            block_tag,
-            self.settings.manager,
-            getEntireSystemDebtCall::SELECTOR.to_vec(),
-        )
-        .await?;
+        let managers = MANAGERS.with(|managers_vector| managers_vector.borrow().clone());
 
-        decode_abi_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(
-            rpc_canister_response,
-        )
-        .map(|data| Ok(data.entireSystemDebt))?
+        let mut total_debt = U256::ZERO;
+
+        for manager in managers {
+            let rpc_canister_response = call_with_dynamic_retries(
+                &self.settings.rpc_canister,
+                block_tag.clone(),
+                manager,
+                getEntireSystemDebtCall::SELECTOR.to_vec(),
+            )
+            .await?;
+
+            total_debt +=
+                decode_abi_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(
+                    rpc_canister_response,
+                )?
+                .entireSystemDebt;
+        }
+
+        Ok(total_debt)
     }
 
     /// Fetches the redemption rate (including decay) for the current state.
