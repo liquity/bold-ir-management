@@ -171,11 +171,12 @@ pub fn decode_abi_response<T, F: SolCall<Return = T>>(hex_data: String) -> Manag
 
 pub async fn get_block_tag(rpc_canister: &Service, latest: bool) -> ManagerResult<BlockTag> {
     let mut result = None;
+    let mut last_error = None;
 
-    for _ in 1..=MAX_RETRY_ATTEMPTS {
+    for _ in 1..=(MAX_RETRY_ATTEMPTS * 3) {
         let rpc = get_ranked_rpc_provider();
         let rpc_config = RpcConfig {
-            response_size_estimate: Some(2000),
+            response_size_estimate: Some(3000),
             response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
                 total: Some(1),
                 min: 1,
@@ -194,14 +195,22 @@ pub async fn get_block_tag(rpc_canister: &Service, latest: bool) -> ManagerResul
         let rpc_result = extract_call_result(call_result)?;
         let current_result = extract_multi_rpc_result(rpc, rpc_result);
 
-        if let Ok(r) = current_result {
-            result = Some(r);
-            break;
+        match current_result {
+            Ok(r) => {
+                result = Some(Ok(r));
+                break;
+            }
+            Err(e) => {
+                last_error = Some(e);
+            }
         }
     }
 
-    let result = result
-        .ok_or_else(|| ManagerError::Custom("Failed to get block after max retries".to_string()))?;
+    let result = result.unwrap_or_else(|| {
+        Err(last_error.unwrap_or_else(|| {
+            ManagerError::Custom("Failed to get block after max retries".to_string())
+        }))
+    })?;
 
     if !latest {
         // As a sanity check, we expect that the new block height > last queried height
