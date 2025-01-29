@@ -121,20 +121,38 @@ pub fn extract_multi_rpc_result<T: Debug>(
 ) -> ManagerResult<T> {
     match result {
         MultiRpcResult::Consistent(response) => {
-            #[cfg(feature = "sepolia")]
-            if let RpcServices::EthSepolia(services) = providers {
-                let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
-                providers_unwrapped
-                    .iter()
-                    .for_each(increment_provider_score);
-            }
+            if response.is_ok() {
+                #[cfg(feature = "sepolia")]
+                if let RpcServices::EthSepolia(services) = providers {
+                    let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
+                    providers_unwrapped
+                        .iter()
+                        .for_each(increment_provider_score);
+                }
 
-            #[cfg(feature = "mainnet")]
-            if let RpcServices::EthMainnet(services) = providers {
-                let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
-                providers_unwrapped
-                    .iter()
-                    .for_each(increment_provider_score);
+                #[cfg(feature = "mainnet")]
+                if let RpcServices::EthMainnet(services) = providers {
+                    let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
+                    providers_unwrapped
+                        .iter()
+                        .for_each(increment_provider_score);
+                }
+            } else {
+                #[cfg(feature = "sepolia")]
+                if let RpcServices::EthSepolia(services) = providers {
+                    let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
+                    providers_unwrapped
+                        .iter()
+                        .for_each(decrement_provider_score);
+                }
+
+                #[cfg(feature = "mainnet")]
+                if let RpcServices::EthMainnet(services) = providers {
+                    let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
+                    providers_unwrapped
+                        .iter()
+                        .for_each(decrement_provider_score);
+                }
             }
 
             response.map_err(ManagerError::RpcResponseError)
