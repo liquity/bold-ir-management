@@ -1,63 +1,99 @@
-//! Mutable strategy data
+//! Strategy State Management
+//!
+//! Manages the mutable state of strategy execution, providing thread-safe access
+//! to critical runtime data and serialization-friendly query representations.
+//!
+//! ```plain
+//! State Component Layout:
+//!
+//!                                     StrategyData
+//!                                    ┌────────────────┐
+//!                                    │   Rate State   │
+//!                          ┌────────►│  latest_rate   │
+//!                          │         └────────────────┘
+//!                          │
+//! ┌─────────────┐    ┌─────────┐     ┌────────────────┐
+//! │   Query     │◄───┤ Runtime │     │  Time State    │
+//! │ Conversion  │    │  State  │     │  last_update   │
+//! └─────────────┘    └─────────┘     │  last_ok_exit  │
+//!                          │         └────────────────┘
+//!                          │
+//!                          │         ┌────────────────┐
+//!                          └────────►│    EOA State   │
+//!                                    │   eoa_nonce    │
+//!                                    └────────────────┘
+//! ```
 
 use alloy_primitives::U256;
 use candid::CandidType;
 
 use crate::utils::{common::u256_to_nat, error::ManagerError};
 
-/// Struct containing all mutable data necessary to execute a strategy
+/// Core strategy runtime state containing mutable execution data.
+///
+/// Tracks three key state components:
+/// - Interest rate state (latest applied rate)
+/// - Timing state (update/exit timestamps)
+/// - Transaction state (nonce management)
 #[derive(Clone, Default)]
 pub struct StrategyData {
-    /// Latest rate determined by the canister in the previous cycle
+    /// Current interest rate from last execution
     pub latest_rate: U256,
-    /// Timestamp of the last time the strategy had updated the batch's interest rate.
-    /// Denominated in seconds.
+    /// Last rate update timestamp (seconds)
     pub last_update: u64,
-    /// The EOA's nonce
+    /// Current EOA transaction nonce
     pub eoa_nonce: u64,
-    /// Timestamp of the last successful exit of the strategy
+    /// Last successful strategy completion
     pub last_ok_exit: u64,
 }
 
 impl StrategyData {
-    /// Sets the latest rate for the strategy.
+    /// Updates the current interest rate.
+    ///
+    /// Used during rate adjustments to track applied changes.
     pub fn latest_rate(&mut self, latest_rate: U256) -> &mut Self {
         self.latest_rate = latest_rate;
         self
     }
 
-    /// Sets the last update timestamp for the strategy.
+    /// Records rate update timestamp.
+    ///
+    /// Tracks timing for upfront fee calculations.
     pub fn last_update(&mut self, last_update: u64) -> &mut Self {
         self.last_update = last_update;
         self
     }
 
-    /// Sets the EOA nonce for the strategy.
+    /// Manages EOA nonce for transaction sequencing.
     pub fn eoa_nonce(&mut self, eoa_nonce: u64) -> &mut Self {
         self.eoa_nonce = eoa_nonce;
         self
     }
 
-    /// Sets Timestamp of the last successful exit of the strategy.
+    /// Records successful strategy completion time.
     pub fn last_ok_exit(&mut self, time: u64) -> &mut Self {
         self.last_ok_exit = time;
         self
     }
 }
 
+/// Serialization-optimized view of strategy state for external queries.
+///
+/// Provides Candid-compatible types while maintaining semantic equivalence
+/// with internal state representation.
 #[derive(Clone, Default, CandidType)]
 pub struct StrategyDataQuery {
-    /// Latest rate determined by the canister in the previous cycle
+    /// Interest rate in Candid-compatible format
     pub latest_rate: candid::Nat,
-    /// Timestamp of the last time the strategy had updated the batch's interest rate.
-    /// Denominated in seconds.
+    /// Last update time in seconds
     pub last_update: u64,
-    /// The EOA's nonce
+    /// Current transaction nonce
     pub eoa_nonce: u64,
-    /// Timestamp of the last successful exit of the strategy
+    /// Last successful completion time
     pub last_ok_exit: u64,
 }
 
+/// Validated conversion from runtime to query state
 impl TryFrom<StrategyData> for StrategyDataQuery {
     type Error = ManagerError;
 

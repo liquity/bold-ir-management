@@ -1,39 +1,33 @@
 //! RPC Provider Reputation System
 //!
-//! A dynamic scoring and ranking system for Ethereum RPC providers that:
-//! ```text
-//!                      ┌───────────────┐
-//!                      │  RPC Request  │
-//!                      └───────┬───────┘
-//!                              │
-//!                    ┌─────────▼────────┐
-//!                    │ Provider Results  │
-//!                    └─────────┬────────┘
-//!                              │
-//!                  ┌───────────▼──────────┐
-//!            ┌─────┤  Response Analysis   ├─────┐
-//!            │     └───────────┬──────────┘     │
-//!     ┌──────▼─────┐   ┌──────▼──────┐   ┌─────▼──────┐
-//!     │ Consistent │   │Inconsistent │   │   Error    │
-//!     └──────┬─────┘   └──────┬──────┘   └─────┬──────┘
-//!        ┌───▼───┐        ┌───▼───┐        ┌───▼───┐
-//!        │ +1    │        │Partial│        │ -1    │
-//!        └───┬───┘        └───┬───┘        └───┬───┘
-//!            │                │                │
-//!            └────────┐  ┌────┘                │
-//!                     │  │          ┌──────────┘
-//!               ┌─────▼──▼──────────▼─────┐
-//!               │  Reputation Updates     │
-//!               └──────────┬─────────────┘
-//!                         │
-//!                  ┌──────▼──────┐
-//!                  │ Reranking   │
-//!                  └─────────────┘
+//! A sophisticated ranking mechanism that maintains and updates provider reputations based on their
+//! performance. The system employs a reward-penalty model where providers' scores are adjusted according
+//! to their response quality and consensus participation.
+//!
+//! ```plain
+//! Provider Reputation Flow:
+//!
+//!   Success     ┌─────────────┐     Failure
+//! ─────────────►│   Provider  │◄────────────
+//!    +1         │  Reputation │     -1
+//!               └─────────────┘
+//!                     │
+//!                     ▼
+//!               ┌─────────────┐
+//!               │   Ranking   │
+//!               │   System    │
+//!               └─────────────┘
+//!                     │
+//!            ┌────────────────┐
+//!            ▼       ▼        ▼
+//!        Top-1    Top-2    Top-3
 //! ```
-//! The system maintains a weighted score for each provider, automatically adjusting rankings
-//! based on performance. Providers earn reputation for successful, consistent responses and
-//! lose reputation for failures or inconsistencies. A sophisticated tie-breaking mechanism
-//! ensures fair provider selection when scores are close.
+//!
+//! The system features:
+//! - Saturation arithmetic to prevent overflow/underflow
+//! - Periodic reputation logging (every 10 score changes)
+//! - Provider ranking with tie-breaking mechanisms
+//! - Consensus-based reputation updates
 
 use std::fmt::Debug;
 
@@ -50,12 +44,26 @@ use crate::{
     },
 };
 
-/// Getter function to retrieve the ranked list of providers from the thread's local storage
+/// Retrieves the current provider rankings from thread-local storage.
+///
+/// Returns a vector of tuples containing each provider's score and identifier,
+/// maintaining the original order from storage.
 fn fetch_provider_list() -> Vec<(i64, ProviderService)> {
     RPC_REPUTATIONS.with(|leaderboard| leaderboard.borrow().clone())
 }
 
-/// Sorts the providers and returns the top ones.
+/// Computes and returns the top-ranked providers based on reputation scores.
+///
+/// The ranking algorithm:
+/// 1. Sorts providers by score in descending order
+/// 2. Selects providers up to PROVIDER_COUNT
+/// 3. Includes tied providers if they are exactly 1 point behind
+///
+/// Example ranking with PROVIDER_COUNT = 3:
+/// ```plain
+/// Scores:  10   10   9    8    7
+/// Result:  [P1, P2, P3]  // P3 included despite being 1 point lower
+/// ```
 fn ranked_provider_list() -> Vec<ProviderService> {
     let mut provider_list = fetch_provider_list();
 
@@ -88,7 +96,14 @@ fn ranked_provider_list() -> Vec<ProviderService> {
     result
 }
 
-/// Increments the score of a specific provider by 1, using saturating arithmetic
+/// Increments a provider's reputation score by 1, using saturating arithmetic.
+///
+/// - Uses saturating addition to prevent overflow at i64::MAX
+/// - Logs reputation changes at every 10th increment
+/// - Thread-safe through RefCell borrow_mut
+///
+/// # Arguments
+/// * `provider` - Reference to the provider whose score should be incremented
 pub fn increment_provider_score(provider: &ProviderService) {
     RPC_REPUTATIONS.with(|leaderboard| {
         let mut leaderboard = leaderboard.borrow_mut();
@@ -111,7 +126,14 @@ pub fn increment_provider_score(provider: &ProviderService) {
     });
 }
 
-/// Decrements the score of a specific provider by 1, using saturating arithmetic
+/// Decrements a provider's reputation score by 1, using saturating arithmetic.
+///
+/// - Uses saturating subtraction to prevent underflow at i64::MIN
+/// - Logs reputation changes at every 10th decrement
+/// - Thread-safe through RefCell borrow_mut
+///
+/// # Arguments
+/// * `provider` - Reference to the provider whose score should be decremented
 pub fn decrement_provider_score(provider: &ProviderService) {
     RPC_REPUTATIONS.with(|leaderboard| {
         let mut leaderboard = leaderboard.borrow_mut();
@@ -133,27 +155,44 @@ pub fn decrement_provider_score(provider: &ProviderService) {
     });
 }
 
-/// Returns the top ranking providers from the leaderboard
+/// Returns the current top-ranked providers as an RPC service collection.
+///
+/// The ranking considers reputation scores and includes providers up to PROVIDER_COUNT.
+/// Returns appropriate enum variant based on compile-time network selection (mainnet/sepolia).
 pub fn get_ranked_rpc_providers() -> RpcServices {
     let ranked_provider_list = ranked_provider_list();
-    // AUDIT: The following enums will be replaced by the Ethereum main-net providers. Out of scope.
     #[cfg(feature = "sepolia")]
     return RpcServices::EthSepolia(Some(ranked_provider_list));
     #[cfg(feature = "mainnet")]
     return RpcServices::EthMainnet(Some(ranked_provider_list));
 }
 
-/// Returns the top ranking provider from the leaderboard
+/// Returns the single highest-ranked provider as an RPC service.
+///
+/// Selects the provider with the highest reputation score.
+/// Returns appropriate enum variant based on compile-time network selection (mainnet/sepolia).
 pub fn get_ranked_rpc_provider() -> RpcServices {
     let ranked_provider_list = ranked_provider_list();
-    // AUDIT: The following enums will be replaced by the Ethereum main-net providers. Out of scope.
     #[cfg(feature = "sepolia")]
     return RpcServices::EthSepolia(Some(ranked_provider_list[..1].to_vec()));
     #[cfg(feature = "mainnet")]
     return RpcServices::EthMainnet(Some(ranked_provider_list[..1].to_vec()));
 }
 
-/// Updates the provider rankings based on the providers used in a call and the outcome of that call.
+/// Processes multi-RPC results and updates provider reputations accordingly.
+///
+/// # Reputation Updates
+/// - Consistent successful responses: All providers gain reputation
+/// - Consistent failed responses: All providers lose reputation
+/// - Inconsistent responses: Individual providers gain/lose based on their responses
+///
+/// # Arguments
+/// * `providers` - The RPC services used for the request
+/// * `result` - The multi-RPC result to process
+///
+/// # Returns
+/// * `Ok(T)` - The successful result value
+/// * `Err(ManagerError)` - Error indicating consensus failure or RPC issues
 pub fn extract_multi_rpc_result<T: Debug>(
     providers: RpcServices,
     result: MultiRpcResult<T>,
@@ -221,7 +260,20 @@ pub fn extract_multi_rpc_result<T: Debug>(
     }
 }
 
-/// Updates the provider rankings based on the providers used in a call and the outcome of that call.
+/// Specialized handler for raw transaction submission results across multiple providers.
+///
+/// Extends the base multi-RPC result handling with transaction-specific logic:
+/// - Prioritizes nonce-related responses
+/// - Handles transaction hash returns
+/// - Maintains provider reputation based on response quality
+///
+/// # Arguments
+/// * `providers` - The RPC services used for the transaction
+/// * `result` - The multi-provider transaction submission result
+///
+/// # Returns
+/// * `Ok(SendRawTransactionStatus)` - The transaction status
+/// * `Err(ManagerError)` - Error indicating consensus failure or RPC issues
 pub fn extract_multi_rpc_send_raw_transaction_status(
     providers: RpcServices,
     result: MultiRpcResult<SendRawTransactionStatus>,

@@ -1,3 +1,27 @@
+//! Strategy Execution Runner
+//!
+//! Orchestrates the lifecycle of strategy execution, including:
+//! - Strategy instantiation
+//! - Retry management  
+//! - Execution monitoring
+//! - State transitions
+//!
+//! ```plain
+//! Execution Flow:                         
+//!                                        
+//! ┌──────┐     ┌─────────┐     ┌───────┐
+//! │Start │────►│Load     │────►│Execute│
+//! └──────┘     │Strategy │     └───┬───┘
+//!              └─────────┘         │ ╲    
+//!                      ┌───────────┘  ╲   
+//!                      ▼              ╲
+//!               ┌────────────┐    ┌────┐
+//! Retry Loop:   │  Success   │    │Fail│
+//! MAX_RETRY     │   Exit     │    └──┬─┘
+//! ATTEMPTS      └────────────┘       │
+//!                                    └─► Retry
+//! ```
+
 use crate::{
     constants::MAX_RETRY_ATTEMPTS,
     halt::is_functional,
@@ -8,8 +32,17 @@ use crate::{
 
 use super::executable::ExecutableStrategy;
 
-/// Runs the strategy by creating an executable instance of it that implements the drop trait.
-/// Starts a new log collection.
+/// Executes a strategy with retry logic and state management.
+///
+/// Creates and manages a strategy execution lifecycle:
+/// 1. Validates system functionality
+/// 2. Opens execution journal
+/// 3. Loads strategy from state
+/// 4. Executes with automatic retries
+/// 5. Handles cleanup via Drop trait
+///
+/// # Arguments
+/// * `key` - Unique identifier of the strategy to execute
 pub async fn run_strategy(key: u32) {
     assert!(is_functional());
     let mut journal = JournalCollection::open(Some(key));

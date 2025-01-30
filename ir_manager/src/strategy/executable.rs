@@ -1,4 +1,30 @@
-//! The executable strategy wrapper that runs the strategy.
+//! Runtime Strategy Execution Engine
+//!
+//! Provides the core strategy execution logic with transaction management,
+//! rate calculations, and state transitions. This module handles the actual
+//! running of strategies while maintaining atomic execution and state consistency.
+//!
+//! ```plain
+//! Execution Flow:
+//!
+//!           ┌────────┐
+//! Start ───►│  Lock  │
+//!           └───┬────┘
+//!               ▼
+//!        ┌───────────┐    ┌─────────────┐
+//!        │  Collect  │───►│  Calculate   │
+//!        │   State   │    │  New Rate   │
+//!        └───────────┘    └──────┬──────┘
+//!                                ▼
+//!        ┌───────────┐    ┌─────────────┐
+//!        │Transaction│◄───│ Condition   │
+//!        │  Submit   │    │   Checks    │
+//!        └─────┬─────┘    └─────────────┘
+//!              ▼
+//!         ┌─────────┐
+//! End ◄───│ Unlock  │
+//!         └─────────┘
+//! ```
 
 use std::ops::Div;
 
@@ -23,19 +49,27 @@ use crate::{
 
 use super::{data::StrategyData, lock::Lock, settings::StrategySettings};
 
+/// Executable strategy that handles runtime operations and state transitions.
+///
+/// Key responsibilities:
+/// - Atomic execution control
+/// - Rate calculation and validation  
+/// - Transaction management
+/// - State consistency
 #[derive(Clone, Default)]
 pub struct ExecutableStrategy {
-    /// Immutable settings and configurations
+    /// Core configuration that remains constant during execution
     pub settings: StrategySettings,
-    /// Mutable state
+    /// Mutable state that changes during execution
     pub data: StrategyData,
-    /// Lock for the strategy. Determines if the strategy is currently being executed.
+    /// Atomic execution lock
     pub lock: Lock,
-    /// Tracks if the lock acquisition was successful for the drop trait implementation
+    /// Lock acquisition status for clean Drop behavior
     acquired_lock: bool,
 }
 
 impl ExecutableStrategy {
+    /// Creates a new executable strategy instance.
     pub fn new(settings: StrategySettings, data: StrategyData, lock: Lock) -> ExecutableStrategy {
         ExecutableStrategy {
             settings,
@@ -45,8 +79,7 @@ impl ExecutableStrategy {
         }
     }
 
-    /// Replaces the strategy data in the HashMap
-    /// This function updates the state of the strategy in the HashMap
+    /// Updates strategy state in persistent storage.
     fn apply_change(&self) {
         STRATEGY_STATE.with(|strategies| {
             strategies
@@ -55,8 +88,7 @@ impl ExecutableStrategy {
         });
     }
 
-    /// Locks the strategy.
-    /// Prevents concurrent execution of the strategy to ensure consistent state.
+    /// Acquires execution lock with state consistency guarantees.
     fn lock(&mut self) -> ManagerResult<()> {
         self.lock.try_lock().map(|_| {
             self.acquired_lock = true;
@@ -64,15 +96,21 @@ impl ExecutableStrategy {
         })
     }
 
-    /// Unlocks the strategy.
-    /// Releases the lock to allow future executions.
+    /// Releases execution lock and persists final state.
     pub fn unlock(&mut self) {
         self.lock.try_unlock(self.acquired_lock);
         self.apply_change();
     }
 
-    /// The main entry point to execute the strategy.
-    /// Runs the strategy logic asynchronously.
+    /// Main strategy execution entrypoint.
+    ///
+    /// Execution phases:
+    /// 1. Lock acquisition
+    /// 2. State collection
+    /// 3. Rate calculation
+    /// 4. Condition validation  
+    /// 5. Transaction submission
+    /// 6. State persistence
     pub async fn execute(&mut self, journal: &mut JournalCollection) -> ManagerResult<()> {
         // Lock the strategy to prevent concurrent execution
         self.lock()?;
@@ -285,7 +323,7 @@ impl ExecutableStrategy {
         Ok(())
     }
 
-    /// Updates the nonce for the externally owned account (EOA)
+    /// Syncs EOA nonce with current chain state
     async fn update_nonce(&mut self) -> ManagerResult<()> {
         // Fetch the nonce for the given account
         let account = self.settings.eoa_pk.ok_or(ManagerError::NonExistentValue)?;
@@ -296,7 +334,7 @@ impl ExecutableStrategy {
         Ok(())
     }
 
-    /// Predicts the upfront fee for a given new rate
+    /// Estimates upfront fee cost for rate change
     async fn predict_upfront_fee(
         &self,
         new_rate: U256,
@@ -324,6 +362,7 @@ impl ExecutableStrategy {
         .map(|data| Ok(data._0))?
     }
 
+    /// Calculates trove traversal hints
     async fn calculate_hints(
         &self,
         new_rate: U256,
@@ -343,7 +382,7 @@ impl ExecutableStrategy {
         Ok(hints)
     }
 
-    /// Predicts the upfront fee for a given new rate
+    /// Gets approximate hint for trove insertion
     async fn fetch_approximate_hint(
         &self,
         new_rate: U256,
@@ -373,7 +412,7 @@ impl ExecutableStrategy {
             .map(|data| Ok(data.hintId))?
     }
 
-    /// Predicts the upfront fee for a given new rate
+    /// Gets exact insert position for trove
     async fn fetch_insert_position(
         &self,
         new_rate: U256,
@@ -407,7 +446,7 @@ impl ExecutableStrategy {
         .map(|data| Ok((data._0, data._1)))?
     }
 
-    /// Returns the debt of the entire system across all markets if successful.
+    /// Fetches total system debt across all markets
     async fn fetch_entire_system_debt(&self, block_tag: BlockTag) -> ManagerResult<U256> {
         let managers = MANAGERS.with(|managers_vector| managers_vector.borrow().clone());
 
@@ -432,7 +471,7 @@ impl ExecutableStrategy {
         Ok(total_debt)
     }
 
-    /// Fetches the redemption rate (including decay) for the current state.
+    /// Gets current redemption rate with decay
     async fn fetch_redemption_rate(&self, block_tag: BlockTag) -> ManagerResult<U256> {
         let rpc_canister_response = call_with_dynamic_retries(
             &self.settings.rpc_canister,
@@ -448,7 +487,7 @@ impl ExecutableStrategy {
         .map(|data| Ok(data._0))?
     }
 
-    /// Fetches the unbacked portion price and redeemability.
+    /// Fetches unbacked portion metrics
     async fn fetch_unbacked_portion_price_and_redeemablity(
         &self,
         manager: Option<Address>,
@@ -473,7 +512,7 @@ impl ExecutableStrategy {
         >(rpc_canister_response)
     }
 
-    /// Fetches multiple sorted troves starting from a given index.
+    /// Retrieves sorted trove list from given index
     async fn fetch_multiple_sorted_troves(
         &self,
         index: U256,
@@ -502,7 +541,7 @@ impl ExecutableStrategy {
         .map(|data| Ok(data._0))?
     }
 
-    /// Fetches the total unbacked amount across all collateral markets.
+    /// Gets total unbacked amount across markets
     async fn fetch_total_unbacked(
         &self,
         initial_value: U256,
@@ -523,7 +562,7 @@ impl ExecutableStrategy {
         Ok(total_unbacked)
     }
 
-    /// Returns the current debt in front of the user's batch.
+    /// Calculates debt in front of current batch
     fn get_current_debt_in_front(&mut self, troves: Vec<DebtPerInterestRate>) -> Option<U256> {
         let mut counted_debt = U256::from(0);
 
@@ -538,9 +577,7 @@ impl ExecutableStrategy {
         None
     }
 
-    /// Runs the strategy by analyzing troves and calculating changes if necessary.
-    /// Ok(false) represents no update condition was passed.
-    /// Ok(true) represents that either the increase or decrease conditions have passed, sending a new tx is approved.
+    /// Core strategy execution logic
     #[allow(clippy::too_many_arguments)]
     async fn run_strategy(
         &mut self,
@@ -606,7 +643,7 @@ impl ExecutableStrategy {
         Ok(None)
     }
 
-    /// Calculates the new rate for interest.
+    /// Calculates optimal new interest rate
     async fn calculate_new_rate(
         &self,
         troves: Vec<DebtPerInterestRate>,
@@ -636,7 +673,7 @@ impl ExecutableStrategy {
         Ok(new_rate)
     }
 
-    /// Checks if the conditions for increasing debt are met.
+    /// Validates rate increase conditions
     fn increase_check(
         &self,
         journal: &mut JournalCollection,
@@ -662,7 +699,7 @@ impl ExecutableStrategy {
         false
     }
 
-    /// First check for decreasing debt.
+    /// First phase decrease validation
     fn first_decrease_check(
         &self,
         journal: &mut JournalCollection,
@@ -688,7 +725,7 @@ impl ExecutableStrategy {
         false
     }
 
-    /// Second check for decreasing debt based on update time, rate difference, and upfront fee.
+    /// Second phase decrease validation
     fn second_decrease_check(
         &self,
         journal: &mut JournalCollection,
@@ -712,6 +749,7 @@ impl ExecutableStrategy {
     }
 }
 
+/// Ensures strategy unlocking on scope exit
 impl Drop for ExecutableStrategy {
     /// Unlocks the strategy when the instance goes out of scope
     /// Ensures that resources are freed and the strategy is no longer locked

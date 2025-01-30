@@ -1,4 +1,25 @@
-//! Locking system for strategies
+//! Strategy Locking System
+//!
+//! A timeout-based locking mechanism that prevents concurrent strategy execution
+//! while providing automatic deadlock recovery. The system maintains both runtime
+//! and persistent lock representations with safe state transitions.
+//!
+//! ```plain
+//! Lock State Machine:
+//!
+//!                   ┌──────────┐
+//!              ┌────► Unlocked │◄─────┐
+//!              │    └──────────┘      │
+//!              │         │            │
+//! Auto-Unlock  │     try_lock        try_unlock
+//! (Timeout)    │         │            │
+//!              │         ▼            │
+//!              │    ┌─────────┐       │
+//!              └────┤ Locked  ├───────┘
+//!                   └─────────┘
+//!
+//! Timeout = STRATEGY_LOCK_TIMEOUT (3600s)
+//! ```
 
 use candid::CandidType;
 use ic_exports::ic_cdk::api::time;
@@ -8,19 +29,31 @@ use crate::{
     utils::error::{ManagerError, ManagerResult},
 };
 
-/// Lock with a built-in timeout mechanism
+/// Runtime lock implementation with automatic timeout recovery.
+///
+/// Key features:
+/// - Atomic lock operations
+/// - Timeout-based deadlock prevention
+/// - Last access tracking
+/// - Builder pattern interface
 #[derive(Clone, Default)]
 pub struct Lock {
-    /// Status of the lock. `true` represents locked and `false` unlocked
+    /// Current lock state
     pub is_locked: bool,
-    /// Last locked timstamp in milliseconds
+    /// Last successful lock acquisition time
     pub last_locked_at: Option<u64>,
 }
 
 impl Lock {
-    /// Sets the lock status to `locked`/`true`, if either of the conditions are satisfied:
-    /// 1. The current status is unlocked.
-    /// 2. The duration exceeds the timeout constant
+    /// Attempts to acquire the lock with timeout validation.
+    ///
+    /// Succeeds if either:
+    /// 1. Lock is currently free (unlocked)
+    /// 2. Existing lock has exceeded timeout period
+    ///
+    /// # Returns
+    /// * `Ok(())` - Lock successfully acquired
+    /// * `Err(ManagerError::Locked)` - Lock unavailable
     pub fn try_lock(&mut self) -> ManagerResult<()> {
         let current_time = time() / 1_000_000_000; // current time in millis
 
@@ -39,7 +72,15 @@ impl Lock {
         }
     }
 
-    /// Sets the lock status to `unlocked`/`false`
+    /// Releases the lock if it was legitimately acquired.
+    ///
+    /// Also handles timeout-based cleanup of abandoned locks.
+    ///
+    /// # Arguments
+    /// * `acquired_lock` - Whether the caller previously acquired the lock
+    ///
+    /// # Returns
+    /// Mutable reference for method chaining
     pub fn try_unlock(&mut self, acquired_lock: bool) -> &mut Self {
         if acquired_lock {
             self.is_locked = false;
@@ -57,11 +98,14 @@ impl Lock {
     }
 }
 
-/// Stable version of the lock with a built-in timeout mechanism.
-/// #### Usage
-/// Only used by `StableStrategy`
-/// #### Implementation Note
-/// Does not implement the `Drop` trait and `try_lock` and `try_unlock` methods.
+/// Persistent lock state for stable storage.
+///
+/// Provides:
+/// - Candid serialization support
+/// - Minimal memory footprint
+/// - Direct state access
+///
+/// Note: Does not implement locking logic.
 #[derive(Clone, Default, CandidType)]
 pub struct StableLock {
     /// Status of the lock. `true` represents locked and `false` unlocked
@@ -70,6 +114,7 @@ pub struct StableLock {
     pub last_locked_at: Option<u64>,
 }
 
+/// Conversion from storage to runtime lock
 impl From<StableLock> for Lock {
     fn from(value: StableLock) -> Self {
         Self {
@@ -79,6 +124,7 @@ impl From<StableLock> for Lock {
     }
 }
 
+/// Conversion from runtime to storage lock
 impl From<Lock> for StableLock {
     fn from(value: Lock) -> Self {
         Self {

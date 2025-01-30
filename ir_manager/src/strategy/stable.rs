@@ -1,4 +1,21 @@
-//! Stale strategy implementation that is only used in the state
+//! Persistent Strategy State Management
+//!
+//! A stable strategy implementation designed for permanent storage with optimized data structures
+//! and controlled state transitions. This module acts as the source of truth for all strategy data.
+//!
+//! ```plain
+//! Strategy State Flow:
+//!                                                    
+//!           ┌──────────┐         ┌──────────┐         ┌──────────┐
+//! Create -> │  Stable  │ ─Into─> │Executable│ Process │  Stable  │
+//!           │ Strategy │ <─From─ │ Strategy │ ──Into─>│ Strategy │
+//!           └──────────┘         └──────────┘         └──────────┘
+//!                │                                          │
+//!                │              ┌─────────┐                 │
+//!                └─TryInto────> │  Query  │ <─────TryInto──┘
+//!                               │ Strategy│
+//!                               └─────────┘
+//! ```
 
 use candid::CandidType;
 
@@ -14,34 +31,60 @@ use super::{
     settings::{StrategySettings, StrategySettingsQuery},
 };
 
-/// Stale strategy struct
+/// A persistent strategy representation optimized for stable storage and state management.
+///
+/// This structure provides:
+/// - Immutable configuration via `settings`
+/// - Mutable runtime state via `data`
+/// - Atomic execution control via `lock`
+///
+/// The stable strategy serves as the canonical source of truth, while executable strategies
+/// handle runtime operations.
 #[derive(Clone, Default)]
 pub struct StableStrategy {
-    /// Immutable settings and configurations
+    /// Core configuration parameters that remain constant after initialization
     pub settings: StrategySettings,
-    /// Mutable state
+    /// Dynamic state that changes during strategy execution
     pub data: StrategyData,
-    /// Lock for the strategy. Determines if the strategy is currently being executed.
+    /// Atomic execution lock to prevent concurrent operations
     pub lock: StableLock,
 }
 
 impl StableStrategy {
-    /// Builder-style setter functions for the struct
-
-    /// Set the strategy settings
+    /// Configures strategy settings using builder pattern.
+    ///
+    /// # Arguments
+    /// * `settings` - Core configuration parameters
+    ///
+    /// # Returns
+    /// Mutable reference for method chaining
     pub fn settings(&mut self, settings: StrategySettings) -> &mut Self {
         self.settings = settings;
         self
     }
 
-    /// Set the strategy data
+    /// Updates strategy runtime data.
+    ///
+    /// # Arguments
+    /// * `data` - New runtime state
+    ///
+    /// # Returns
+    /// Mutable reference for method chaining
     pub fn data(&mut self, data: StrategyData) -> &mut Self {
         self.data = data;
         self
     }
 
-    /// Mint the strategy by adding it to the state
-    /// "Minting" here means registering the strategy in a persistent state.
+    /// Persists the strategy in stable storage.
+    ///
+    /// Performs atomic registration ensuring:
+    /// - No key collisions
+    /// - Consistent state
+    /// - Persistent storage
+    ///
+    /// # Returns
+    /// * `Ok(())` - Strategy successfully registered
+    /// * `Err(ManagerError)` - Registration failed due to key collision
     pub fn mint(&self) -> ManagerResult<()> {
         STRATEGY_STATE.with(|strategies| {
             let mut binding = strategies.borrow_mut();
@@ -57,6 +100,7 @@ impl StableStrategy {
     }
 }
 
+/// Bidirectional conversion between stable and executable strategies
 impl From<&StableStrategy> for ExecutableStrategy {
     fn from(value: &StableStrategy) -> Self {
         ExecutableStrategy::new(
@@ -77,17 +121,21 @@ impl From<&ExecutableStrategy> for StableStrategy {
     }
 }
 
-/// Stale strategy struct
+/// Query-optimized strategy representation for external inspection.
+///
+/// This structure provides a serialization-friendly view of strategy state
+/// while maintaining strict data validation during conversion.
 #[derive(Clone, Default, CandidType)]
 pub struct StableStrategyQuery {
-    /// Immutable settings and configurations
+    /// Validated configuration settings
     pub settings: StrategySettingsQuery,
-    /// Mutable state
+    /// Sanitized runtime state
     pub data: StrategyDataQuery,
-    /// Lock for the strategy. Determines if the strategy is currently being executed.
+    /// Current execution lock status
     pub lock: StableLock,
 }
 
+/// Validated conversion from full strategy to query representation
 impl TryFrom<StableStrategy> for StableStrategyQuery {
     type Error = ManagerError;
 

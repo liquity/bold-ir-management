@@ -1,4 +1,21 @@
-//! Lazily initialized strategy settings
+//! Strategy Configuration Management
+//!
+//! Provides immutable configuration for strategy execution through lazy initialization
+//! and builder pattern interfaces. Manages both runtime settings and query-optimized
+//! representations.
+//!
+//! ```plain
+//! Configuration Components:
+//!
+//! Runtime Settings              Query Settings
+//! ┌─────────────┐              ┌────────────┐
+//! │ Contracts   │              │            │
+//! ├─────────────┤      ┌─────► │  Candid    │
+//! │ Parameters  │ TryFrom      │ Compatible │
+//! ├─────────────┤      │       │  Format    │
+//! │ Identifiers │──────┘       │            │
+//! └─────────────┘              └────────────┘
+//! ```
 
 use alloy_primitives::{Address, U256};
 use candid::{CandidType, Nat};
@@ -8,8 +25,24 @@ use crate::{
     utils::{common::u256_to_nat, error::ManagerError, evm_rpc::Service},
 };
 
-/// Lazily initialized settings
-/// These settings are only set once after spawning with their default values
+/// Strategy configuration parameters with lazy initialization.
+///
+/// Configuration categories:
+/// 1. Contract Addresses
+///    - Batch manager
+///    - Hint helper
+///    - Trove manager
+///    - Registry contracts
+///
+/// 2. Execution Parameters
+///    - Collateral index
+///    - Target minimums
+///    - Fee periods
+///
+/// 3. Identity/Access
+///    - Strategy key
+///    - EOA settings
+///    - RPC configuration
 #[derive(Clone, Default)]
 pub struct StrategySettings {
     /// Key in the Hashmap<u32, StrategyData> that is `STRATEGY_DATA`
@@ -120,8 +153,7 @@ impl StrategySettings {
     }
 }
 
-/// Lazily initialized settings
-/// These settings are only set once after spawning with their default values
+/// Candid-compatible settings representation for queries.
 #[derive(Clone, Default, CandidType)]
 pub struct StrategySettingsQuery {
     /// Key in the Hashmap<u32, StrategyData> that is `STRATEGY_DATA`
