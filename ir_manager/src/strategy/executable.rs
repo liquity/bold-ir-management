@@ -120,7 +120,7 @@ impl ExecutableStrategy {
         journal.append_note(
             Ok(()),
             LogType::Info,
-            format!("Chose block tag {:?}.", block_tag),
+            format!("Fixed block tag: {:?}.", block_tag),
         );
 
         // Calculate time since last update
@@ -131,13 +131,11 @@ impl ExecutableStrategy {
 
         print(format!("entire_system_debt: {}", entire_system_debt));
         // Fetch the unbacked portion price and redeemability status
-        let unbacked_portion_price_and_redeemability = self
+        let unbacked_portion = self
             .fetch_unbacked_portion_price_and_redeemablity(None, block_tag.clone())
-            .await?;
-        print(format!(
-            "unbacked_portion_price_and_redeemability._0: {}",
-            unbacked_portion_price_and_redeemability._0
-        ));
+            .await?
+            ._0;
+
         // Fetch and collect troves
         let mut troves: Vec<DebtPerInterestRate> = vec![];
         let mut troves_index = U256::from(0);
@@ -175,32 +173,28 @@ impl ExecutableStrategy {
         // Fetch the redemption fee rate
         let redemption_fee = self.fetch_redemption_rate(block_tag.clone()).await?;
 
-        print(format!("Redemption fee: {}", redemption_fee));
         // Calculate the total unbacked collateral
-        let total_unbacked = self
-            .fetch_total_unbacked(
-                unbacked_portion_price_and_redeemability._0,
-                block_tag.clone(),
-            )
-            .await?;
-        print(format!("total unbacked: {}", total_unbacked));
-        // Calculate redemption split and maximum redeemable against collateral
-        let maximum_redeemable_against_collateral = unbacked_portion_price_and_redeemability
-            ._0
+        let total_unbacked = self.fetch_total_unbacked(block_tag.clone()).await?;
+
+        journal.append_note(
+            Ok(()),
+            LogType::Info,
+            format!(
+                "Calculated: total unbacked: {}, unbacked_portion: {}, entire system debt: {}",
+                total_unbacked, unbacked_portion, entire_system_debt,
+            ),
+        );
+
+        let maximum_redeemable_against_collateral = unbacked_portion
             .saturating_mul(entire_system_debt)
             .checked_div(total_unbacked)
-            .ok_or(arithmetic_err("Total unbacked was 0."))?;
-        print(format!(
-            "max redeemable against collateral: {}",
-            maximum_redeemable_against_collateral
-        ));
+            .ok_or(arithmetic_err("total unbacked was 0."))?;
 
         let target_percentage_numerator = self
             .settings
             .target_min
             .saturating_mul(U256::from(2))
             .saturating_mul(redemption_fee);
-
         let target_percentage_denominator =
             redemption_fee.saturating_add(U256::from(5 * 10_u128.pow(15)));
         let target_percentage = target_percentage_numerator
@@ -211,7 +205,8 @@ impl ExecutableStrategy {
             Ok(()),
             LogType::Info,
             format!(
-                "target_percentage({}), numerator({}), redemption_fee({}), denominator ({})",
+                "Calculated: maximum redeemable against collateral: {}, target_percentage: {} (numerator: {}, redemption_fee: {}, denominator: {})",
+                maximum_redeemable_against_collateral,
                 target_percentage,
                 target_percentage_numerator,
                 redemption_fee,
@@ -369,16 +364,14 @@ impl ExecutableStrategy {
         troves_count: U256,
         block_tag: BlockTag,
     ) -> ManagerResult<(U256, U256)> {
-        print("calc hints");
         let approximate_hint = self
             .fetch_approximate_hint(new_rate, troves_count, block_tag.clone())
             .await?;
 
-        print("fetched approx hint");
         let hints = self
             .fetch_insert_position(new_rate, approximate_hint, block_tag)
             .await?;
-        print("fetched hintsss");
+
         Ok(hints)
     }
 
@@ -389,9 +382,7 @@ impl ExecutableStrategy {
         troves_count: U256,
         block_tag: BlockTag,
     ) -> ManagerResult<U256> {
-        print(format!("calc num trials. troves count: {}", troves_count));
         let num_trials = U256::from(10) * troves_count.root(2);
-        print(format!("post num trials: {}", num_trials));
         let arguments = getApproxHintCall {
             _collIndex: self.settings.collateral_index,
             _interestRate: new_rate,
@@ -419,17 +410,12 @@ impl ExecutableStrategy {
         approximate_hint: U256,
         block_tag: BlockTag,
     ) -> ManagerResult<(U256, U256)> {
-        print(format!(
-            "call insert position. ir: {}, previd {}, nextid {}",
-            new_rate, approximate_hint, approximate_hint
-        ));
         let arguments = findInsertPositionCall {
             _annualInterestRate: new_rate,
             _prevId: approximate_hint,
             _nextId: approximate_hint,
         };
         let data = findInsertPositionCall::abi_encode(&arguments);
-        print(format!("call insert position with data: {:#?}", data));
         let rpc_canister_response = call_with_dynamic_retries(
             &self.settings.rpc_canister,
             block_tag,
@@ -437,8 +423,6 @@ impl ExecutableStrategy {
             data,
         )
         .await?;
-
-        print(format!("called: {:#?}", rpc_canister_response));
 
         decode_abi_response::<findInsertPositionReturn, findInsertPositionCall>(
             rpc_canister_response,
@@ -542,15 +526,11 @@ impl ExecutableStrategy {
     }
 
     /// Gets total unbacked amount across markets
-    async fn fetch_total_unbacked(
-        &self,
-        initial_value: U256,
-        block_tag: BlockTag,
-    ) -> ManagerResult<U256> {
+    async fn fetch_total_unbacked(&self, block_tag: BlockTag) -> ManagerResult<U256> {
         let managers: Vec<Address> =
             MANAGERS.with(|managers_vector| managers_vector.borrow().clone());
 
-        let mut total_unbacked = initial_value;
+        let mut total_unbacked = U256::ZERO;
 
         for manager in managers {
             total_unbacked += self
@@ -593,12 +573,13 @@ impl ExecutableStrategy {
         journal.append_note(
             Ok(()),
             LogType::Info,
-            format!("current debt in front: {}", current_debt_in_front),
+            format!("Current debt in front: {}", current_debt_in_front),
         );
 
         // Calculate new rate
         let new_rate = self
             .calculate_new_rate(
+                journal,
                 troves,
                 target_percentage,
                 maximum_redeemable_against_collateral,
@@ -646,6 +627,7 @@ impl ExecutableStrategy {
     /// Calculates optimal new interest rate
     async fn calculate_new_rate(
         &self,
+        journal: &mut JournalCollection,
         troves: Vec<DebtPerInterestRate>,
         target_percentage: U256,
         maximum_redeemable_against_collateral: U256,
@@ -654,7 +636,11 @@ impl ExecutableStrategy {
         let mut new_rate = U256::from(0);
         let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
 
-        print(format!("target_debt: {}", target_debt));
+        journal.append_note(
+            Ok(()),
+            LogType::Info,
+            format!("Calculated target debt in front: {}", target_debt),
+        );
 
         for trove in troves
             .iter()
@@ -670,6 +656,13 @@ impl ExecutableStrategy {
                 break;
             }
         }
+
+        journal.append_note(
+            Ok(()),
+            LogType::Info,
+            format!("Calculated new rate: {}", new_rate),
+        );
+
         Ok(new_rate)
     }
 

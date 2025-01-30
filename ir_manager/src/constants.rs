@@ -142,11 +142,11 @@ pub const PROVIDERS: [evm_rpc_types::EthSepoliaService; 5] = [
 
 /// Ethereum main-net providers
 #[cfg(feature = "mainnet")]
-pub const PROVIDERS: [evm_rpc_types::EthMainnetService; 3] = [
+pub const PROVIDERS: [evm_rpc_types::EthMainnetService; 4] = [
     evm_rpc_types::EthMainnetService::BlockPi,
     evm_rpc_types::EthMainnetService::PublicNode,
     evm_rpc_types::EthMainnetService::Alchemy,
-    // evm_rpc_types::EthMainnetService::Ankr,
+    evm_rpc_types::EthMainnetService::Ankr,
 ];
 
 /// Minimum expected cycles for the ckETH<>Cycles arbitrage opportunity
