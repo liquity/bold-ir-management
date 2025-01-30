@@ -20,6 +20,8 @@ pub struct StrategySettings {
     pub collateral_registry: Address,
     /// Multi trove getter contract address for this strategy
     pub multi_trove_getter: Address,
+    /// Sorted troves contract address for this strategy
+    pub sorted_troves: Address,
     /// Collateral index
     pub collateral_index: U256,
     /// Derivation path of the ECDSA signature
@@ -68,6 +70,12 @@ impl StrategySettings {
     /// Sets the multi-trove getter contract address for this strategy.
     pub fn multi_trove_getter(&mut self, multi_trove_getter: Address) -> &mut Self {
         self.multi_trove_getter = multi_trove_getter;
+        self
+    }
+
+    /// Sets the sorted troves contract address for this strategy.
+    pub fn sorted_troves(&mut self, sorted_troves: Address) -> &mut Self {
+        self.sorted_troves = sorted_troves;
         self
     }
 

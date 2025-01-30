@@ -7,7 +7,9 @@ use alloy_sol_types::SolCall;
 use ic_exports::ic_cdk::{api::time, print};
 
 use crate::{
-    constants::{max_number_of_troves, scale, tolerance_margin_down, tolerance_margin_up},
+    constants::{
+        max_number_of_troves, scale, tolerance_margin_down, tolerance_margin_up, MAX_RETRY_ATTEMPTS,
+    },
     journal::{JournalCollection, LogType},
     state::{MANAGERS, STRATEGY_STATE},
     types::*,
@@ -118,6 +120,8 @@ impl ExecutableStrategy {
             troves_index += max_count;
         }
 
+        let troves_count = U256::from(troves.len());
+
         let current_debt_in_front = match self.get_current_debt_in_front(troves.clone()) {
             Some(debt) => debt,
             None => {
@@ -193,22 +197,20 @@ impl ExecutableStrategy {
 
         // If the strategy successfully calculates a new rate, send a signed transaction to update it
         if let Some((new_rate, max_upfront_fee)) = strategy_result {
-            // Send a signed transaction to update the rate for the batch
-            // Get hints (upper/lower) to minimize gas
-            let upper_hint = U256::from(0);
-            let lower_hint = U256::from(0);
+            let hints = self
+                .calculate_hints(new_rate, troves_count, block_tag.clone())
+                .await?;
 
             // Prepare the payload for updating the interest rate
             let payload = setNewRateCall {
                 _newAnnualInterestRate: new_rate.to::<u128>(),
-                _upperHint: upper_hint,
-                _lowerHint: lower_hint,
+                _upperHint: hints.0,
+                _lowerHint: hints.1,
                 _maxUpfrontFee: max_upfront_fee
                     .saturating_add(U256::from(1_000_000_000_000_000_u128)), // + %0.001 ,
             };
 
-            // Retry the transaction twice if necessary
-            for _ in 0..2 {
+            for _ in 1..=MAX_RETRY_ATTEMPTS + 1 {
                 let eoa = self
                     .settings
                     .eoa_pk
@@ -320,6 +322,89 @@ impl ExecutableStrategy {
             predictAdjustBatchInterestRateUpfrontFeeCall,
         >(rpc_canister_response)
         .map(|data| Ok(data._0))?
+    }
+
+    async fn calculate_hints(
+        &self,
+        new_rate: U256,
+        troves_count: U256,
+        block_tag: BlockTag,
+    ) -> ManagerResult<(U256, U256)> {
+        print("calc hints");
+        let approximate_hint = self
+            .fetch_approximate_hint(new_rate, troves_count, block_tag.clone())
+            .await?;
+
+        print("fetched approx hint");
+        let hints = self
+            .fetch_insert_position(new_rate, approximate_hint, block_tag)
+            .await?;
+        print("fetched hintsss");
+        Ok(hints)
+    }
+
+    /// Predicts the upfront fee for a given new rate
+    async fn fetch_approximate_hint(
+        &self,
+        new_rate: U256,
+        troves_count: U256,
+        block_tag: BlockTag,
+    ) -> ManagerResult<U256> {
+        print(format!("calc num trials. troves count: {}", troves_count));
+        let num_trials = U256::from(10) * troves_count.root(2);
+        print(format!("post num trials: {}", num_trials));
+        let arguments = getApproxHintCall {
+            _collIndex: self.settings.collateral_index,
+            _interestRate: new_rate,
+            _numTrials: num_trials,
+            _inputRandomSeed: U256::ZERO, // We don't care about the pseudo-random seed.
+        };
+
+        let data = getApproxHintCall::abi_encode(&arguments);
+
+        let rpc_canister_response = call_with_dynamic_retries(
+            &self.settings.rpc_canister,
+            block_tag,
+            self.settings.hint_helper,
+            data,
+        )
+        .await?;
+        decode_abi_response::<getApproxHintReturn, getApproxHintCall>(rpc_canister_response)
+            .map(|data| Ok(data.hintId))?
+    }
+
+    /// Predicts the upfront fee for a given new rate
+    async fn fetch_insert_position(
+        &self,
+        new_rate: U256,
+        approximate_hint: U256,
+        block_tag: BlockTag,
+    ) -> ManagerResult<(U256, U256)> {
+        print(format!(
+            "call insert position. ir: {}, previd {}, nextid {}",
+            new_rate, approximate_hint, approximate_hint
+        ));
+        let arguments = findInsertPositionCall {
+            _annualInterestRate: new_rate,
+            _prevId: approximate_hint,
+            _nextId: approximate_hint,
+        };
+        let data = findInsertPositionCall::abi_encode(&arguments);
+        print(format!("call insert position with data: {:#?}", data));
+        let rpc_canister_response = call_with_dynamic_retries(
+            &self.settings.rpc_canister,
+            block_tag,
+            self.settings.sorted_troves,
+            data,
+        )
+        .await?;
+
+        print(format!("called: {:#?}", rpc_canister_response));
+
+        decode_abi_response::<findInsertPositionReturn, findInsertPositionCall>(
+            rpc_canister_response,
+        )
+        .map(|data| Ok((data._0, data._1)))?
     }
 
     /// Returns the debt of the entire system across all markets if successful.
