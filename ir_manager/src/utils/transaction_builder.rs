@@ -9,7 +9,7 @@ use ic_exports::ic_cdk::api::management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId
 
 use crate::{
     constants::CHAIN_ID,
-    providers::{extract_multi_rpc_result, get_ranked_rpc_providers},
+    providers::{extract_multi_rpc_send_raw_transaction_status, get_ranked_rpc_providers},
     types::DerivationPath,
 };
 
@@ -87,7 +87,7 @@ impl TransactionBuilder {
         let FeeEstimates {
             max_fee_per_gas,
             max_priority_fee_per_gas,
-        } = estimate_transaction_fees(9, rpc.clone(), rpc_canister, block_tag.clone()).await?;
+        } = estimate_transaction_fees(9, rpc_canister, block_tag.clone()).await?;
 
         let estimated_gas =
             super::gas::get_estimate_gas(rpc_canister, self.data, self.to.clone(), self.from)
@@ -121,7 +121,8 @@ impl TransactionBuilder {
             .await
         {
             Ok((response,)) => {
-                let extracted_response = extract_multi_rpc_result(rpc, response)?;
+                let extracted_response =
+                    extract_multi_rpc_send_raw_transaction_status(rpc, response)?;
                 Ok(extracted_response)
             }
             Err(e) => Err(ManagerError::Custom(e.1)),

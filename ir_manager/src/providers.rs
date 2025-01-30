@@ -8,7 +8,10 @@ use crate::{
     journal::JournalCollection,
     state::RPC_REPUTATIONS,
     types::ProviderService,
-    utils::error::{ManagerError, ManagerResult},
+    utils::{
+        error::{ManagerError, ManagerResult},
+        evm_rpc::SendRawTransactionStatus,
+    },
 };
 
 /// Getter function to retrieve the ranked list of providers from the thread's local storage
@@ -158,6 +161,84 @@ pub fn extract_multi_rpc_result<T: Debug>(
             response.map_err(ManagerError::RpcResponseError)
         }
         MultiRpcResult::Inconsistent(responses) => {
+            responses.iter().for_each(|(provider, result)| {
+                #[cfg(feature = "sepolia")]
+                if let evm_rpc_types::RpcService::EthSepolia(eth_sepolia_service) = provider {
+                    if result.is_ok() {
+                        increment_provider_score(&eth_sepolia_service);
+                    } else {
+                        decrement_provider_score(&eth_sepolia_service);
+                    }
+                }
+
+                #[cfg(feature = "mainnet")]
+                if let evm_rpc_types::RpcService::EthMainnet(eth_mainnet_service) = provider {
+                    if result.is_ok() {
+                        increment_provider_score(&eth_mainnet_service);
+                    } else {
+                        decrement_provider_score(&eth_mainnet_service);
+                    }
+                }
+            });
+            Err(ManagerError::NoConsensus(format!("{:#?}", responses)))
+        }
+    }
+}
+
+/// Updates the provider rankings based on the providers used in a call and the outcome of that call.
+pub fn extract_multi_rpc_send_raw_transaction_status(
+    providers: RpcServices,
+    result: MultiRpcResult<SendRawTransactionStatus>,
+) -> ManagerResult<SendRawTransactionStatus> {
+    match result {
+        MultiRpcResult::Consistent(response) => {
+            if response.is_ok() {
+                #[cfg(feature = "sepolia")]
+                if let RpcServices::EthSepolia(services) = providers {
+                    let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
+                    providers_unwrapped
+                        .iter()
+                        .for_each(increment_provider_score);
+                }
+
+                #[cfg(feature = "mainnet")]
+                if let RpcServices::EthMainnet(services) = providers {
+                    let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
+                    providers_unwrapped
+                        .iter()
+                        .for_each(increment_provider_score);
+                }
+            } else {
+                #[cfg(feature = "sepolia")]
+                if let RpcServices::EthSepolia(services) = providers {
+                    let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
+                    providers_unwrapped
+                        .iter()
+                        .for_each(decrement_provider_score);
+                }
+
+                #[cfg(feature = "mainnet")]
+                if let RpcServices::EthMainnet(services) = providers {
+                    let providers_unwrapped = services.ok_or(ManagerError::NonExistentValue)?;
+                    providers_unwrapped
+                        .iter()
+                        .for_each(decrement_provider_score);
+                }
+            }
+
+            response.map_err(ManagerError::RpcResponseError)
+        }
+        MultiRpcResult::Inconsistent(responses) => {
+            for response in responses.clone() {
+                if response.1.is_ok() {
+                    if let Ok(SendRawTransactionStatus::NonceTooLow) = response.1 {
+                        return Ok(SendRawTransactionStatus::NonceTooLow);
+                    } else if let Ok(SendRawTransactionStatus::NonceTooHigh) = response.1 {
+                        return Ok(SendRawTransactionStatus::NonceTooHigh);
+                    }
+                }
+            }
+
             responses.iter().for_each(|(provider, result)| {
                 #[cfg(feature = "sepolia")]
                 if let evm_rpc_types::RpcService::EthSepolia(eth_sepolia_service) = provider {

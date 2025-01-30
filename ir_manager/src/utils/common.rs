@@ -173,7 +173,7 @@ pub async fn get_block_tag(rpc_canister: &Service, latest: bool) -> ManagerResul
     let mut result = None;
     let mut last_error = None;
 
-    for _ in 1..=(MAX_RETRY_ATTEMPTS * 3) {
+    for _ in 1..=MAX_RETRY_ATTEMPTS {
         let rpc = get_ranked_rpc_provider();
         let rpc_config = RpcConfig {
             response_size_estimate: Some(3000),
@@ -192,6 +192,7 @@ pub async fn get_block_tag(rpc_canister: &Service, latest: bool) -> ManagerResul
         let call_result = rpc_canister
             .get_block_by_number(rpc.clone(), Some(rpc_config), tag)
             .await;
+
         let rpc_result = extract_call_result(call_result)?;
         let current_result = extract_multi_rpc_result(rpc, rpc_result);
 
@@ -258,6 +259,7 @@ pub async fn call_with_dynamic_retries(
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
     let provider_set: RpcServices = get_ranked_rpc_providers();
     let data_string = format!("0x{}", hex::encode(data));
+    
     // There is a 2 MB limit on the response size, an ICP limitation.
     while max_response_bytes < 2_000_000 {
         // Perform the request using the provided function
@@ -266,17 +268,15 @@ pub async fn call_with_dynamic_retries(
             input: Some(data_string.to_string()),
             ..Default::default()
         };
-
         let args = CallArgs {
             transaction,
             block: Some(block.clone()),
         };
-
         let config = get_rpc_config(Some(max_response_bytes));
         let response = rpc_canister
             .eth_call(provider_set.clone(), Some(config), args)
             .await;
-
+    
         let extracted_response = extract_call_result(response)?;
         let extracted_rpc_result =
             extract_multi_rpc_result(provider_set.clone(), extracted_response);
