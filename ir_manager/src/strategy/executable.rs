@@ -256,6 +256,7 @@ impl ExecutableStrategy {
                         self.data.last_update = time() / 1_000_000_000;
                         self.data.latest_rate = new_rate;
                         self.apply_change();
+                        break;
                     }
                     SendRawTransactionStatus::InsufficientFunds => {
                         return Err(ManagerError::Custom(

@@ -1,5 +1,6 @@
 //! Locking system for strategies
 
+use candid::CandidType;
 use ic_exports::ic_cdk::api::time;
 
 use crate::{
@@ -61,7 +62,7 @@ impl Lock {
 /// Only used by `StableStrategy`
 /// #### Implementation Note
 /// Does not implement the `Drop` trait and `try_lock` and `try_unlock` methods.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, CandidType)]
 pub struct StableLock {
     /// Status of the lock. `true` represents locked and `false` unlocked
     pub is_locked: bool,

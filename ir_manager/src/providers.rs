@@ -1,4 +1,40 @@
-//! Implementation of a reputation-based ranking system for the RPC providers
+//! RPC Provider Reputation System
+//!
+//! A dynamic scoring and ranking system for Ethereum RPC providers that:
+//! ```text
+//!                      ┌───────────────┐
+//!                      │  RPC Request  │
+//!                      └───────┬───────┘
+//!                              │
+//!                    ┌─────────▼────────┐
+//!                    │ Provider Results  │
+//!                    └─────────┬────────┘
+//!                              │
+//!                  ┌───────────▼──────────┐
+//!            ┌─────┤  Response Analysis   ├─────┐
+//!            │     └───────────┬──────────┘     │
+//!     ┌──────▼─────┐   ┌──────▼──────┐   ┌─────▼──────┐
+//!     │ Consistent │   │Inconsistent │   │   Error    │
+//!     └──────┬─────┘   └──────┬──────┘   └─────┬──────┘
+//!        ┌───▼───┐        ┌───▼───┐        ┌───▼───┐
+//!        │ +1    │        │Partial│        │ -1    │
+//!        └───┬───┘        └───┬───┘        └───┬───┘
+//!            │                │                │
+//!            └────────┐  ┌────┘                │
+//!                     │  │          ┌──────────┘
+//!               ┌─────▼──▼──────────▼─────┐
+//!               │  Reputation Updates     │
+//!               └──────────┬─────────────┘
+//!                         │
+//!                  ┌──────▼──────┐
+//!                  │ Reranking   │
+//!                  └─────────────┘
+//! ```
+//! The system maintains a weighted score for each provider, automatically adjusting rankings
+//! based on performance. Providers earn reputation for successful, consistent responses and
+//! lose reputation for failures or inconsistencies. A sophisticated tie-breaking mechanism
+//! ensures fair provider selection when scores are close.
+
 use std::fmt::Debug;
 
 use evm_rpc_types::{MultiRpcResult, RpcServices};
@@ -229,7 +265,7 @@ pub fn extract_multi_rpc_send_raw_transaction_status(
             response.map_err(ManagerError::RpcResponseError)
         }
         MultiRpcResult::Inconsistent(responses) => {
-            for response in responses.clone() {            
+            for response in responses.clone() {
                 if response.1.is_ok() {
                     if let Ok(SendRawTransactionStatus::NonceTooLow) = response.1 {
                         return Ok(SendRawTransactionStatus::NonceTooLow);

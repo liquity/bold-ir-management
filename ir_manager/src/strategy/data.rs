@@ -1,6 +1,9 @@
 //! Mutable strategy data
 
 use alloy_primitives::U256;
+use candid::CandidType;
+
+use crate::utils::{common::u256_to_nat, error::ManagerError};
 
 /// Struct containing all mutable data necessary to execute a strategy
 #[derive(Clone, Default)]
@@ -39,6 +42,32 @@ impl StrategyData {
     pub fn last_ok_exit(&mut self, time: u64) -> &mut Self {
         self.last_ok_exit = time;
         self
+    }
+}
+
+#[derive(Clone, Default, CandidType)]
+pub struct StrategyDataQuery {
+    /// Latest rate determined by the canister in the previous cycle
+    pub latest_rate: candid::Nat,
+    /// Timestamp of the last time the strategy had updated the batch's interest rate.
+    /// Denominated in seconds.
+    pub last_update: u64,
+    /// The EOA's nonce
+    pub eoa_nonce: u64,
+    /// Timestamp of the last successful exit of the strategy
+    pub last_ok_exit: u64,
+}
+
+impl TryFrom<StrategyData> for StrategyDataQuery {
+    type Error = ManagerError;
+
+    fn try_from(value: StrategyData) -> Result<Self, Self::Error> {
+        Ok(Self {
+            latest_rate: u256_to_nat(&value.latest_rate)?,
+            last_update: value.last_update,
+            eoa_nonce: value.eoa_nonce,
+            last_ok_exit: value.last_ok_exit,
+        })
     }
 }
 

@@ -1,8 +1,12 @@
 //! Lazily initialized strategy settings
 
 use alloy_primitives::{Address, U256};
+use candid::{CandidType, Nat};
 
-use crate::{types::DerivationPath, utils::evm_rpc::Service};
+use crate::{
+    types::DerivationPath,
+    utils::{common::u256_to_nat, error::ManagerError, evm_rpc::Service},
+};
 
 /// Lazily initialized settings
 /// These settings are only set once after spawning with their default values
@@ -113,6 +117,54 @@ impl StrategySettings {
     pub fn rpc_canister(&mut self, rpc_canister: Service) -> &mut Self {
         self.rpc_canister = rpc_canister;
         self
+    }
+}
+
+/// Lazily initialized settings
+/// These settings are only set once after spawning with their default values
+#[derive(Clone, Default, CandidType)]
+pub struct StrategySettingsQuery {
+    /// Key in the Hashmap<u32, StrategyData> that is `STRATEGY_DATA`
+    pub key: u32,
+    /// Batch manager contract address for this strategy
+    pub batch_manager: String,
+    /// Hint helper contract address.
+    pub hint_helper: String,
+    /// Manager contract address for this strategy
+    pub manager: String,
+    /// Collateral registry contract address
+    pub collateral_registry: String,
+    /// Multi trove getter contract address for this strategy
+    pub multi_trove_getter: String,
+    /// Sorted troves contract address for this strategy
+    pub sorted_troves: String,
+    /// Collateral index
+    pub collateral_index: Nat,
+    /// Minimum target for this strategy
+    pub target_min: Nat,
+    /// Upfront fee period constant denominated in seconds
+    pub upfront_fee_period: Nat,
+    /// The EOA's public key
+    pub eoa_pk: Option<String>,
+}
+
+impl TryFrom<StrategySettings> for StrategySettingsQuery {
+    type Error = ManagerError;
+
+    fn try_from(value: StrategySettings) -> Result<Self, Self::Error> {
+        Ok(Self {
+            key: value.key,
+            batch_manager: value.batch_manager.to_string(),
+            hint_helper: value.hint_helper.to_string(),
+            manager: value.manager.to_string(),
+            collateral_registry: value.collateral_registry.to_string(),
+            multi_trove_getter: value.multi_trove_getter.to_string(),
+            sorted_troves: value.sorted_troves.to_string(),
+            collateral_index: u256_to_nat(&value.collateral_index)?,
+            target_min: u256_to_nat(&value.target_min)?,
+            upfront_fee_period: u256_to_nat(&value.upfront_fee_period)?,
+            eoa_pk: value.eoa_pk.map(|address| address.to_string()),
+        })
     }
 }
 

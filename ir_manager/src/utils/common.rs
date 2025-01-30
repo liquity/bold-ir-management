@@ -259,7 +259,7 @@ pub async fn call_with_dynamic_retries(
     let mut max_response_bytes = DEFAULT_MAX_RESPONSE_BYTES;
     let provider_set: RpcServices = get_ranked_rpc_providers();
     let data_string = format!("0x{}", hex::encode(data));
-    
+
     // There is a 2 MB limit on the response size, an ICP limitation.
     while max_response_bytes < 2_000_000 {
         // Perform the request using the provided function
@@ -276,7 +276,7 @@ pub async fn call_with_dynamic_retries(
         let response = rpc_canister
             .eth_call(provider_set.clone(), Some(config), args)
             .await;
-    
+
         let extracted_response = extract_call_result(response)?;
         let extracted_rpc_result =
             extract_multi_rpc_result(provider_set.clone(), extracted_response);

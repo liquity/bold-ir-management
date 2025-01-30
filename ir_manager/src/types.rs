@@ -3,8 +3,6 @@
 // This is allowed in this module because the sol! macro doesn't provide its own docs.
 #![allow(missing_docs)]
 
-use crate::strategy::stable::StableStrategy;
-
 use alloy_sol_types::sol;
 use candid::{CandidType, Nat, Principal};
 #[cfg(feature = "mainnet")]
@@ -47,43 +45,6 @@ pub struct StrategyInput {
     pub collateral_registry: String,
     /// Hint helper contract address.
     pub hint_helper: String,
-}
-
-/// Strategy data returned by query methods
-#[derive(CandidType)]
-pub struct StrategyQueryData {
-    /// Trove manager contract address for this strategy
-    pub trove_manager: String,
-    /// Batch manager contract address for this strategy
-    pub batch_manager: String,
-    /// Lock for the strategy. Determines if the strategy is currently being executed.
-    pub is_locked: bool,
-    /// Last time this strategy was locked at (None if it's not locked)
-    pub last_locked_at: Option<u64>,
-    /// Latest rate determined by the canister in the previous cycle
-    pub latest_rate: String,
-    /// Minimum target for this strategy
-    pub target_min: String,
-    /// The EOA's public key
-    pub eoa_pk: Option<String>,
-    /// Timestamp of the last time the strategy had updated the batch's interest rate.
-    /// Denominated in seconds.
-    pub last_update: u64,
-}
-
-impl From<StableStrategy> for StrategyQueryData {
-    fn from(value: StableStrategy) -> Self {
-        Self {
-            latest_rate: value.data.latest_rate.to_string(),
-            target_min: value.settings.target_min.to_string(),
-            eoa_pk: value.settings.eoa_pk.map(|pk| pk.to_string()),
-            last_update: value.data.last_update,
-            trove_manager: value.settings.manager.to_string(),
-            batch_manager: value.settings.batch_manager.to_string(),
-            is_locked: value.lock.is_locked,
-            last_locked_at: value.lock.last_locked_at,
-        }
-    }
 }
 
 /// Response for the ckETH<>Cycles swaps

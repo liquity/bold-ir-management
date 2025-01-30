@@ -1,13 +1,17 @@
 //! Stale strategy implementation that is only used in the state
 
+use candid::CandidType;
+
 use crate::{
     state::STRATEGY_STATE,
     utils::error::{ManagerError, ManagerResult},
 };
 
 use super::{
-    data::StrategyData, executable::ExecutableStrategy, lock::StableLock,
-    settings::StrategySettings,
+    data::{StrategyData, StrategyDataQuery},
+    executable::ExecutableStrategy,
+    lock::StableLock,
+    settings::{StrategySettings, StrategySettingsQuery},
 };
 
 /// Stale strategy struct
@@ -70,5 +74,31 @@ impl From<&ExecutableStrategy> for StableStrategy {
             data: value.data.clone(),
             lock: value.lock.clone().into(),
         }
+    }
+}
+
+/// Stale strategy struct
+#[derive(Clone, Default, CandidType)]
+pub struct StableStrategyQuery {
+    /// Immutable settings and configurations
+    pub settings: StrategySettingsQuery,
+    /// Mutable state
+    pub data: StrategyDataQuery,
+    /// Lock for the strategy. Determines if the strategy is currently being executed.
+    pub lock: StableLock,
+}
+
+impl TryFrom<StableStrategy> for StableStrategyQuery {
+    type Error = ManagerError;
+
+    fn try_from(value: StableStrategy) -> Result<Self, Self::Error> {
+        let settings_query = StrategySettingsQuery::try_from(value.settings)?;
+        let data_query = StrategyDataQuery::try_from(value.data)?;
+
+        Ok(Self {
+            settings: settings_query,
+            data: data_query,
+            lock: value.lock,
+        })
     }
 }

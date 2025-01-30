@@ -13,6 +13,7 @@ use crate::strategy::data::StrategyData;
 use crate::strategy::run::run_strategy;
 use crate::strategy::settings::StrategySettings;
 use crate::strategy::stable::StableStrategy;
+use crate::strategy::stable::StableStrategyQuery;
 use crate::types::ProviderService;
 use crate::utils::common::*;
 use crate::utils::error::*;
@@ -21,7 +22,7 @@ use crate::utils::signer::*;
 use crate::{
     charger::{check_threshold, recharge_cketh, transfer_cketh, SwapLock},
     state::*,
-    types::{StrategyInput, StrategyQueryData, SwapResponse},
+    types::{StrategyInput, SwapResponse},
 };
 
 use candid::Nat;
@@ -281,15 +282,15 @@ impl IrManager {
     /// A vector of StrategyQueryData structs containing current strategy states.
     /// Returns an empty vector if no strategies exist.
     #[query]
-    pub fn get_strategies(&self) -> Vec<StrategyQueryData> {
+    pub fn get_strategies(&self) -> ManagerResult<Vec<StableStrategyQuery>> {
         STRATEGY_STATE.with(|vector_data| {
             let binding = vector_data.borrow();
             let values = binding.values();
             if values.len() == 0 {
-                return vec![];
+                return Ok(vec![]);
             }
             values
-                .map(|strategy| StrategyQueryData::from(strategy.clone()))
+                .map(|strategy| StableStrategyQuery::try_from(strategy.clone()))
                 .collect()
         })
     }
