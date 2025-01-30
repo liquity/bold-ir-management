@@ -133,20 +133,20 @@ pub const STRATEGY_LOCK_TIMEOUT: u64 = 3600000;
 /// Sepolia providers
 #[cfg(feature = "sepolia")]
 pub const PROVIDERS: [evm_rpc_types::EthSepoliaService; 5] = [
-    evm_rpc_types::EthSepoliaService::Ankr,
     evm_rpc_types::EthSepoliaService::BlockPi,
     evm_rpc_types::EthSepoliaService::PublicNode,
     evm_rpc_types::EthSepoliaService::Sepolia,
     evm_rpc_types::EthSepoliaService::Alchemy,
+    evm_rpc_types::EthSepoliaService::Ankr,
 ];
 
 /// Ethereum main-net providers
 #[cfg(feature = "mainnet")]
-pub const PROVIDERS: [evm_rpc_types::EthMainnetService; 4] = [
-    evm_rpc_types::EthMainnetService::Ankr,
+pub const PROVIDERS: [evm_rpc_types::EthMainnetService; 3] = [
     evm_rpc_types::EthMainnetService::BlockPi,
     evm_rpc_types::EthMainnetService::PublicNode,
     evm_rpc_types::EthMainnetService::Alchemy,
+    // evm_rpc_types::EthMainnetService::Ankr,
 ];
 
 /// Minimum expected cycles for the ckETH<>Cycles arbitrage opportunity

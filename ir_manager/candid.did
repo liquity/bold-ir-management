@@ -1,3 +1,11 @@
+type EthMainnetService = variant {
+  Alchemy;
+  Llama;
+  BlockPi;
+  Cloudflare;
+  PublicNode;
+  Ankr;
+};
 type Halt = record { status : HaltStatus; message : opt text };
 type HaltStatus = variant {
   Functional;
@@ -59,8 +67,12 @@ type Result_1 = variant {
   Ok : vec StableJournalCollection;
   Err : ManagerError;
 };
-type Result_2 = variant { Ok : text; Err : ManagerError };
-type Result_3 = variant { Ok : SwapResponse; Err : ManagerError };
+type Result_2 = variant {
+  Ok : vec record { int64; EthMainnetService };
+  Err : ManagerError;
+};
+type Result_3 = variant { Ok : text; Err : ManagerError };
+type Result_4 = variant { Ok : SwapResponse; Err : ManagerError };
 type RpcError = variant {
   JsonRpcError : JsonRpcError;
   ProviderError : ProviderError;
@@ -81,6 +93,7 @@ type StrategyInput = record {
   collateral_index : nat;
   multi_trove_getter : text;
   upfront_fee_period : nat;
+  sorted_troves : text;
   target_min : nat;
   collateral_registry : text;
 };
@@ -98,12 +111,13 @@ type SwapResponse = record { returning_ether : nat; accepted_cycles : nat };
 type ValidationError = variant { Custom : text; InvalidHex : text };
 service : {
   get_logs : (nat64) -> (Result_1) query;
+  get_ranked_providers_list : () -> (Result_2) query;
   get_strategies : () -> (vec StrategyQueryData) query;
   get_strategy_address : (nat32) -> (opt text) query;
   get_strategy_logs : (nat64, nat32) -> (Result_1) query;
   halt_status : () -> (Halt) query;
-  mint_strategy : (StrategyInput) -> (Result_2);
+  mint_strategy : (StrategyInput) -> (Result_3);
   set_batch_manager : (nat32, text, nat) -> (Result);
   start_timers : () -> (Result);
-  swap_cketh : () -> (Result_3);
+  swap_cketh : () -> (Result_4);
 }

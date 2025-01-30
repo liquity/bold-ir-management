@@ -38,7 +38,7 @@ thread_local! {
     #[cfg(feature = "sepolia")]
     pub static RPC_SERVICE: RefCell<VecDeque<RpcService>> = RefCell::new(VecDeque::from([
         RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::Alchemy),
-        RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::Ankr),
+        // RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::Ankr),
         RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::BlockPi),
         RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::PublicNode),
         RpcService::EthSepolia(evm_rpc_types::EthSepoliaService::Sepolia),
@@ -47,7 +47,7 @@ thread_local! {
     #[cfg(feature = "mainnet")]
     pub static RPC_SERVICE: RefCell<VecDeque<RpcService>> = RefCell::new(VecDeque::from([
         RpcService::EthMainnet(evm_rpc_types::EthMainnetService::Alchemy),
-        RpcService::EthMainnet(evm_rpc_types::EthMainnetService::Ankr),
+        // RpcService::EthMainnet(evm_rpc_types::EthMainnetService::Ankr),
         RpcService::EthMainnet(evm_rpc_types::EthMainnetService::BlockPi),
         RpcService::EthMainnet(evm_rpc_types::EthMainnetService::Cloudflare),
         RpcService::EthMainnet(evm_rpc_types::EthMainnetService::Llama),
@@ -58,7 +58,9 @@ thread_local! {
     pub static RPC_REPUTATIONS: RefCell<Vec<(i64, EthSepoliaService)>> = RefCell::new(vec![(0, EthSepoliaService::Ankr), (0, EthSepoliaService::BlockPi), (0, EthSepoliaService::PublicNode), (0, EthSepoliaService::Sepolia), (0, EthSepoliaService::Alchemy)]);
     /// Reputation-based ranking list of all providers
     #[cfg(feature = "mainnet")]
-    pub static RPC_REPUTATIONS: RefCell<Vec<(i64, EthMainnetService)>> = RefCell::new(vec![(0, EthMainnetService::Ankr), (0, EthMainnetService::BlockPi), (0, EthMainnetService::PublicNode), (0, EthMainnetService::Cloudflare), (0, EthMainnetService::Alchemy)]);
+    pub static RPC_REPUTATIONS: RefCell<Vec<(i64, EthMainnetService)>> = RefCell::new(vec![
+        // (0, EthMainnetService::Ankr),
+        (0, EthMainnetService::BlockPi), (0, EthMainnetService::PublicNode), (0, EthMainnetService::Cloudflare), (0, EthMainnetService::Alchemy)]);
 }
 
 /// Inserts a new journal collection
