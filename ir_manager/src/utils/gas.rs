@@ -2,11 +2,12 @@
 
 use alloy_primitives::U256;
 use candid::Nat;
-use evm_rpc_types::RpcServices;
+use evm_rpc_types::RpcConfig;
 use ic_exports::ic_cdk::print;
 use serde_json::json;
 
-use crate::providers::extract_multi_rpc_result;
+use crate::constants::MAX_RETRY_ATTEMPTS;
+use crate::providers::{extract_multi_rpc_result, get_ranked_rpc_provider};
 use crate::types::*;
 
 use super::common::{extract_call_result, request_with_dynamic_retries};
@@ -25,7 +26,6 @@ pub async fn fee_history(
     block_count: Nat,
     newest_block: BlockTag,
     reward_percentiles: Option<Vec<u8>>,
-    rpc_services: RpcServices,
     evm_rpc: &Service,
 ) -> ManagerResult<FeeHistory> {
     let fee_history_args = FeeHistoryArgs {
@@ -35,14 +35,38 @@ pub async fn fee_history(
     };
 
     let cycles = 25_000_000_000;
+    let mut result = Err(ManagerError::Custom(
+        "Max retry attempted reached.".to_string(),
+    ));
 
-    let call_result = evm_rpc
-        .eth_fee_history(rpc_services.clone(), None, fee_history_args, cycles)
-        .await;
+    for _ in 1..=MAX_RETRY_ATTEMPTS {
+        let rpc = get_ranked_rpc_provider();
+        let rpc_config = RpcConfig {
+            response_size_estimate: Some(3000),
+            response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
+                total: Some(1),
+                min: 1,
+            }),
+        };
 
-    let canister_response = extract_call_result(call_result)?;
+        let call_result = evm_rpc
+            .eth_fee_history(
+                rpc.clone(),
+                Some(rpc_config),
+                fee_history_args.clone(),
+                cycles,
+            )
+            .await;
 
-    extract_multi_rpc_result(rpc_services, canister_response)
+        let canister_response = extract_call_result(call_result)?;
+
+        result = extract_multi_rpc_result(rpc, canister_response);
+        if result.is_ok() {
+            break;
+        }
+    }
+
+    result
 }
 
 fn median_index(length: usize) -> usize {
@@ -54,18 +78,11 @@ fn median_index(length: usize) -> usize {
 
 pub async fn estimate_transaction_fees(
     block_count: u8,
-    rpc_services: RpcServices,
     evm_rpc: &Service,
     block_tag: BlockTag,
 ) -> ManagerResult<FeeEstimates> {
-    let fee_history = fee_history(
-        Nat::from(block_count),
-        block_tag,
-        Some(vec![95]),
-        rpc_services,
-        evm_rpc,
-    )
-    .await?;
+    let fee_history =
+        fee_history(Nat::from(block_count), block_tag, Some(vec![95]), evm_rpc).await?;
 
     let median_index = median_index(block_count.into());
 
