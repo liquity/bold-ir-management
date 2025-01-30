@@ -129,7 +129,6 @@ impl ExecutableStrategy {
         // Fetch the entire system debt from the blockchain
         let entire_system_debt: U256 = self.fetch_entire_system_debt(block_tag.clone()).await?;
 
-        print(format!("entire_system_debt: {}", entire_system_debt));
         // Fetch the unbacked portion price and redeemability status
         let unbacked_portion = self
             .fetch_unbacked_portion_price_and_redeemablity(None, block_tag.clone())
@@ -141,7 +140,7 @@ impl ExecutableStrategy {
         let mut troves_index = U256::from(0);
         let max_count = max_number_of_troves();
         loop {
-            let fetched_troves = self
+            let (fetched_troves, curr_id) = self
                 .fetch_multiple_sorted_troves(troves_index, max_count, block_tag.clone())
                 .await?;
 
@@ -153,9 +152,10 @@ impl ExecutableStrategy {
             if last_trove.debt == U256::ZERO && last_trove.interestRate == U256::ZERO {
                 break;
             }
-            troves_index += max_count;
+            troves_index = curr_id;
         }
 
+        troves.retain(|trove| trove.debt != U256::ZERO && trove.interestRate != U256::ZERO);
         let troves_count = U256::from(troves.len());
 
         let current_debt_in_front = match self.get_current_debt_in_front(troves.clone()) {
@@ -502,7 +502,7 @@ impl ExecutableStrategy {
         index: U256,
         count: U256,
         block_tag: BlockTag,
-    ) -> ManagerResult<Vec<DebtPerInterestRate>> {
+    ) -> ManagerResult<(Vec<DebtPerInterestRate>, U256)> {
         let parameters = getDebtPerInterestRateAscendingCall {
             _collIndex: self.settings.collateral_index,
             _startId: index,
@@ -522,7 +522,7 @@ impl ExecutableStrategy {
             getDebtPerInterestRateAscendingReturn,
             getDebtPerInterestRateAscendingCall,
         >(rpc_canister_response)
-        .map(|data| Ok(data._0))?
+        .map(|data| Ok((data._0, data.currId)))?
     }
 
     /// Gets total unbacked amount across markets
@@ -533,6 +533,11 @@ impl ExecutableStrategy {
         let mut total_unbacked = U256::ZERO;
 
         for manager in managers {
+            print(format!(
+                "Calling manager {} strategy {}",
+                manager.to_string(),
+                self.settings.key
+            ));
             total_unbacked += self
                 .fetch_unbacked_portion_price_and_redeemablity(Some(manager), block_tag.clone())
                 .await?
@@ -632,27 +637,57 @@ impl ExecutableStrategy {
         target_percentage: U256,
         maximum_redeemable_against_collateral: U256,
     ) -> ManagerResult<U256> {
-        let mut counted_debt = U256::from(0);
-        let mut new_rate = U256::from(0);
+        let mut counted_debt = U256::ZERO;
+        let mut new_rate = U256::ZERO;
         let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
 
+        let mut full_debt = U256::ZERO;
         journal.append_note(
             Ok(()),
             LogType::Info,
             format!("Calculated target debt in front: {}", target_debt),
         );
+        let mut last_debt = U256::ZERO;
 
-        for trove in troves
+        troves
             .iter()
             .filter(|t| t.interestBatchManager != self.settings.batch_manager)
+            .for_each(|trove| {
+                full_debt += trove.debt;
+                last_debt = trove.debt;
+            });
+
+        for (index, trove) in troves
+            .iter()
+            .filter(|t| t.interestBatchManager != self.settings.batch_manager)
+            .enumerate()
         {
             counted_debt = counted_debt
                 .checked_add(trove.debt)
                 .ok_or_else(|| arithmetic_err("Counted debt overflowed."))?;
+
+            journal.append_note(
+                    Ok(()),
+                    LogType::Info,
+                    format!(
+                        "Adding the debt of trove at position {} with {} new counted debt is {} equivalent of {}% of the market",
+                        index, trove.debt, counted_debt, counted_debt.saturating_mul(U256::from(100)).div(full_debt)
+                    ),
+                );
+
             if counted_debt > target_debt {
                 new_rate = trove
                     .interestRate
                     .saturating_add(U256::from(100_000_000_000_000_u128)); // Increment rate by 1 bps (0.01%)
+
+                journal.append_note(
+                    Ok(()),
+                    LogType::Info,
+                    format!(
+                        "Positioning batch after trove id: {} with debt {}",
+                        index, trove.debt
+                    ),
+                );
                 break;
             }
         }
@@ -660,7 +695,15 @@ impl ExecutableStrategy {
         journal.append_note(
             Ok(()),
             LogType::Info,
-            format!("Calculated new rate: {}", new_rate),
+            format!(
+                "Calculated new rate: {}. Debt in front percentage is {}. Counted debt {}, full debt {}, number of troves {}, last trove counted had debt {}",
+                new_rate,
+                counted_debt.saturating_mul(U256::from(100)).div(full_debt),
+                counted_debt,
+                full_debt,
+                troves.len(),
+                last_debt
+            ),
         );
 
         Ok(new_rate)
