@@ -13,6 +13,7 @@ use crate::strategy::data::StrategyData;
 use crate::strategy::run::run_strategy;
 use crate::strategy::settings::StrategySettings;
 use crate::strategy::stable::StableStrategy;
+use crate::types::ProviderService;
 use crate::utils::common::*;
 use crate::utils::error::*;
 use crate::utils::evm_rpc::Service;
@@ -102,6 +103,7 @@ impl IrManager {
         // Convert String addresses to Address ones
         let collateral_registry_address = string_to_address(strategy.collateral_registry)?;
         let multi_trove_getter_address = string_to_address(strategy.multi_trove_getter)?;
+        let sorted_troves = string_to_address(strategy.sorted_troves)?;
         let hint_helper_address = string_to_address(strategy.hint_helper)?;
 
         // Convert Nat values to U256 ones
@@ -114,6 +116,7 @@ impl IrManager {
             .manager(manager)
             .collateral_registry(collateral_registry_address)
             .multi_trove_getter(multi_trove_getter_address)
+            .sorted_troves(sorted_troves)
             .hint_helper(hint_helper_address)
             .upfront_fee_period(upfront_fee_period_u256)
             .collateral_index(collateral_index_u256)
@@ -350,6 +353,13 @@ impl IrManager {
         swap_lock.lock()?;
         check_threshold().await?;
         transfer_cketh(caller()).await
+    }
+
+    #[query]
+    pub async fn get_ranked_providers_list(&self) -> ManagerResult<Vec<(i64, ProviderService)>> {
+        let providers = RPC_REPUTATIONS.with(|rpcs| rpcs.borrow().clone());
+
+        Ok(providers)
     }
 
     /// Retrieves recent system logs up to specified depth.

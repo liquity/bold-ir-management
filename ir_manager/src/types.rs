@@ -35,6 +35,8 @@ pub struct StrategyInput {
     pub manager: String,
     /// Multi trove getter contract address for this strategy
     pub multi_trove_getter: String,
+    /// Sorted troves contract address for this strategy
+    pub sorted_troves: String,
     /// Collateral index
     pub collateral_index: Nat,
     /// EVM RPC Canister's principal
@@ -139,6 +141,17 @@ sol!(
         address _batchAddress,
         uint256 _newInterestRate
     ) external view returns (uint256);
+    function getApproxHint(uint256 _collIndex, uint256 _interestRate, uint256 _numTrials, uint256 _inputRandomSeed)
+        external
+        view
+        returns (uint256 hintId, uint256 diff, uint256 latestRandomSeed);
+
+    function findInsertPosition(uint256 _annualInterestRate, uint256 _prevId, uint256 _nextId)
+        external
+        view
+        override
+        returns (uint256, uint256);
+
 
     // Liquity externals
     function setNewRate(
