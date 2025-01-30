@@ -245,14 +245,13 @@ impl ExecutableStrategy {
 
                 // Handle different transaction statuses
                 match result {
-                    SendRawTransactionStatus::Ok(a) => {
+                    SendRawTransactionStatus::Ok(tx_hash) => {
                         journal.append_note(
                             Ok(()),
                             LogType::RateAdjustment,
-                            "The rate adjustment transaction was successful.",
+                            format!("The rate adjustment transaction was successful. Transaction hash: {:?}", tx_hash),
                         );
 
-                        print(format!("{:#?}", a));
                         self.data.eoa_nonce += 1;
                         self.data.last_update = time() / 1_000_000_000;
                         self.data.latest_rate = new_rate;

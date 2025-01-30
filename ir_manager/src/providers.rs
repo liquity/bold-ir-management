@@ -229,12 +229,14 @@ pub fn extract_multi_rpc_send_raw_transaction_status(
             response.map_err(ManagerError::RpcResponseError)
         }
         MultiRpcResult::Inconsistent(responses) => {
-            for response in responses.clone() {
+            for response in responses.clone() {            
                 if response.1.is_ok() {
                     if let Ok(SendRawTransactionStatus::NonceTooLow) = response.1 {
                         return Ok(SendRawTransactionStatus::NonceTooLow);
                     } else if let Ok(SendRawTransactionStatus::NonceTooHigh) = response.1 {
                         return Ok(SendRawTransactionStatus::NonceTooHigh);
+                    } else if let Ok(SendRawTransactionStatus::Ok(transaction_hash)) = response.1 {
+                        return Ok(SendRawTransactionStatus::Ok(transaction_hash));
                     }
                 }
             }
