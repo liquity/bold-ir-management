@@ -26,6 +26,7 @@
 
 use alloy_primitives::U256;
 use candid::CandidType;
+use chrono::{DateTime, Utc};
 
 use crate::utils::{common::u256_to_nat, error::ManagerError};
 
@@ -85,12 +86,12 @@ impl StrategyData {
 pub struct StrategyDataQuery {
     /// Interest rate in Candid-compatible format
     pub latest_rate: candid::Nat,
-    /// Last update time in seconds
-    pub last_update: u64,
+    /// Last update time
+    pub last_update: String,
     /// Current transaction nonce
     pub eoa_nonce: u64,
     /// Last successful completion time
-    pub last_ok_exit: u64,
+    pub last_ok_exit: String,
 }
 
 /// Validated conversion from runtime to query state
@@ -98,11 +99,20 @@ impl TryFrom<StrategyData> for StrategyDataQuery {
     type Error = ManagerError;
 
     fn try_from(value: StrategyData) -> Result<Self, Self::Error> {
+        let last_update_datetime = DateTime::<Utc>::from_timestamp(value.last_update as i64, 0)
+            .expect("Invalid timestamp");
+        let last_update = last_update_datetime.format("%d-%m-%Y %H:%M:%S").to_string();
+        let last_ok_exit_datetime = DateTime::<Utc>::from_timestamp(value.last_ok_exit as i64, 0)
+            .expect("Invalid timestamp");
+        let last_ok_exit = last_ok_exit_datetime
+            .format("%d-%m-%Y %H:%M:%S")
+            .to_string();
+
         Ok(Self {
             latest_rate: u256_to_nat(&value.latest_rate)?,
-            last_update: value.last_update,
+            last_update: last_update,
             eoa_nonce: value.eoa_nonce,
-            last_ok_exit: value.last_ok_exit,
+            last_ok_exit: last_ok_exit,
         })
     }
 }

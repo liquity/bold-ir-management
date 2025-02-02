@@ -95,8 +95,8 @@ type StableStrategyQuery = record {
 type StrategyDataQuery = record {
   eoa_nonce : nat64;
   latest_rate : nat;
-  last_ok_exit : nat64;
-  last_update : nat64;
+  last_ok_exit : text;
+  last_update : text;
 };
 type StrategyInput = record {
   key : nat32;
