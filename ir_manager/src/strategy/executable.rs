@@ -647,11 +647,8 @@ impl ExecutableStrategy {
             format!("Calculated target debt in front: {}", target_debt),
         );
 
-        if target_debt == U256::ZERO && troves[0].interestBatchManager != self.settings.batch_manager {
-            new_rate = troves[0]
-                .interestRate
-                .saturating_sub(U256::from(100_000_000_000_000_u128)); // Decrement rate by 1 bps (0.01%)
-            return  Ok(new_rate);
+        if target_debt == U256::ZERO {
+            return Err(ManagerError::Custom("The target amount is zero. Not proceeding.".to_string()));
         }
 
         for (index, trove) in troves
