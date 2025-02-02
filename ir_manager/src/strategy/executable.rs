@@ -743,17 +743,64 @@ impl ExecutableStrategy {
         new_rate: U256,
         average_rate: U256,
     ) -> ManagerResult<bool> {
-        let r = time_since_last_update
-            .checked_div(upfront_fee_period)
-            .ok_or(arithmetic_err("Upfront fee period was 0."))?;
-        journal.append_note(Ok(()), LogType::Info,format!("second decrease check: time since last update {} upfront fee period {} latest rate {} new rate {} average rate {}", time_since_last_update, upfront_fee_period, self.data.latest_rate, new_rate, average_rate));
-
-        if (U256::from(1) - r) * (self.data.latest_rate - new_rate) > average_rate
-            || time_since_last_update > upfront_fee_period
-        {
-            print("second decrease check passed");
+        // Check if time exceeds period first
+        if time_since_last_update > upfront_fee_period {
+            journal.append_note(
+                Ok(()),
+                LogType::Info,
+                "second decrease check passed: time exceeded period".to_string()
+            );
             return Ok(true);
         }
+
+        // Scale the division by 100 to get 2 decimal places
+        let scale_hundred: U256 = U256::from(100);
+        
+        // Calculate r with 2 decimal precision
+        let scaled_time = time_since_last_update.checked_mul(scale_hundred)
+            .ok_or(arithmetic_err("Overflow in time scaling"))?;
+        
+        let r = scaled_time
+            .checked_div(upfront_fee_period)
+            .ok_or(arithmetic_err("Upfront fee period was 0."))?;
+        
+        journal.append_note(
+            Ok(()),
+            LogType::Info,
+            format!(
+                "second decrease check: time since last update {} upfront fee period {} latest rate {} new rate {} average rate {} scaled r {}", 
+                time_since_last_update, 
+                upfront_fee_period, 
+                self.data.latest_rate, 
+                new_rate, 
+                average_rate,
+                r
+            )
+        );
+    
+        // For the main condition, we need to scale the computation
+        // (1 - r/100) * (latest_rate - new_rate) > average_rate
+        let scaled_diff = scale_hundred.checked_sub(r)
+            .ok_or(arithmetic_err("Error in r subtraction"))?;
+        
+        let rate_diff = self.data.latest_rate.checked_sub(new_rate)
+            .ok_or(arithmetic_err("Error in rate difference calculation"))?;
+        
+        let scaled_product = scaled_diff.checked_mul(rate_diff)
+            .ok_or(arithmetic_err("Overflow in scaled product"))?;
+        
+        let scaled_average = average_rate.checked_mul(scale_hundred)
+            .ok_or(arithmetic_err("Error in scaling average rate"))?;
+    
+        if scaled_product > scaled_average {
+            journal.append_note(
+                Ok(()),
+                LogType::Info,
+                "second decrease check passed: rate condition".to_string()
+            );
+            return Ok(true);
+        }
+    
         Ok(false)
     }
 }
