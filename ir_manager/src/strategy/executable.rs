@@ -641,6 +641,10 @@ impl ExecutableStrategy {
         let mut new_rate = U256::ZERO;
         let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
 
+        if target_debt == U256::ZERO {
+            return Err(arithmetic_err("Target debt in front was calculated at zero. Aborting."));
+        }
+
         let mut full_debt = U256::ZERO;
         journal.append_note(
             Ok(()),
