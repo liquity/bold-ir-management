@@ -642,24 +642,16 @@ impl ExecutableStrategy {
         let target_debt = target_percentage * maximum_redeemable_against_collateral / scale();
 
         if target_debt == U256::ZERO {
-            return Err(arithmetic_err("Target debt in front was calculated at zero. Aborting."));
+            return Err(arithmetic_err(
+                "Target debt in front was calculated at zero. Aborting.",
+            ));
         }
 
-        let mut full_debt = U256::ZERO;
         journal.append_note(
             Ok(()),
             LogType::Info,
             format!("Calculated target debt in front: {}", target_debt),
         );
-        let mut last_debt = U256::ZERO;
-
-        troves
-            .iter()
-            .filter(|t| t.interestBatchManager != self.settings.batch_manager)
-            .for_each(|trove| {
-                full_debt += trove.debt;
-                last_debt = trove.debt;
-            });
 
         for (index, trove) in troves
             .iter()
@@ -669,15 +661,6 @@ impl ExecutableStrategy {
             counted_debt = counted_debt
                 .checked_add(trove.debt)
                 .ok_or_else(|| arithmetic_err("Counted debt overflowed."))?;
-
-            journal.append_note(
-                    Ok(()),
-                    LogType::Info,
-                    format!(
-                        "Adding the debt of trove at position {} with {} new counted debt is {} equivalent of {}% of the market",
-                        index, trove.debt, counted_debt, counted_debt.saturating_mul(U256::from(100)).div(full_debt)
-                    ),
-                );
 
             if counted_debt > target_debt {
                 new_rate = trove
@@ -695,20 +678,6 @@ impl ExecutableStrategy {
                 break;
             }
         }
-
-        journal.append_note(
-            Ok(()),
-            LogType::Info,
-            format!(
-                "Calculated new rate: {}. Debt in front percentage is {}. Counted debt {}, full debt {}, number of troves {}, last trove counted had debt {}",
-                new_rate,
-                counted_debt.saturating_mul(U256::from(100)).div(full_debt),
-                counted_debt,
-                full_debt,
-                troves.len(),
-                last_debt
-            ),
-        );
 
         Ok(new_rate)
     }
