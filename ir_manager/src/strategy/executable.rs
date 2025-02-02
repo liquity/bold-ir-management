@@ -176,6 +176,10 @@ impl ExecutableStrategy {
         // Calculate the total unbacked collateral
         let total_unbacked = self.fetch_total_unbacked(block_tag.clone()).await?;
 
+        if total_unbacked == U256::ZERO {
+            return Err(arithmetic_err("total unbacked was 0."));
+        }
+
         journal.append_note(
             Ok(()),
             LogType::Info,
@@ -185,10 +189,17 @@ impl ExecutableStrategy {
             ),
         );
 
-        let maximum_redeemable_against_collateral = unbacked_portion
+        let two_digit_accuracy_split = unbacked_portion.saturating_mul(U256::from(100)).div(total_unbacked);
+
+        let maximum_redeemable_against_collateral = if two_digit_accuracy_split < U256::from(1) {
+            // less than 1% split
+            // we saturate the split at 1%
+            entire_system_debt.div(U256::from(100))
+        } else {
+            unbacked_portion
             .saturating_mul(entire_system_debt)
-            .checked_div(total_unbacked)
-            .ok_or(arithmetic_err("total unbacked was 0."))?;
+            .div(total_unbacked)
+        };
 
         let target_percentage_numerator = self
             .settings
