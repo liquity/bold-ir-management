@@ -1,3 +1,23 @@
+type CanisterStatusResponse = record {
+  status : CanisterStatusType;
+  memory_size : nat;
+  cycles : nat;
+  settings : DefiniteCanisterSettings;
+  query_stats : QueryStats;
+  idle_cycles_burned_per_day : nat;
+  module_hash : opt blob;
+  reserved_cycles : nat;
+};
+type CanisterStatusType = variant { stopped; stopping; running };
+type DefiniteCanisterSettings = record {
+  freezing_threshold : nat;
+  controllers : vec principal;
+  reserved_cycles_limit : nat;
+  log_visibility : LogVisibility;
+  wasm_memory_limit : nat;
+  memory_allocation : nat;
+  compute_allocation : nat;
+};
 type EthMainnetService = variant {
   Alchemy;
   Llama;
@@ -24,7 +44,7 @@ type JournalEntry = record {
   date_and_time : text;
   note : opt text;
   log_type : LogType;
-  entry : Result;
+  entry : Result_1;
 };
 type JsonRpcError = record { code : int64; message : text };
 type LogType = variant {
@@ -34,6 +54,7 @@ type LogType = variant {
   ProviderReputationChange;
   ExecutionResult;
 };
+type LogVisibility = variant { controllers; public };
 type ManagerError = variant {
   CallResult : record { RejectionCode; text };
   Custom : text;
@@ -53,6 +74,12 @@ type ProviderError = variant {
   ProviderNotFound;
   NoPermission;
 };
+type QueryStats = record {
+  response_payload_bytes_total : nat;
+  num_instructions_total : nat;
+  num_calls_total : nat;
+  request_payload_bytes_total : nat;
+};
 type RejectionCode = variant {
   NoError;
   CanisterError;
@@ -62,18 +89,19 @@ type RejectionCode = variant {
   SysFatal;
   CanisterReject;
 };
-type Result = variant { Ok; Err : ManagerError };
-type Result_1 = variant {
+type Result = variant { Ok : CanisterStatusResponse; Err : ManagerError };
+type Result_1 = variant { Ok; Err : ManagerError };
+type Result_2 = variant {
   Ok : vec StableJournalCollection;
   Err : ManagerError;
 };
-type Result_2 = variant {
+type Result_3 = variant {
   Ok : vec record { int64; EthMainnetService };
   Err : ManagerError;
 };
-type Result_3 = variant { Ok : vec StableStrategyQuery; Err : ManagerError };
-type Result_4 = variant { Ok : text; Err : ManagerError };
-type Result_5 = variant { Ok : SwapResponse; Err : ManagerError };
+type Result_4 = variant { Ok : vec StableStrategyQuery; Err : ManagerError };
+type Result_5 = variant { Ok : text; Err : ManagerError };
+type Result_6 = variant { Ok : SwapResponse; Err : ManagerError };
 type RpcError = variant {
   JsonRpcError : JsonRpcError;
   ProviderError : ProviderError;
@@ -126,14 +154,15 @@ type StrategySettingsQuery = record {
 type SwapResponse = record { returning_ether : nat; accepted_cycles : nat };
 type ValidationError = variant { Custom : text; InvalidHex : text };
 service : {
-  get_logs : (nat64) -> (Result_1) query;
-  get_ranked_providers_list : () -> (Result_2) query;
-  get_strategies : () -> (Result_3) query;
+  get_canister_status : () -> (Result);
+  get_logs : (nat64) -> (Result_2) query;
+  get_ranked_providers_list : () -> (Result_3) query;
+  get_strategies : () -> (Result_4) query;
   get_strategy_address : (nat32) -> (opt text) query;
-  get_strategy_logs : (nat64, nat32) -> (Result_1) query;
+  get_strategy_logs : (nat64, nat32) -> (Result_2) query;
   halt_status : () -> (Halt) query;
-  mint_strategy : (StrategyInput) -> (Result_4);
-  set_batch_manager : (nat32, text, nat) -> (Result);
-  start_timers : () -> (Result);
-  swap_cketh : () -> (Result_5);
+  mint_strategy : (StrategyInput) -> (Result_5);
+  set_batch_manager : (nat32, text, nat) -> (Result_1);
+  start_timers : () -> (Result_1);
+  swap_cketh : () -> (Result_6);
 }

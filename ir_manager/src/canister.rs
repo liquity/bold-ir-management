@@ -8,6 +8,7 @@ use crate::constants::MAX_RETRY_ATTEMPTS;
 use crate::constants::MINIMUM_ATTACHED_CYCLES;
 use crate::halt::{is_functional, update_halt_status, Halt};
 use crate::journal::JournalCollection;
+use crate::journal::LogType;
 use crate::journal::StableJournalCollection;
 use crate::strategy::data::StrategyData;
 use crate::strategy::run::run_strategy;
@@ -28,6 +29,10 @@ use crate::{
 use candid::Nat;
 use ic_canister::{generate_idl, query, update, Canister, Idl, PreUpdate};
 use ic_exports::ic_cdk::api::call::msg_cycles_available;
+use ic_exports::ic_cdk::api::management_canister::main::canister_status;
+use ic_exports::ic_cdk::api::management_canister::main::CanisterIdRecord;
+use ic_exports::ic_cdk::api::management_canister::main::CanisterStatusResponse;
+use ic_exports::ic_cdk::id;
 use ic_exports::{
     candid::Principal,
     ic_cdk::{
@@ -386,6 +391,13 @@ impl IrManager {
         Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
     }
 
+    #[query]
+    pub async fn get_filtered_logs(&self, depth: u64, filter_type: LogType) -> ManagerResult<Vec<StableJournalCollection>> {
+        let entries = JOURNAL.with(|m| m.borrow().iter().filter(|entry| entry.).collect::<Vec<StableJournalCollection>>());
+
+        Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
+    }
+
     /// Retrieves logs for a specific strategy up to specified depth.
     ///
     /// Returns journal collections filtered to only include entries related
@@ -431,6 +443,18 @@ impl IrManager {
     #[query]
     pub fn halt_status(&self) -> Halt {
         HALT_STATE.with(|state| state.borrow().clone())
+    }
+
+    #[update]
+    pub async fn get_canister_status(&self) -> ManagerResult<CanisterStatusResponse> {
+        if caller() == Principal::anonymous() {
+            return Err(ManagerError::Unauthorized);
+        }
+
+        Ok(canister_status(CanisterIdRecord { canister_id: id() })
+            .await
+            .unwrap()
+            .0)
     }
 
     /// Generates the canister interface IDL.
