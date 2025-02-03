@@ -354,8 +354,7 @@ impl ExecutableStrategy {
         for manager in managers {
             print(format!(
                 "Calling manager {} strategy {}",
-                manager.to_string(),
-                self.settings.key
+                manager, self.settings.key
             ));
             total_unbacked += self
                 .fetch_unbacked_portion_price_and_redeemablity(Some(manager), block_tag.clone())
@@ -460,16 +459,14 @@ impl ExecutableStrategy {
                 self.data.last_update = time() / 1_000_000_000;
                 self.data.latest_rate = new_rate;
                 self.apply_change();
-                return Ok(true);
+                Ok(true)
             }
-            SendRawTransactionStatus::InsufficientFunds => {
-                return Err(ManagerError::Custom(
-                    "Not enough balance to cover the gas fee.".to_string(),
-                ))
-            }
+            SendRawTransactionStatus::InsufficientFunds => Err(ManagerError::Custom(
+                "Not enough balance to cover the gas fee.".to_string(),
+            )),
             SendRawTransactionStatus::NonceTooLow | SendRawTransactionStatus::NonceTooHigh => {
                 journal.append_note(Ok(()), LogType::Info,"The rate adjustment transaction failed due to wrong nonce. Adjusting the nonce...");
-                return Ok(false);
+                Ok(false)
             }
         }
     }
@@ -835,7 +832,7 @@ impl ExecutableStrategy {
             journal.append_note(
                 Ok(()),
                 LogType::Info,
-                "second decrease check passed: time exceeded period".to_string(),
+                "second decrease check passed: time exceeded period",
             );
             return Ok(true);
         }
@@ -890,7 +887,7 @@ impl ExecutableStrategy {
             journal.append_note(
                 Ok(()),
                 LogType::Info,
-                "second decrease check passed: rate condition".to_string(),
+                "second decrease check passed: rate condition",
             );
             return Ok(true);
         }

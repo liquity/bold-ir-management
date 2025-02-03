@@ -28,7 +28,7 @@ pub const CHAIN_ID: u64 = 1;
 
 /// Tolerance margin up formula constant
 // const TOLERANCE_MARGIN_UP_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
-const TOLERANCE_MARGIN_UP_RAW: u128 = 1 * SCALE / 100; // 1*10^16 => 1%
+const TOLERANCE_MARGIN_UP_RAW: u128 = SCALE / 100; // 1%
 
 /// Returns the tolerance margin for upward adjustments as a `U256`.
 pub fn tolerance_margin_up() -> U256 {
@@ -37,7 +37,7 @@ pub fn tolerance_margin_up() -> U256 {
 
 /// Tolerance margin down formula constant
 // const TOLERANCE_MARGIN_DOWN_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
-const TOLERANCE_MARGIN_DOWN_RAW: u128 = 1 * SCALE / 100; // 1*10^16 => 1%
+const TOLERANCE_MARGIN_DOWN_RAW: u128 = SCALE / 100; // 1%
 
 /// Returns the tolerance margin for downward adjustments as a `U256`.
 pub fn tolerance_margin_down() -> U256 {
@@ -80,7 +80,7 @@ pub const CYCLES_DISCOUNT_PERCENTAGE: u64 = 97; // 3% discount is provided
 
 /// ckETH balance threshold of the canister.
 /// The recharging cycle will mint more ckETH if the balance falls below this number
-const CKETH_THRESHOLD_RAW: u64 = 10_000_000_000_000_000; // 0.01 ckETH 
+const CKETH_THRESHOLD_RAW: u64 = 10_000_000_000_000_000; // 0.01 ckETH
 
 /// Returns the ckETH balance threshold as a `Nat`.
 pub fn cketh_threshold() -> Nat {

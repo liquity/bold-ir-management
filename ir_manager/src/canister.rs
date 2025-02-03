@@ -392,7 +392,10 @@ impl IrManager {
     }
 
     #[query]
-    pub async fn get_recharge_logs(&self, depth: u64) -> ManagerResult<Vec<StableJournalCollection>> {
+    pub async fn get_recharge_logs(
+        &self,
+        depth: u64,
+    ) -> ManagerResult<Vec<StableJournalCollection>> {
         let entries: Vec<StableJournalCollection> = JOURNAL.with(|n| {
             n.borrow()
                 .iter()
@@ -456,10 +459,9 @@ impl IrManager {
             return Err(ManagerError::Unauthorized);
         }
 
-        Ok(canister_status(CanisterIdRecord { canister_id: id() })
-            .await
-            .unwrap()
-            .0)
+        let response: CanisterStatusResponse =
+            extract_call_result(canister_status(CanisterIdRecord { canister_id: id() }).await)?;
+        Ok(response)
     }
 
     /// Generates the canister interface IDL.

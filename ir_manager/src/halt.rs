@@ -71,15 +71,7 @@ pub fn update_halt_status() {
     // There is no need to run the function if the canister is halted or has a halt in progress.
     assert!(is_explicitly_functional());
 
-    // Check for strategy successful exits
-    if check_strategy_exits() {
-        return;
-    }
-
-    // Checks if strategies have adjusted any rate in the past 3 months.
-    if check_strategy_updates() {
-        return;
-    }
+    let _ = check_strategy_exits() || check_strategy_updates();
 }
 
 /// Checks if any strategy has updated a rate in the past 3 months.

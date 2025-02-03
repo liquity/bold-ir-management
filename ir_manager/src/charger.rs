@@ -128,8 +128,7 @@ async fn ether_deposit(journal: &mut JournalCollection) -> ManagerResult<()> {
             LogType::Recharge,
             format!(
                 "Queried the ETH balance of address {}. The current balance is {}",
-                eoa.to_string(),
-                balance
+                eoa, balance
             ),
         );
 

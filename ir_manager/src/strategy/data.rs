@@ -111,9 +111,9 @@ impl TryFrom<StrategyData> for StrategyDataQuery {
 
         Ok(Self {
             latest_rate: u256_to_nat(&value.latest_rate)?,
-            last_update: last_update,
+            last_update,
             eoa_nonce: value.eoa_nonce,
-            last_ok_exit: last_ok_exit,
+            last_ok_exit,
         })
     }
 }
