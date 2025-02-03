@@ -243,7 +243,7 @@ impl IrManager {
                 assert!(is_functional());
                 let mut journal = JournalCollection::open(None);
                 for turn in 1..=*max_retry_attempts {
-                    let result = recharge_cketh().await;
+                    let result = recharge_cketh(&mut journal).await;
                     // log the result
                     journal.append_note(
                         result.clone(),
@@ -392,8 +392,13 @@ impl IrManager {
     }
 
     #[query]
-    pub async fn get_filtered_logs(&self, depth: u64, filter_type: LogType) -> ManagerResult<Vec<StableJournalCollection>> {
-        let entries = JOURNAL.with(|m| m.borrow().iter().filter(|entry| entry.).collect::<Vec<StableJournalCollection>>());
+    pub async fn get_recharge_logs(&self, depth: u64) -> ManagerResult<Vec<StableJournalCollection>> {
+        let entries: Vec<StableJournalCollection> = JOURNAL.with(|n| {
+            n.borrow()
+                .iter()
+                .filter(|collection| collection.entries[0].log_type == LogType::Recharge)
+                .collect()
+        });
 
         Ok(entries[entries.len().saturating_sub(depth as usize)..].to_vec())
     }

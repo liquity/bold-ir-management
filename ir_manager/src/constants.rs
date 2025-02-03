@@ -48,7 +48,7 @@ pub fn tolerance_margin_down() -> U256 {
 pub const MAX_RETRY_ATTEMPTS: u8 = 2;
 
 /// Max number of troves to fetch in one call
-pub const MAX_NUMBER_OF_TROVES: u128 = 50;
+pub const MAX_NUMBER_OF_TROVES: u128 = 75;
 
 /// Returns the maximum number of troves as a `U256`.
 pub fn max_number_of_troves() -> U256 {
@@ -56,7 +56,7 @@ pub fn max_number_of_troves() -> U256 {
 }
 
 /// Cycles balance threshold of the canister
-pub const CYCLES_THRESHOLD: u64 = 50_000_000_000;
+pub const CYCLES_THRESHOLD: u64 = 30_000_000_000_000;
 
 /// ckETH token transfer fee
 const CKETH_FEE_RAW: u64 = 2_000_000_000_000;
@@ -80,7 +80,7 @@ pub const CYCLES_DISCOUNT_PERCENTAGE: u64 = 97; // 3% discount is provided
 
 /// ckETH balance threshold of the canister.
 /// The recharging cycle will mint more ckETH if the balance falls below this number
-const CKETH_THRESHOLD_RAW: u64 = 100_000_000_000_000; // 100 Trillion Cycles
+const CKETH_THRESHOLD_RAW: u64 = 10_000_000_000_000_000; // 0.01 ckETH 
 
 /// Returns the ckETH balance threshold as a `Nat`.
 pub fn cketh_threshold() -> Nat {

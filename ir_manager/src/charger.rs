@@ -21,6 +21,7 @@ use crate::{
         cketh_fee, cketh_ledger, cketh_threshold, ether_recharge_value, scale, CKETH_HELPER,
         CYCLES_DISCOUNT_PERCENTAGE, CYCLES_THRESHOLD, SCALE,
     },
+    journal::{JournalCollection, LogType},
     strategy::stable::StableStrategy,
     utils::{
         common::{
@@ -28,7 +29,7 @@ use crate::{
             u256_to_nat,
         },
         error::*,
-        evm_rpc::Service,
+        evm_rpc::{SendRawTransactionStatus, Service},
         transaction_builder::TransactionBuilder,
     },
 };
@@ -70,12 +71,27 @@ pub async fn check_threshold() -> ManagerResult<()> {
 /// Returns:
 /// - `Ok(())` if the ckETH balance is sufficient.
 /// - Triggers `ether_deposit` if the ckETH balance is below the threshold.
-pub async fn recharge_cketh() -> ManagerResult<()> {
+pub async fn recharge_cketh(journal: &mut JournalCollection) -> ManagerResult<()> {
     let current_balance = fetch_cketh_balance().await?;
+    journal.append_note(
+        Ok(()),
+        LogType::Recharge,
+        format!("The current ckETH balance is at {}", current_balance),
+    );
     let cketh_threshold = cketh_threshold();
+
     if current_balance < cketh_threshold {
-        return ether_deposit().await;
+        return ether_deposit(journal).await;
     }
+
+    journal.append_note(
+        Ok(()),
+        LogType::Recharge,
+        format!(
+            "The current ckETH balance is larger than the threshold {}",
+            cketh_threshold
+        ),
+    );
     Ok(())
 }
 
@@ -87,7 +103,7 @@ pub async fn recharge_cketh() -> ManagerResult<()> {
 /// Returns:
 /// - `Ok(())` if the deposit succeeds.
 /// - `Err(ManagerError::Custom)` if no EOA has enough balance or an error occurs.
-async fn ether_deposit() -> ManagerResult<()> {
+async fn ether_deposit(journal: &mut JournalCollection) -> ManagerResult<()> {
     let ether_value = ether_recharge_value();
     let cketh_helper: String = CKETH_HELPER.to_string();
     let mut strategies: Vec<StableStrategy> = STRATEGY_STATE
@@ -107,7 +123,22 @@ async fn ether_deposit() -> ManagerResult<()> {
             Err(_) => continue, // Skip on error
         };
 
+        journal.append_note(
+            Ok(()),
+            LogType::Recharge,
+            format!(
+                "Queried the ETH balance of address {}. The current balance is {}",
+                eoa.to_string(),
+                balance
+            ),
+        );
+
         if balance > ether_value {
+            journal.append_note(
+                Ok(()),
+                LogType::Recharge,
+                "The balance is larger than the required ETH value. Proceeding with minting ckETH.",
+            );
             let encoded_canister_id: FixedBytes<32> =
                 FixedBytes::<32>::from_str(&api::id().to_string())
                     .map_err(|err| ManagerError::Custom(format!("{:#?}", err)))?;
@@ -121,28 +152,51 @@ async fn ether_deposit() -> ManagerResult<()> {
             let new_counter = (index as u8 + turn + 1) % strategies.len() as u8;
             CKETH_EOA_TURN_COUNTER.with(|counter| counter.set(new_counter));
 
-            let eoa = strategy
-                .settings
-                .eoa_pk
-                .ok_or(ManagerError::NonExistentValue)?
-                .to_string();
-
-            return TransactionBuilder::default()
-                .to(cketh_helper)
-                .from(eoa)
+            let transaction_response = TransactionBuilder::default()
+                .to(cketh_helper.clone())
+                .from(eoa.to_string())
                 .data(transaction_data)
                 .value(ether_value)
                 .nonce(strategy.data.eoa_nonce)
                 .derivation_path(strategy.settings.derivation_path.clone())
-                .cycles(10_000_000_000)
+                .cycles(40_000_000_000)
                 .send(&strategy.settings.rpc_canister)
-                .await
-                .map(|_| Ok(()))?;
+                .await?;
+
+            match transaction_response {
+                SendRawTransactionStatus::Ok(tx_hash) => {
+                    journal.append_note(
+                        Ok(()),
+                        LogType::Recharge,
+                        format!(
+                            "The mint transaction was sent successful with hash: {:#?}",
+                            tx_hash
+                        ),
+                    );
+                    return Ok(());
+                }
+                SendRawTransactionStatus::InsufficientFunds => {
+                    journal.append_note(
+                        Ok(()),
+                        LogType::Recharge,
+                        "Not enough funds to cover the mint value and the gas costs.",
+                    );
+                    continue;
+                }
+                SendRawTransactionStatus::NonceTooHigh | SendRawTransactionStatus::NonceTooLow => {
+                    journal.append_note(
+                        Ok(()),
+                        LogType::Recharge,
+                        format!("The nonce needs adjusting: {:#?}", transaction_response),
+                    );
+                    continue;
+                }
+            }
         }
     }
 
     Err(ManagerError::Custom(
-        "No EOA had enough balance.".to_string(),
+        "No EOA had enough balance and proper nonce.".to_string(),
     ))
 }
 
