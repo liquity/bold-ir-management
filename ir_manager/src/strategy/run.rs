@@ -78,6 +78,7 @@ pub async fn run_strategy(key: u32) {
             );
 
             if result.is_ok() {
+                executable_strategy.data.record_last_ok_exit();
                 break;
             }
         }

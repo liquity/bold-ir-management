@@ -27,6 +27,7 @@
 use alloy_primitives::U256;
 use candid::CandidType;
 use chrono::{DateTime, Utc};
+use ic_exports::ic_cdk::api::time;
 
 use crate::utils::{common::u256_to_nat, error::ManagerError};
 
@@ -72,8 +73,8 @@ impl StrategyData {
     }
 
     /// Records successful strategy completion time.
-    pub fn last_ok_exit(&mut self, time: u64) -> &mut Self {
-        self.last_ok_exit = time;
+    pub fn record_last_ok_exit(&mut self) -> &mut Self {
+        self.last_ok_exit = time() / 1_000_000_000;
         self
     }
 }
