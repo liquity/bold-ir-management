@@ -41,7 +41,7 @@ use ic_exports::ic_cdk::{
         call::{msg_cycles_accept, msg_cycles_available},
         canister_balance,
     },
-    call, print,
+    call,
 };
 use ic_exports::{candid::Nat, ic_kit::CallResult};
 use icrc_ledger_types::icrc1::transfer::{TransferArg, TransferError};

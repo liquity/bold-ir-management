@@ -157,6 +157,7 @@ service : {
   get_canister_status : () -> (Result);
   get_logs : (nat64) -> (Result_2) query;
   get_ranked_providers_list : () -> (Result_3) query;
+  get_recharge_logs : (nat64) -> (Result_2) query;
   get_strategies : () -> (Result_4) query;
   get_strategy_address : (nat32) -> (opt text) query;
   get_strategy_logs : (nat64, nat32) -> (Result_2) query;
@@ -164,5 +165,5 @@ service : {
   mint_strategy : (StrategyInput) -> (Result_5);
   set_batch_manager : (nat32, text, nat) -> (Result_1);
   start_timers : () -> (Result_1);
-  swap_cketh : () -> (Result_6);
+  swap_cketh : (principal) -> (Result_6);
 }
