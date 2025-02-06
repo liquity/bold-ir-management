@@ -20,7 +20,7 @@ use super::{error::*, evm_rpc::*, exchange::*};
 use crate::{
     constants::{
         cketh_ledger, exchange_rate_canister, DEFAULT_MAX_RESPONSE_BYTES, MAX_RETRY_ATTEMPTS,
-        PROVIDER_COUNT, PROVIDER_THRESHOLD, SCALE,
+        PROVIDER_COUNT, PROVIDER_THRESHOLD,
     },
     providers::{extract_multi_rpc_result, get_ranked_rpc_provider, get_ranked_rpc_providers},
     state::{LAST_SAFE_BLOCK, RPC_SERVICE},
@@ -103,16 +103,7 @@ pub async fn fetch_cketh_balance() -> ManagerResult<Nat> {
         call(ledger_principal, "icrc1_balance_of", (args,)).await;
 
     match call_response {
-        // The ckETH token similar to ETH will always have a decimal number of 18.
-        // We can avoid calling the metadata function to get the decimal separately by using SCALE.
-        Ok(response) => {
-            if response.0 == 0_u8 {
-                return Err(ManagerError::Custom(
-                    "Insufficient ckETH balance.".to_string(),
-                ));
-            }
-            Ok(response.0 / SCALE)
-        }
+        Ok(response) => Ok(response.0),
         Err(err) => Err(ManagerError::Custom(err.1)),
     }
 }
