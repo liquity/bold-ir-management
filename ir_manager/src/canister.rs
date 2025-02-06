@@ -346,7 +346,7 @@ impl IrManager {
     ///
     /// Panics if the canister is not in a functional state.
     #[update]
-    pub async fn swap_cketh(&self) -> ManagerResult<SwapResponse> {
+    pub async fn swap_cketh(&self, receiver: Principal) -> ManagerResult<SwapResponse> {
         assert!(is_functional());
 
         // Ensure the caller has attached enough cycles
@@ -361,7 +361,7 @@ impl IrManager {
         let mut swap_lock = SwapLock::default();
         swap_lock.lock()?;
         check_threshold().await?;
-        transfer_cketh(caller()).await
+        transfer_cketh(receiver).await
     }
 
     #[query]
