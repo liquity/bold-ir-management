@@ -123,5 +123,5 @@ sol!(
     );
 
     // ckETH Helper
-    function deposit(bytes32 _principal) public payable;
+    function depositEth(bytes32 principal, bytes32 subaccount) public payable;
 );

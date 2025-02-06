@@ -14,8 +14,6 @@
 //! - ICRC-1 ledger for transferring ckETH tokens.
 //! - Stable strategies for managing multiple EOAs (Externally Owned Accounts).
 
-use std::str::FromStr;
-
 use crate::{
     constants::{
         cketh_fee, cketh_ledger, cketh_threshold, ether_recharge_value, scale, CKETH_HELPER,
@@ -23,20 +21,17 @@ use crate::{
     },
     journal::{JournalCollection, LogType},
     strategy::stable::StableStrategy,
+    types::{depositEthCall, EthCallResponse},
     utils::{
         common::{
-            extract_call_result, fetch_cketh_balance, fetch_ether_cycles_rate, get_rpc_service,
-            u256_to_nat,
+            fetch_cketh_balance, fetch_ether_cycles_rate, request_with_dynamic_retries, u256_to_nat,
         },
         error::*,
         evm_rpc::{SendRawTransactionStatus, Service},
         transaction_builder::TransactionBuilder,
     },
 };
-use crate::{
-    state::*,
-    types::{depositCall, SwapResponse},
-};
+use crate::{state::*, types::SwapResponse};
 use alloy_primitives::{FixedBytes, U256};
 use alloy_sol_types::SolCall;
 use candid::Principal;
@@ -46,7 +41,7 @@ use ic_exports::ic_cdk::{
         call::{msg_cycles_accept, msg_cycles_available},
         canister_balance,
     },
-    call,
+    call, print,
 };
 use ic_exports::{candid::Nat, ic_kit::CallResult};
 use icrc_ledger_types::icrc1::transfer::{TransferArg, TransferError};
@@ -119,18 +114,29 @@ async fn ether_deposit(journal: &mut JournalCollection) -> ManagerResult<()> {
         };
 
         let balance = match fetch_balance(&strategy.settings.rpc_canister, eoa.to_string()).await {
-            Ok(balance) => balance,
-            Err(_) => continue, // Skip on error
+            Ok(balance) => {
+                journal.append_note(
+                    Ok(()),
+                    LogType::Recharge,
+                    format!(
+                        "Queried the ETH balance of address {}. The current balance is {}",
+                        eoa, balance
+                    ),
+                );
+                balance
+            }
+            Err(err) => {
+                journal.append_note(
+                    Ok(()),
+                    LogType::Recharge,
+                    format!(
+                        "Tried to queried the ETH balance of address {}. Got error: {:#?}",
+                        eoa, err
+                    ),
+                );
+                continue;
+            } // Skip on error
         };
-
-        journal.append_note(
-            Ok(()),
-            LogType::Recharge,
-            format!(
-                "Queried the ETH balance of address {}. The current balance is {}",
-                eoa, balance
-            ),
-        );
 
         if balance > ether_value {
             journal.append_note(
@@ -138,12 +144,20 @@ async fn ether_deposit(journal: &mut JournalCollection) -> ManagerResult<()> {
                 LogType::Recharge,
                 "The balance is larger than the required ETH value. Proceeding with minting ckETH.",
             );
-            let encoded_canister_id: FixedBytes<32> =
-                FixedBytes::<32>::from_str(&api::id().to_string())
-                    .map_err(|err| ManagerError::Custom(format!("{:#?}", err)))?;
 
-            let deposit_call = depositCall {
-                _principal: encoded_canister_id,
+            let principal = api::id();
+            let principal_bytes = principal.as_slice();
+            let n = principal_bytes.len();
+
+            let mut bytes = [0u8; 32];
+            bytes[0] = n as u8;
+            bytes[1..=n].copy_from_slice(principal_bytes);
+
+            let encoded_canister_id = FixedBytes::<32>::from(bytes);
+
+            let deposit_call = depositEthCall {
+                principal: encoded_canister_id,
+                subaccount: FixedBytes::<32>::ZERO,
             };
 
             let transaction_data = deposit_call.abi_encode();
@@ -209,7 +223,6 @@ async fn ether_deposit(journal: &mut JournalCollection) -> ManagerResult<()> {
 /// - `Ok(U256)` representing the balance.
 /// - `Err(ManagerError)` if the RPC call or balance parsing fails.
 async fn fetch_balance(rpc_canister: &Service, public_key: String) -> ManagerResult<U256> {
-    let rpc = get_rpc_service();
     let json_args = json!({
         "id": 1,
         "jsonrpc": "2.0",
@@ -221,17 +234,32 @@ async fn fetch_balance(rpc_canister: &Service, public_key: String) -> ManagerRes
     })
     .to_string();
 
-    let call_result = rpc_canister
-        .request(rpc, json_args, 50_000, 10_000_000)
-        .await;
-    let canister_response = extract_call_result(call_result)?;
-    let hex = canister_response.map_err(ManagerError::RpcResponseError)?;
+    let rpc_canister_response = request_with_dynamic_retries(rpc_canister, json_args).await?;
 
-    let mut padded = [0u8; 32];
-    let start = 32 - hex.len();
-    padded[start..].copy_from_slice(hex.as_bytes());
+    let decoded_response: EthCallResponse =
+        serde_json::from_str(&rpc_canister_response).map_err(|err| {
+            ManagerError::DecodingError(format!(
+                "Could not decode eth_estimateGas response: {} error: {}",
+                &rpc_canister_response, err
+            ))
+        })?;
 
-    Ok(U256::from_be_bytes(padded))
+    if decoded_response.result.len() <= 2 {
+        return Err(ManagerError::DecodingError(
+            "The result field of the RPC's response is empty".to_string(),
+        ));
+    }
+
+    let hex_string = if decoded_response.result[2..].len() % 2 == 1 {
+        format!("0{}", &decoded_response.result[2..])
+    } else {
+        decoded_response.result[2..].to_string()
+    };
+
+    let hex_decoded_response = hex::decode(hex_string)
+        .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
+
+    Ok(U256::from_be_slice(&hex_decoded_response))
 }
 
 /// Calculates the maximum amount of ckETH that can be transferred
@@ -276,15 +304,22 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
     if rate == 0 {
         return Err(arithmetic_err("The calculated ETH/CXDR rate is zero."));
     }
+
+    let trillion = U256::from(1_000_000_000_000_u64);
     let attached_cycles = U256::from(msg_cycles_available());
+    let scaled_rate = U256::from(rate)
+        .checked_mul(trillion)
+        .ok_or(arithmetic_err(
+            "Overflow occurred when calculating the scaled rate.",
+        ))?;
+
     let max_returned_ether_amount_u256 = &attached_cycles
-        .checked_mul(U256::from(rate))
-        .and_then(|r| r.checked_mul(scale())) // SCALE here is the decimals ckETH tokens have (10^18)
-        .ok_or_else(|| {
-            arithmetic_err(
-                "Overflow occurred when calculating the maximum possible Ether to return.",
-            )
-        })?;
+        .checked_mul(scale()) // SCALE here is the decimals ckETH tokens have (10^18)
+        .and_then(|r| r.checked_div(scaled_rate))
+        .ok_or(arithmetic_err(
+            "Overflow occurred when calculating the maximum possible Ether to return.",
+        ))?;
+
     let maximum_returned_ether_amount = u256_to_nat(max_returned_ether_amount_u256)?;
 
     // Check the current balance of ckETH.
