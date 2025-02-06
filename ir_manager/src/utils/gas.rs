@@ -3,7 +3,6 @@
 use alloy_primitives::U256;
 use candid::Nat;
 use evm_rpc_types::RpcConfig;
-use ic_exports::ic_cdk::print;
 use serde_json::json;
 
 use crate::constants::MAX_RETRY_ATTEMPTS;
@@ -136,7 +135,7 @@ pub async fn get_estimate_gas(
         "method": "eth_estimateGas"
     })
     .to_string();
-    print(&args);
+
     let rpc_canister_response: String = request_with_dynamic_retries(rpc_canister, args).await?;
 
     let decoded_response: EthCallResponse =
@@ -162,5 +161,8 @@ pub async fn get_estimate_gas(
     let hex_decoded_response = hex::decode(hex_string)
         .map_err(|err| ManagerError::DecodingError(format!("{:#?}", err)))?;
 
-    Ok(U256::from_be_slice(&hex_decoded_response))
+    let estimation = U256::from_be_slice(&hex_decoded_response);
+    let exaggerated_estimation = estimation.saturating_add(U256::from(15_000));
+
+    Ok(exaggerated_estimation)
 }
