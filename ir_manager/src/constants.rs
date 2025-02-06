@@ -68,7 +68,7 @@ pub fn cketh_fee() -> Nat {
 
 /// ckETH mint value
 /// The amount of Ether that will be used to mint new ckETH tokens when the balance is below the threshold
-const ETHER_RECHARGE_VALUE_RAW: u64 = 30_000_000_000_000_000; // 0.03 ETH in WEI
+const ETHER_RECHARGE_VALUE_RAW: u64 = 20_000_000_000_000_000; // 0.02 ETH in WEI
 
 /// Returns the Ether recharge value as a `U256`.
 pub fn ether_recharge_value() -> U256 {
@@ -80,7 +80,7 @@ pub const CYCLES_DISCOUNT_PERCENTAGE: u64 = 97; // 3% discount is provided
 
 /// ckETH balance threshold of the canister.
 /// The recharging cycle will mint more ckETH if the balance falls below this number
-const CKETH_THRESHOLD_RAW: u64 = 10_000_000_000_000_000; // 0.01 ckETH
+const CKETH_THRESHOLD_RAW: u64 = 30_000_000_000_000_000; // 0.03 ckETH
 
 /// Returns the ckETH balance threshold as a `Nat`.
 pub fn cketh_threshold() -> Nat {
@@ -105,7 +105,7 @@ pub fn exchange_rate_canister() -> Principal {
 
 /// ckETH smart contract on Ethereum mainnet
 #[cfg(feature = "mainnet")]
-pub const CKETH_HELPER: &str = "0x7574eB42cA208A4f6960ECCAfDF186D627dCC175";
+pub const CKETH_HELPER: &str = "0x18901044688D3756C35Ed2b36D93e6a5B8e00E68";
 
 /// ckETH ledger canister's principal ID
 #[cfg(feature = "mainnet")]
@@ -128,7 +128,7 @@ pub const PROVIDER_COUNT: u8 = 3;
 pub const PROVIDER_THRESHOLD: u8 = 2;
 
 /// Timeout in milliseconds for strategy locks
-pub const STRATEGY_LOCK_TIMEOUT: u64 = 3600000;
+pub const STRATEGY_LOCK_TIMEOUT: u64 = 3_600_000; // one hour
 
 /// Sepolia providers
 #[cfg(feature = "sepolia")]
@@ -150,7 +150,7 @@ pub const PROVIDERS: [evm_rpc_types::EthMainnetService; 4] = [
 ];
 
 /// Minimum expected cycles for the ckETH<>Cycles arbitrage opportunity
-pub const MINIMUM_ATTACHED_CYCLES: u64 = 10_000_000_000_000; // 10 Trillion Cycles
+pub const MINIMUM_ATTACHED_CYCLES: u64 = 1_000_000_000_000; // 1 Trillion Cycles
 
 #[cfg(test)]
 mod tests {
