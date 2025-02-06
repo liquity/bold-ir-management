@@ -105,6 +105,7 @@ impl IrManager {
             get_canister_public_key(key_id, None, derivation_path.clone()).await?;
         let eoa_pk = string_to_address(pubkey_bytes_to_address(&public_key_bytes)?)?;
         let rpc_canister = Service(strategy.rpc_principal);
+        let eoa_nonce = get_nonce(&rpc_canister, eoa_pk).await?;
 
         // Convert String addresses to Address ones
         let collateral_registry_address = string_to_address(strategy.collateral_registry)?;
@@ -137,7 +138,9 @@ impl IrManager {
         // The nonce will be recalculated.
         // The latest rate will be adjusted when the `set_batch_manager` function is called.
         // The timestamp will stay as 0 until the first strategy rate adjustment tx is sent.
-        let strategy_data = StrategyData::default();
+        let strategy_data = StrategyData::default()
+            .eoa_nonce(eoa_nonce.to::<u64>())
+            .clone();
 
         StableStrategy::default()
             .settings(strategy_settings)
@@ -455,10 +458,6 @@ impl IrManager {
 
     #[update]
     pub async fn get_canister_status(&self) -> ManagerResult<CanisterStatusResponse> {
-        if caller() == Principal::anonymous() {
-            return Err(ManagerError::Unauthorized);
-        }
-
         let response: CanisterStatusResponse =
             extract_call_result(canister_status(CanisterIdRecord { canister_id: id() }).await)?;
         Ok(response)
