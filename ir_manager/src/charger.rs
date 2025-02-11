@@ -324,7 +324,7 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
     let maximum_returned_ether_amount = u256_to_nat(max_returned_ether_amount_u256)?;
 
     // Check the current balance of ckETH.
-    let cketh_balance = fetch_cketh_balance().await?;
+    let cketh_balance = fetch_cketh_balance().await? - cketh_fee();
 
     // Determine the amount to transfer and cycles to accept.
     let (transfer_amount, cycles_to_accept, returning_cycles) =
