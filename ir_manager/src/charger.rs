@@ -17,7 +17,7 @@
 use crate::{
     constants::{
         cketh_fee, cketh_ledger, cketh_threshold, ether_recharge_value, scale, CKETH_HELPER,
-        CYCLES_DISCOUNT_PERCENTAGE, CYCLES_THRESHOLD, SCALE,
+        CYCLES_DISCOUNT_PERCENTAGE, CYCLES_THRESHOLD,
     },
     journal::{JournalCollection, LogType},
     strategy::stable::StableStrategy,
@@ -299,7 +299,8 @@ async fn fetch_balance(rpc_canister: &Service, public_key: String) -> ManagerRes
 /// ```
 pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> {
     let discount_percentage = CYCLES_DISCOUNT_PERCENTAGE;
-    let rate = fetch_ether_cycles_rate().await? * discount_percentage / 100;
+    let real_rate = fetch_ether_cycles_rate().await?;
+    let rate = real_rate * discount_percentage / 100;
 
     if rate == 0 {
         return Err(arithmetic_err("The calculated ETH/CXDR rate is zero."));
@@ -326,20 +327,31 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
     let cketh_balance = fetch_cketh_balance().await?;
 
     // Determine the amount to transfer and cycles to accept.
-    let (transfer_amount, cycles_to_accept) = if cketh_balance > maximum_returned_ether_amount {
-        // we are not worried about casting like this as `msg_cycles_available()` had returned a u64 before
-        (maximum_returned_ether_amount, attached_cycles.to::<u64>())
-    } else {
-        let cycles_to_accept = (cketh_balance.clone() / SCALE / rate)
-            .0
-            .to_u64()
-            .ok_or_else(|| {
-                ManagerError::DecodingError(
-                    "Error while decoding the amount of cycles to accept to u64".to_string(),
-                )
-            })?;
-        (cketh_balance, cycles_to_accept)
-    };
+    let (transfer_amount, cycles_to_accept, returning_cycles) =
+        if cketh_balance > maximum_returned_ether_amount {
+            // we are not worried about casting like this as `msg_cycles_available()` had returned a u64 before
+            (
+                maximum_returned_ether_amount,
+                attached_cycles.to::<u64>(),
+                Nat::from(0_u8),
+            )
+        } else {
+            let nat_scale = u256_to_nat(&scale())?;
+            let nat_scaled_rate = u256_to_nat(&scaled_rate)?;
+            let cycles_to_accept = (cketh_balance.clone() * nat_scaled_rate / nat_scale)
+                .0
+                .to_u64()
+                .ok_or_else(|| {
+                    ManagerError::DecodingError(
+                        "Error while decoding the amount of cycles to accept to u64".to_string(),
+                    )
+                })?;
+            (
+                cketh_balance,
+                cycles_to_accept,
+                Nat::from(msg_cycles_available() - cycles_to_accept),
+            )
+        };
 
     msg_cycles_accept(cycles_to_accept);
 
@@ -361,6 +373,9 @@ pub async fn transfer_cketh(receiver: Principal) -> ManagerResult<SwapResponse> 
         Ok(_) => Ok(SwapResponse {
             accepted_cycles: Nat::from(cycles_to_accept),
             returning_ether: transfer_amount,
+            returning_cycles,
+            real_rate,
+            discounted_rate: rate,
         }),
         Err(err) => Err(ManagerError::Custom(err.1)),
     }

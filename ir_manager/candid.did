@@ -151,7 +151,13 @@ type StrategySettingsQuery = record {
   target_min : nat;
   collateral_registry : text;
 };
-type SwapResponse = record { returning_ether : nat; accepted_cycles : nat };
+type SwapResponse = record {
+  returning_ether : nat;
+  real_rate : nat64;
+  discounted_rate : nat64;
+  accepted_cycles : nat;
+  returning_cycles : nat;
+};
 type ValidationError = variant { Custom : text; InvalidHex : text };
 service : {
   get_canister_status : () -> (Result);

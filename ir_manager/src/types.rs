@@ -55,6 +55,12 @@ pub struct SwapResponse {
     pub accepted_cycles: Nat,
     /// The amount of ckETH that is returned to the caller.
     pub returning_ether: Nat,
+    /// Cycles that were not accepted and are being returned
+    pub returning_cycles: Nat,
+    /// The ETH<>CXDR rate
+    pub real_rate: u64,
+    /// The discounted ETH<>CXDR rate
+    pub discounted_rate: u64,
 }
 
 /// ICRC-1 subaccount type
