@@ -89,7 +89,7 @@ fn check_strategy_updates() -> bool {
     let mut no_update_strategies = 0;
 
     strategies.iter().for_each(|strategy| {
-        if is_older_than(strategy.data.last_ok_exit, 90) {
+        if is_older_than(strategy.data.last_update, 90) {
             no_update_strategies += 1;
         }
     });
@@ -134,7 +134,7 @@ fn check_strategy_exits() -> bool {
 /// Schedules a halt in 7 days
 fn schedule_halt(message: String) {
     // Update the current status to `HaltingInProgress`
-    let current_time = time() / 1_000_000; // current time converted from nanoseconds to millis
+    let current_time = time() / 1_000_000_000; // current time converted from nanoseconds to millis
     let halts_at = current_time + 604_800_000; // current time + 7 days in milliseconds
     HALT_STATE.with(|halt| {
         *halt.borrow_mut() = Halt {
@@ -148,7 +148,7 @@ fn schedule_halt(message: String) {
         HALT_STATE.with(|halt| {
             *halt.borrow_mut() = Halt {
                 status: HaltStatus::Halted {
-                    halted_at: time() / 1_000_000,
+                    halted_at: time() / 1_000_000_000,
                 },
                 message: Some(message),
             }
@@ -159,7 +159,7 @@ fn schedule_halt(message: String) {
 /// Check if a given timestamp (milliseconds) is older than the given number of days
 fn is_older_than(timestamp_ms: u64, days: u64) -> bool {
     // Get current time in milliseconds
-    let current_time_ms = time() / 1_000_000;
+    let current_time_ms = time() / 1_000_000_000;
 
     // Define the threshold
     let threshold = current_time_ms - Duration::days(days as i64).num_milliseconds() as u64;
