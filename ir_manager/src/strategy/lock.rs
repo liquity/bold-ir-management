@@ -22,6 +22,7 @@
 //! ```
 
 use candid::CandidType;
+use chrono::{DateTime, Utc};
 use ic_exports::ic_cdk::api::time;
 
 use crate::{
@@ -131,5 +132,39 @@ impl From<Lock> for StableLock {
             is_locked: value.is_locked,
             last_locked_at: value.last_locked_at,
         }
+    }
+}
+
+/// Persistent lock state for stable storage.
+///
+/// Provides:
+/// - Candid serialization support
+/// - Minimal memory footprint
+/// - Direct state access
+///
+/// Note: Does not implement locking logic.
+#[derive(Clone, Default, CandidType)]
+pub struct LockQuery {
+    /// Status of the lock. `true` represents locked and `false` unlocked
+    pub is_locked: bool,
+    /// Last locked timstamp in milliseconds
+    pub last_locked_at: Option<String>,
+}
+
+/// Validated conversion from runtime to query state
+impl TryFrom<StableLock> for LockQuery {
+    type Error = ManagerError;
+
+    fn try_from(value: StableLock) -> Result<Self, Self::Error> {
+        let last_locked_at = value.last_locked_at.map(|time| {
+            let last_update_datetime =
+                DateTime::<Utc>::from_timestamp(time as i64, 0).expect("Invalid timestamp");
+            last_update_datetime.format("%d-%m-%Y %H:%M:%S").to_string()
+        });
+
+        Ok(Self {
+            is_locked: value.is_locked,
+            last_locked_at,
+        })
     }
 }

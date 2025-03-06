@@ -27,7 +27,7 @@ use crate::{
 use super::{
     data::{StrategyData, StrategyDataQuery},
     executable::ExecutableStrategy,
-    lock::StableLock,
+    lock::{LockQuery, StableLock},
     settings::{StrategySettings, StrategySettingsQuery},
 };
 
@@ -132,7 +132,7 @@ pub struct StableStrategyQuery {
     /// Sanitized runtime state
     pub data: StrategyDataQuery,
     /// Current execution lock status
-    pub lock: StableLock,
+    pub lock: LockQuery,
 }
 
 /// Validated conversion from full strategy to query representation
@@ -140,13 +140,14 @@ impl TryFrom<StableStrategy> for StableStrategyQuery {
     type Error = ManagerError;
 
     fn try_from(value: StableStrategy) -> Result<Self, Self::Error> {
-        let settings_query = StrategySettingsQuery::try_from(value.settings)?;
-        let data_query = StrategyDataQuery::try_from(value.data)?;
+        let settings = StrategySettingsQuery::try_from(value.settings)?;
+        let data = StrategyDataQuery::try_from(value.data)?;
+        let lock = LockQuery::try_from(value.lock)?;
 
         Ok(Self {
-            settings: settings_query,
-            data: data_query,
-            lock: value.lock,
+            settings,
+            data,
+            lock,
         })
     }
 }
