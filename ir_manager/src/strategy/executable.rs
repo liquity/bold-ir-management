@@ -682,6 +682,14 @@ impl ExecutableStrategy {
             );
 
             return Ok(None);
+        } else if new_rate == U256::ZERO {
+            journal.append_note(
+                Ok(()),
+                LogType::Info,
+                "The calculated rate is zero. No need to progress further.",
+            );
+
+            return Ok(None);
         }
 
         // Predict upfront fee
@@ -728,7 +736,9 @@ impl ExecutableStrategy {
         journal.append_note(
             Ok(()),
             LogType::Info,
-            format!("Calculated target debt in front: {}", target_debt),
+            format!("Calculated target debt in front: {}, number of troves in this collateral market (including the batch): {}",
+            target_debt,
+            troves.len()),
         );
 
         if target_debt == U256::ZERO {
@@ -754,12 +764,21 @@ impl ExecutableStrategy {
                 journal.append_note(
                     Ok(()),
                     LogType::Info,
-                    format!(
-                        "Positioning batch after trove id: {} with debt {}",
-                        index, trove.debt
-                    ),
+                    format!("Positioning the batch after trove with debt {}", trove.debt),
                 );
                 break;
+            } else if index == troves.len() - 1 {
+                // There was not enough debt in the market
+                // the trove should be positioned at the end of the market.
+                new_rate = trove
+                    .interestRate
+                    .saturating_add(U256::from(100_000_000_000_000_u128)); // Increment rate by 1 bps (0.01%)
+
+                journal.append_note(
+                    Ok(()),
+                    LogType::Info,
+                    format!("Not enough debt in the market, moving the batch to the end. Positioning the batch after trove with debt {}", trove.debt),
+                );
             }
         }
 
