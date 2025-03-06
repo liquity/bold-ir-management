@@ -158,6 +158,10 @@ fn schedule_halt(message: String) {
 
 /// Check if a given timestamp (milliseconds) is older than the given number of days
 fn is_older_than(timestamp_ms: u64, days: u64) -> bool {
+    if timestamp_ms == 0 {
+        return false;
+    }
+
     // Get current time in milliseconds
     let current_time_ms = time() / 1_000_000_000;
 
