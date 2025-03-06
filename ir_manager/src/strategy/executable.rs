@@ -769,7 +769,9 @@ impl ExecutableStrategy {
             }
         }
 
-        if new_rate == U256::ZERO {
+        if new_rate == U256::ZERO
+            && troves.last().unwrap().interestBatchManager != self.settings.batch_manager
+        {
             // There was not enough debt in the market
             // the trove should be positioned at the end of the market.
             new_rate = troves
