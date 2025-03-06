@@ -47,6 +47,7 @@ type JournalEntry = record {
   entry : Result_1;
 };
 type JsonRpcError = record { code : int64; message : text };
+type LockQuery = record { last_locked_at : opt text; is_locked : bool };
 type LogType = variant {
   Info;
   RateAdjustment;
@@ -114,10 +115,9 @@ type StableJournalCollection = record {
   start_date_and_time : text;
   end_date_and_time : text;
 };
-type StableLock = record { last_locked_at : opt nat64; is_locked : bool };
 type StableStrategyQuery = record {
   data : StrategyDataQuery;
-  lock : StableLock;
+  lock : LockQuery;
   settings : StrategySettingsQuery;
 };
 type StrategyDataQuery = record {

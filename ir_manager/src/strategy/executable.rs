@@ -747,10 +747,9 @@ impl ExecutableStrategy {
             ));
         }
 
-        for (index, trove) in troves
+        for trove in troves
             .iter()
             .filter(|t| t.interestBatchManager != self.settings.batch_manager)
-            .enumerate()
         {
             counted_debt = counted_debt
                 .checked_add(trove.debt)
@@ -767,19 +766,23 @@ impl ExecutableStrategy {
                     format!("Positioning the batch after trove with debt {}", trove.debt),
                 );
                 break;
-            } else if index == troves.len() - 1 {
-                // There was not enough debt in the market
-                // the trove should be positioned at the end of the market.
-                new_rate = trove
-                    .interestRate
-                    .saturating_add(U256::from(100_000_000_000_000_u128)); // Increment rate by 1 bps (0.01%)
-
-                journal.append_note(
-                    Ok(()),
-                    LogType::Info,
-                    format!("Not enough debt in the market, moving the batch to the end. Positioning the batch after trove with debt {}", trove.debt),
-                );
             }
+        }
+
+        if new_rate == U256::ZERO {
+            // There was not enough debt in the market
+            // the trove should be positioned at the end of the market.
+            new_rate = troves
+                .last()
+                .unwrap()
+                .interestRate
+                .saturating_add(U256::from(100_000_000_000_000_u128)); // Increment rate by 1 bps (0.01%)
+
+            journal.append_note(
+                Ok(()),
+                LogType::Info,
+                format!("Not enough debt in the market, moving the batch to the end."),
+            );
         }
 
         Ok(new_rate)
