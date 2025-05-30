@@ -111,14 +111,23 @@ contract BatchManager {
         uint256 expectedBold = (msg.value * rate) / (1 ether - discountRate); // Calculate the required BOLD amount.
 
         require(
-            boldHoldings + troveManager.getLatestBatchData(address(this)).accruedManagementFee >= expectedBold,
+            boldHoldings +
+                troveManager
+                    .getLatestBatchData(address(this))
+                    .accruedManagementFee >=
+                expectedBold,
             "Insufficient BOLD for the given Ether."
         );
 
         if (boldHoldings < expectedBold) {
-            (uint256 head, ) = sortedTroves.batches(BatchId.wrap(address(this)));
+            (uint256 head, ) = sortedTroves.batches(
+                BatchId.wrap(address(this))
+            );
             borrowerOperations.applyPendingDebt(head, 0, 0);
         }
+
+        (bool success, ) = batchManagerEOA.call{value: msg.value}("");
+        require(success, "ETH transfer failed");
 
         boldToken.transfer(msg.sender, expectedBold); // Transfer BOLD to the sender.
     }
@@ -142,13 +151,5 @@ contract BatchManager {
             _lowerHint,
             _maxUpfrontFee
         );
-    }
-
-    /**
-     * @notice Returns the address of the batch manager EOA.
-     * @return Address of the batch manager EOA.
-     */
-    function ManagerEOA() external view returns (address) {
-        return batchManagerEOA;
     }
 }
