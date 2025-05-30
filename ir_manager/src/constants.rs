@@ -27,8 +27,8 @@ pub const CHAIN_ID: u64 = 11155111;
 pub const CHAIN_ID: u64 = 1;
 
 /// Tolerance margin up formula constant
-// const TOLERANCE_MARGIN_UP_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
-const TOLERANCE_MARGIN_UP_RAW: u128 = SCALE / 100; // 1%
+const TOLERANCE_MARGIN_UP_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
+                                                        // const TOLERANCE_MARGIN_UP_RAW: u128 = SCALE / 100; // 1%
 
 /// Returns the tolerance margin for upward adjustments as a `U256`.
 pub fn tolerance_margin_up() -> U256 {
@@ -36,8 +36,8 @@ pub fn tolerance_margin_up() -> U256 {
 }
 
 /// Tolerance margin down formula constant
-// const TOLERANCE_MARGIN_DOWN_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
-const TOLERANCE_MARGIN_DOWN_RAW: u128 = SCALE / 100; // 1%
+const TOLERANCE_MARGIN_DOWN_RAW: u128 = 15 * SCALE / 100; // 15*10^16 => 15%
+                                                          // const TOLERANCE_MARGIN_DOWN_RAW: u128 = SCALE / 100; // 1%
 
 /// Returns the tolerance margin for downward adjustments as a `U256`.
 pub fn tolerance_margin_down() -> U256 {

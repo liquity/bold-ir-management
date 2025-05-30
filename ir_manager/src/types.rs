@@ -94,7 +94,7 @@ sol!(
 
     // Liquity getters
     function getRedemptionRateWithDecay() public view override returns (uint256);
-    function getEntireSystemDebt() public view returns (uint256 entireSystemDebt);
+    function getEntireBranchDebt() public view returns (uint256 entireSystemDebt);
     function getUnbackedPortionPriceAndRedeemability() external returns (uint256, uint256, bool);
 
     function getDebtPerInterestRateAscending(uint256 _collIndex, uint256 _startId, uint256 _maxIterations)

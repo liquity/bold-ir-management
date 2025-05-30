@@ -196,7 +196,7 @@ impl ExecutableStrategy {
             Ok(()),
             LogType::Info,
             format!(
-                "Calculated: total unbacked: {}, unbacked_portion: {}, entire system debt: {}",
+                "Total unbacked: {}, unbacked_portion: {}, entire system debt: {}",
                 total_unbacked, unbacked_portion, entire_system_debt,
             ),
         );
@@ -230,7 +230,7 @@ impl ExecutableStrategy {
             Ok(()),
             LogType::Info,
             format!(
-                "Calculated: maximum redeemable against collateral: {}, target_percentage: {} (numerator: {}, redemption_fee: {}, denominator: {})",
+                "Maximum redeemable against collateral: {}, target_percentage: {} (numerator: {}, redemption_fee: {}, denominator: {})",
                 maximum_redeemable_against_collateral,
                 target_percentage,
                 target_percentage_numerator,
@@ -260,12 +260,12 @@ impl ExecutableStrategy {
                 &self.settings.rpc_canister,
                 block_tag.clone(),
                 manager,
-                getEntireSystemDebtCall::SELECTOR.to_vec(),
+                getEntireBranchDebtCall::SELECTOR.to_vec(),
             )
             .await?;
 
             total_debt +=
-                decode_abi_response::<getEntireSystemDebtReturn, getEntireSystemDebtCall>(
+                decode_abi_response::<getEntireBranchDebtReturn, getEntireBranchDebtCall>(
                     rpc_canister_response,
                 )?
                 .entireSystemDebt;
